@@ -25,11 +25,34 @@ DROP TABLE IF EXISTS user_station_permission;
 DROP TABLE IF EXISTS power_station;
 DROP TABLE IF EXISTS sys_face_auth;
 DROP TABLE IF EXISTS sys_oauth_account;
+DROP TABLE IF EXISTS sys_login_log;
 DROP TABLE IF EXISTS sys_user_role;
 DROP TABLE IF EXISTS sys_role;
 DROP TABLE IF EXISTS sys_user;
 
-SET FOREIGN_KEY_CHECKS = 1;
+
+-- =========================================================
+-- 登录审计日志表
+-- =========================================================
+CREATE TABLE sys_login_log (
+    log_id BIGINT PRIMARY KEY AUTO_INCREMENT COMMENT '日志ID',
+    user_id BIGINT DEFAULT NULL COMMENT '用户ID，用户不存在时可为空',
+    username VARCHAR(64) NOT NULL COMMENT '登录用户名',
+    login_type VARCHAR(32) NOT NULL COMMENT '操作类型：LOGIN登录，LOGOUT退出，REGISTER注册，REFRESH刷新令牌，OAUTH_LOGIN第三方登录，FACE_LOGIN人脸登录',
+    login_ip VARCHAR(64) DEFAULT NULL COMMENT '登录IP',
+    user_agent VARCHAR(512) DEFAULT NULL COMMENT '用户代理',
+    status VARCHAR(16) NOT NULL COMMENT '状态：SUCCESS成功，FAIL失败',
+    message VARCHAR(255) DEFAULT NULL COMMENT '附加信息，如失败原因',
+    login_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '操作时间',
+
+    KEY idx_login_user (user_id),
+    KEY idx_login_time (login_time),
+    KEY idx_login_status (status),
+    KEY idx_login_type (login_type),
+
+    CONSTRAINT fk_login_user
+        FOREIGN KEY (user_id) REFERENCES sys_user(user_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='登录审计日志表';
 
 
 -- =========================================================
@@ -47,6 +70,7 @@ CREATE TABLE sys_user (
     status TINYINT NOT NULL DEFAULT 1 COMMENT '状态：1正常，0禁用',
     last_login_time DATETIME DEFAULT NULL COMMENT '最后登录时间',
     last_login_ip VARCHAR(64) DEFAULT NULL COMMENT '最后登录IP',
+    token_version INT NOT NULL DEFAULT 0 COMMENT '令牌版本，用于使旧Token失效',
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
     deleted TINYINT NOT NULL DEFAULT 0 COMMENT '逻辑删除：0未删除，1已删除',
@@ -105,6 +129,7 @@ CREATE TABLE sys_oauth_account (
     union_id VARCHAR(128) DEFAULT NULL COMMENT 'unionId',
     nickname VARCHAR(128) DEFAULT NULL COMMENT '第三方昵称',
     avatar_url VARCHAR(512) DEFAULT NULL COMMENT '第三方头像',
+    email VARCHAR(128) DEFAULT NULL COMMENT '第三方邮箱',
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '绑定时间',
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
 
@@ -123,17 +148,21 @@ CREATE TABLE sys_oauth_account (
 CREATE TABLE sys_face_auth (
     face_id BIGINT PRIMARY KEY AUTO_INCREMENT COMMENT '人脸认证ID',
     user_id BIGINT NOT NULL COMMENT '用户ID',
-    face_feature_id VARCHAR(128) DEFAULT NULL COMMENT '人脸特征ID或第三方平台ID',
-    face_image_url VARCHAR(512) DEFAULT NULL COMMENT '人脸图片URL，不建议生产环境直接保存原图',
+    provider VARCHAR(32) NOT NULL DEFAULT 'local' COMMENT '提供商：local本地mock，aliyun阿里云',
+    face_db_name VARCHAR(64) DEFAULT NULL COMMENT '人脸库名称（阿里云）',
+    entity_id VARCHAR(128) DEFAULT NULL COMMENT '人脸实体ID',
+    face_feature_id VARCHAR(128) DEFAULT NULL COMMENT '人脸特征ID或FaceId',
+    face_image_url VARCHAR(512) DEFAULT NULL COMMENT '人脸图片URL',
     status TINYINT NOT NULL DEFAULT 1 COMMENT '状态：1启用，0禁用',
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
 
-    UNIQUE KEY uk_face_user (user_id),
+    UNIQUE KEY uk_face_user_provider (user_id, provider),
+    UNIQUE KEY uk_face_provider_entity (provider, entity_id),
 
     CONSTRAINT fk_face_user
         FOREIGN KEY (user_id) REFERENCES sys_user(user_id)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='人脸识别预留表';
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='人脸识别表';
 
 
 -- =========================================================
@@ -638,6 +667,9 @@ CREATE TABLE user_notification (
         FOREIGN KEY (user_id) REFERENCES sys_user(user_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='用户站内通知表';
 
+
+-- 所有建表完成，恢复外键校验
+SET FOREIGN_KEY_CHECKS = 1;
 
 -- =========================================================
 -- 23. 初始化基础角色

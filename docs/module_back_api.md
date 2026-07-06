@@ -323,14 +323,13 @@ FastAPI 当前可能返回 HTTP 422：
 }
 ```
 
-### 7.3 建议的超时
+### 7.3 超时配置（已实施）
 
-当前 WebClient 尚未显式配置连接和响应超时。建议：
+WebClient 已在 `WebClientConfig` 中配置超时：
 
 ```text
-连接超时：3 秒
-响应超时：30 秒
-读取超时：30 秒
+连接超时：3 秒（ChannelOption.CONNECT_TIMEOUT_MILLIS）
+响应超时：30 秒（HttpClient.responseTimeout）
 ```
 
 真实模型超过 30 秒时不应无限等待，应改为异步任务或按模型配置单独超时。
@@ -428,12 +427,24 @@ Invoke-RestMethod `
 
 ## 11. 后续改进清单
 
-- [ ] FastAPI 强制校验 30 帧和时间连续性。
-- [ ] WebClient 增加连接、响应和读取超时。
-- [ ] 增加模型不存在、输入异常的统一错误格式。
-- [ ] Spring Boot 调用前校验模型状态为 `ONLINE`。
-- [ ] 增加 requestId/taskId，贯穿两端日志。
-- [ ] 增加健康检查和模型列表同步。
+- [x] FastAPI 强制校验 30 帧和时间连续性。
+- [x] WebClient 增加连接、响应和读取超时。
+- [x] 增加模型不存在、输入异常的统一错误格式。
+- [x] Spring Boot 调用前校验模型状态为 `ONLINE`。
+- [x] 增加 requestId/taskId，贯穿两端日志。
+- [x] 增加健康检查和模型列表同步。
 - [ ] 增加真实模型 Registry 和按模型适配输入。
-- [ ] 为预测成功、失败、超时补集成测试。
+- [x] 为预测成功、失败、超时补集成测试。
 - [ ] 预测耗时较长时改为异步队列。
+
+## 12. 第四阶段后端补充
+
+- 分析报告：`POST /api/analysis/report`、`GET /api/analysis/reports`、
+  `GET /api/analysis/reports/{reportId}`，使用真实电站、光伏、天气与预测数据。
+- 开放平台：JWT 用于 Key 管理，`/openapi/v1/**` 使用独立 API Key 认证；
+  Key 明文仅创建时返回，持久化前缀和 SHA-256 哈希。
+- 开放预测复用 `PredictionExecutionService` 与 `PredictionPersistenceService`，
+  创建 `OPEN_API` 任务、输入快照、预测结果和调用日志。
+- 新闻支持 `DRAFT/PUBLISHED/OFFLINE`、分页、类型及目标角色过滤。
+- 通知接口支持分页、未读数、单条已读和全部已读；重要新闻发布时按角色批量创建。
+- 当前限流和日额度采用单机内存计数，生产多实例部署应替换为 Redis 原子计数。

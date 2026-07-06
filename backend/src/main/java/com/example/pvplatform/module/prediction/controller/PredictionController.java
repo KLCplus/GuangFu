@@ -9,6 +9,7 @@ import org.springframework.web.bind.annotation.*;
 @RestController
 @RequestMapping("/api/predictions")
 public class PredictionController {
+
     private final PredictionService predictionService;
 
     public PredictionController(PredictionService predictionService) {
@@ -21,8 +22,8 @@ public class PredictionController {
     }
 
     @GetMapping("/{taskId}")
-    public Result<?> task(@PathVariable Long taskId) {
-        return Result.success(predictionService.task(taskId));
+    public Result<?> detail(@PathVariable Long taskId) {
+        return Result.success(predictionService.detail(taskId));
     }
 
     @GetMapping("/{taskId}/results")
@@ -31,7 +32,11 @@ public class PredictionController {
     }
 
     @GetMapping("/history")
-    public Result<?> history() {
-        return Result.success(predictionService.history());
+    public Result<?> history(@RequestParam(defaultValue = "1") int pageNum,
+                              @RequestParam(defaultValue = "10") int pageSize,
+                              @RequestParam(required = false) Long stationId,
+                              @RequestParam(required = false) Long modelId,
+                              @RequestParam(required = false) String status) {
+        return Result.success(predictionService.history(pageNum, pageSize, stationId, modelId, status));
     }
 }

@@ -18,6 +18,7 @@ public class SysOAuthAccountDO {
     private String unionId;
     private String nickname;
     private String avatarUrl;
+    private String email;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 }

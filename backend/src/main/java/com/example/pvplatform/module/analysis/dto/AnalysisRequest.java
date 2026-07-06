@@ -1,3 +1,13 @@
 package com.example.pvplatform.module.analysis.dto;
 
-public record AnalysisRequest(Long stationId, Long taskId, boolean includeWeather, boolean includePrediction) {}
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Positive;
+import jakarta.validation.constraints.Size;
+
+public record AnalysisRequest(
+    @NotNull @Positive Long stationId,
+    @NotNull @Positive Long taskId,
+    @Size(max = 255) String title,
+    boolean includeWeather,
+    boolean includePrediction
+) {}

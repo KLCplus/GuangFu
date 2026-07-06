@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(JAVA_HOME=\"/c/Program Files/Java/jdk-23\" mvn test)",
+      "Bash(export JAVA_HOME=\"/c/Program Files/Java/jdk-23\")",
+      "Bash(cd \"C:/Users/99140/Desktop/chengdu/code/pv-power-platform/backend\")",
+      "Bash(mvn test *)",
+      "Bash(mvn compile *)"
+    ]
+  }
+}

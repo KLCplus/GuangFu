@@ -20,6 +20,6 @@ public class WeatherController {
 
     @GetMapping("/forecast")
     public Result<?> forecast(@PathVariable Long stationId) {
-        return Result.success(weatherService.forecast());
+        return Result.success(weatherService.forecast(stationId));
     }
 }

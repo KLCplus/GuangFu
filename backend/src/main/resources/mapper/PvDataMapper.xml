@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+    "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.pvplatform.persistence.mapper.PvDataMapper">
+    <select id="selectHistoryAggregated"
+            resultType="com.example.pvplatform.module.pvdata.vo.PvDataVO">
+        SELECT DATE_FORMAT(
+                   FROM_UNIXTIME(FLOOR(UNIX_TIMESTAMP(collect_time) / (#{intervalMinutes} * 60))
+                   * (#{intervalMinutes} * 60)), '%Y-%m-%d %H:%i:%s') AS time,
+               AVG(power_kw) AS power,
+               AVG(irradiance_w_m2) AS irradiance,
+               AVG(ambient_temperature_c) AS temperature
+        FROM pv_data
+        WHERE station_id = #{stationId}
+          AND collect_time <![CDATA[ >= ]]> #{startTime}
+          AND collect_time <![CDATA[ <= ]]> #{endTime}
+        GROUP BY FLOOR(UNIX_TIMESTAMP(collect_time) / (#{intervalMinutes} * 60))
+        ORDER BY MIN(collect_time)
+    </select>
+
+    <insert id="batchInsert">
+        INSERT INTO pv_data
+        (station_id, collect_time, power_kw, energy_today_kwh, energy_total_kwh,
+         voltage_v, current_a, irradiance_w_m2, module_temperature_c,
+         ambient_temperature_c, humidity_percent, wind_speed_m_s, data_source)
+        VALUES
+        <foreach collection="rows" item="r" separator=",">
+            (#{r.stationId}, #{r.collectTime}, #{r.powerKw}, #{r.energyTodayKwh},
+             #{r.energyTotalKwh}, #{r.voltageV}, #{r.currentA}, #{r.irradianceWM2},
+             #{r.moduleTemperatureC}, #{r.ambientTemperatureC}, #{r.humidityPercent},
+             #{r.windSpeedMS}, #{r.dataSource})
+        </foreach>
+    </insert>
+
+    <insert id="batchUpsert">
+        INSERT INTO pv_data
+        (station_id, collect_time, power_kw, energy_today_kwh, energy_total_kwh,
+         voltage_v, current_a, irradiance_w_m2, module_temperature_c,
+         ambient_temperature_c, humidity_percent, wind_speed_m_s, data_source)
+        VALUES
+        <foreach collection="rows" item="r" separator=",">
+            (#{r.stationId}, #{r.collectTime}, #{r.powerKw}, #{r.energyTodayKwh},
+             #{r.energyTotalKwh}, #{r.voltageV}, #{r.currentA}, #{r.irradianceWM2},
+             #{r.moduleTemperatureC}, #{r.ambientTemperatureC}, #{r.humidityPercent},
+             #{r.windSpeedMS}, #{r.dataSource})
+        </foreach>
+        ON DUPLICATE KEY UPDATE
+            power_kw = VALUES(power_kw),
+            energy_today_kwh = VALUES(energy_today_kwh),
+            energy_total_kwh = VALUES(energy_total_kwh),
+            voltage_v = VALUES(voltage_v),
+            current_a = VALUES(current_a),
+            irradiance_w_m2 = VALUES(irradiance_w_m2),
+            module_temperature_c = VALUES(module_temperature_c),
+            ambient_temperature_c = VALUES(ambient_temperature_c),
+            humidity_percent = VALUES(humidity_percent),
+            wind_speed_m_s = VALUES(wind_speed_m_s),
+            data_source = VALUES(data_source)
+    </insert>
+</mapper>

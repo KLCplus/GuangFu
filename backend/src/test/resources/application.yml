@@ -1,0 +1,73 @@
+spring:
+  datasource:
+    url: jdbc:h2:mem:testdb;MODE=MySQL;DB_CLOSE_DELAY=-1;DATABASE_TO_LOWER=true
+    username: sa
+    password:
+    driver-class-name: org.h2.Driver
+  sql:
+    init:
+      mode: always
+      schema-locations: classpath:test-schema.sql
+      data-locations: classpath:test-data.sql
+
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
+    log-impl: org.apache.ibatis.logging.slf4j.Slf4jImpl
+  global-config:
+    db-config:
+      id-type: auto
+      logic-delete-field: deleted
+      logic-delete-value: 1
+      logic-not-delete-value: 0
+
+security:
+  jwt:
+    secret: test-secret-key-for-jwt-must-be-at-least-256-bits-long-so-we-need-more-characters
+    access-token-expiration: 7200
+    refresh-token-expiration: 604800
+  login:
+    max-failures: 5
+    lock-minutes: 15
+  verification:
+    code-expire-minutes: 5
+    code-length: 6
+
+model-service:
+  base-url: http://localhost:9000
+
+face:
+  provider: local
+  match-threshold: 75
+  temp-url-expire-seconds: 300
+  storage-dir: ./target/test-faces
+  aliyun:
+    access-key-id: ""
+    access-key-secret: ""
+    face-region: cn-shanghai
+    face-endpoint: facebody.cn-shanghai.aliyuncs.com
+    face-db-name: pv_platform
+    oss-region: cn-shanghai
+    oss-endpoint: oss-cn-shanghai.aliyuncs.com
+    oss-bucket: ""
+
+mail:
+  enabled: false
+  host: smtp.qq.com
+  port: 465
+  username: ""
+  password: ""
+  from: ""
+  ssl-enabled: true
+
+oauth:
+  callback-base-url: http://localhost:5173
+  providers:
+    github:
+      enabled: false
+      client-id: ""
+      client-secret: ""
+      authorize-url: https://github.com/login/oauth/authorize
+      token-url: https://github.com/login/oauth/access_token
+      user-info-url: https://api.github.com/user
+      scopes: read:user

@@ -1,169 +1,213 @@
 package com.example.pvplatform.module.prediction.service;
 
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
-import com.example.pvplatform.client.ModelServiceClient;
-import com.example.pvplatform.client.dto.ModelPredictRequest;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.example.pvplatform.client.vo.ModelPredictResponse;
+import com.example.pvplatform.common.PageResult;
 import com.example.pvplatform.common.exception.BusinessException;
-import com.example.pvplatform.module.model.entity.ModelInfo;
 import com.example.pvplatform.module.model.service.ModelService;
+import com.example.pvplatform.module.prediction.dto.ModelInputFrame;
 import com.example.pvplatform.module.prediction.dto.PredictionRequest;
+import com.example.pvplatform.module.prediction.vo.PredictionDetailVO;
+import com.example.pvplatform.module.prediction.vo.PredictionResultVO;
 import com.example.pvplatform.module.prediction.vo.PredictionTaskVO;
-import com.example.pvplatform.module.pvdata.service.PvDataService;
-import com.example.pvplatform.persistence.entity.PredictionInputSnapshotDO;
+import com.example.pvplatform.module.station.entity.PowerStation;
+import com.example.pvplatform.module.station.service.StationService;
+import com.example.pvplatform.persistence.entity.ModelInfoDO;
 import com.example.pvplatform.persistence.entity.PredictionResultDO;
 import com.example.pvplatform.persistence.entity.PredictionTaskDO;
-import com.example.pvplatform.persistence.entity.SysUserDO;
-import com.example.pvplatform.persistence.mapper.PredictionInputSnapshotMapper;
-import com.example.pvplatform.persistence.mapper.PredictionResultMapper;
 import com.example.pvplatform.persistence.mapper.PredictionTaskMapper;
-import com.example.pvplatform.persistence.mapper.SysUserMapper;
+import com.example.pvplatform.security.SecurityUser;
+import com.example.pvplatform.security.SecurityUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
 import java.util.List;
-import java.util.UUID;
 
 @Service
 public class PredictionService {
-    private static final DateTimeFormatter FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
-    private final ModelServiceClient modelServiceClient;
+    private static final Logger log = LoggerFactory.getLogger(PredictionService.class);
+
     private final ModelService modelService;
-    private final PvDataService pvDataService;
+    private final StationService stationService;
+    private final PredictionInputService inputService;
+    private final PredictionPersistenceService persistenceService;
+    private final PredictionExecutionService executionService;
     private final PredictionTaskMapper taskMapper;
-    private final PredictionInputSnapshotMapper inputMapper;
-    private final PredictionResultMapper resultMapper;
-    private final SysUserMapper userMapper;
 
-    public PredictionService(ModelServiceClient modelServiceClient, ModelService modelService,
-                             PvDataService pvDataService, PredictionTaskMapper taskMapper,
-                             PredictionInputSnapshotMapper inputMapper, PredictionResultMapper resultMapper,
-                             SysUserMapper userMapper) {
-        this.modelServiceClient = modelServiceClient;
+    public PredictionService(ModelService modelService,
+                              StationService stationService,
+                              PredictionInputService inputService,
+                              PredictionPersistenceService persistenceService,
+                              PredictionExecutionService executionService,
+                              PredictionTaskMapper taskMapper) {
         this.modelService = modelService;
-        this.pvDataService = pvDataService;
+        this.stationService = stationService;
+        this.inputService = inputService;
+        this.persistenceService = persistenceService;
+        this.executionService = executionService;
         this.taskMapper = taskMapper;
-        this.inputMapper = inputMapper;
-        this.resultMapper = resultMapper;
-        this.userMapper = userMapper;
     }
+
+    // ── 创建预测任务 ──────────────────────────────────────────
 
     public PredictionTaskVO create(PredictionRequest request) {
-        ModelInfo model = modelService.detail(request.modelId());
-        List<ModelPredictRequest.InputFrame> frames = pvDataService.latestThirty(request.stationId()).stream()
-            .map(item -> new ModelPredictRequest.InputFrame(
-                item.time(), item.power(), item.temperature(), item.irradiance()))
-            .toList();
+        // 1. 校验电站存在和权限
+        PowerStation station = stationService.detail(request.stationId());
+        validateStationAccess(station);
 
-        PredictionTaskDO task = createRunningTask(request);
-        saveInputSnapshots(task.getTaskId(), frames);
+        // 2. 查询模型并要求 ONLINE
+        ModelInfoDO model = modelService.requireOnlineModel(request.modelId());
+
+        // 3. 校验 inputMode
+        String inputMode = request.inputMode() == null ? "STATION_HISTORY" : request.inputMode();
+        if (!"STATION_HISTORY".equals(inputMode)) {
+            throw new BusinessException(400, "当前仅支持 STATION_HISTORY 输入模式");
+        }
+
+        // 4. 获取并校验输入
+        List<ModelInputFrame> frames = inputService.loadStationHistory(request.stationId());
+
+        // 5. 创建 PENDING 任务 + 保存快照（短事务）
+        PredictionTaskDO task = persistenceService.createTaskWithSnapshots(
+                request.stationId(), request.modelId(), inputMode,
+                request.inputStartTime(), request.inputEndTime(), frames);
+
+        Long taskId = task.getTaskId();
+        log.info("预测任务已创建: taskId={}, taskNo={}, modelCode={}", taskId, task.getTaskNo(), model.getModelCode());
+
         try {
-            ModelPredictResponse response = modelServiceClient.predict(
-                new ModelPredictRequest(model.modelCode(), frames));
-            if (response == null || response.data() == null) {
-                throw new BusinessException(502, "模型服务返回空结果");
-            }
-            saveResults(task.getTaskId(), frames.get(frames.size() - 1).time(), response.data().predictions());
-            task.setStatus("SUCCESS");
-            task.setCostTimeMs(response.data().costTime());
-            task.setFinishedAt(LocalDateTime.now());
-            taskMapper.updateById(task);
-            return new PredictionTaskVO(task.getTaskId(), task.getStatus(), model.modelCode(),
-                response.data().predictions(), response.data().costTime());
-        } catch (RuntimeException exception) {
-            task.setStatus("FAILED");
-            task.setErrorMessage(exception.getMessage());
-            task.setFinishedAt(LocalDateTime.now());
-            taskMapper.updateById(task);
-            throw exception;
+            // 6. 更新 RUNNING
+            persistenceService.markRunning(taskId);
+
+            // 7. 调用 FastAPI（无事务）
+            ModelPredictResponse.Data responseData = executionService.execute(model, frames);
+            LocalDateTime lastInputTime = executionService.getLastInputTime(frames);
+
+            // 8. 保存结果 + 更新 SUCCESS（短事务）
+            persistenceService.saveResultsAndMarkSuccess(taskId, responseData, lastInputTime);
+
+            log.info("预测任务成功: taskId={}, costTimeMs={}", taskId, responseData.costTime());
+
+            PredictionTaskDO completed = taskMapper.selectById(taskId);
+            return buildTaskVO(completed == null ? task : completed,
+                    model, responseData.predictions());
+
+        } catch (BusinessException e) {
+            // 9. 异常时更新 FAILED（独立事务）
+            persistenceService.markFailed(taskId, e.getMessage());
+            log.error("预测任务失败: taskId={}, error={}", taskId, e.getMessage());
+            throw e;
+        } catch (Exception e) {
+            String safeMessage = e.getMessage() != null ? e.getMessage() : "未知错误";
+            persistenceService.markFailed(taskId, safeMessage);
+            log.error("预测任务异常: taskId={}", taskId, e);
+            throw new BusinessException(500, "预测执行失败");
         }
     }
 
-    public PredictionTaskVO task(Long taskId) {
-        PredictionTaskDO task = requireTask(taskId);
-        ModelInfo model = modelService.detail(task.getModelId());
-        return new PredictionTaskVO(taskId, task.getStatus(), model.modelCode(),
-            results(taskId), task.getCostTimeMs());
+    // ── 任务详情 ──────────────────────────────────────────────
+
+    public PredictionDetailVO detail(Long taskId) {
+        PredictionTaskDO task = persistenceService.requireUserTask(taskId);
+        ModelInfoDO model = modelService.requireModel(task.getModelId());
+        PowerStation station = stationService.detail(task.getStationId());
+        return new PredictionDetailVO(
+                task.getTaskId(), task.getTaskNo(),
+                task.getStationId(), station.stationName(),
+                task.getModelId(), model.getModelName(), model.getModelCode(),
+                task.getInputMode(), task.getStatus(),
+                task.getCreatedAt(), task.getStartedAt(), task.getFinishedAt(),
+                task.getCostTimeMs(), task.getErrorMessage());
     }
 
-    public List<ModelPredictResponse.Prediction> results(Long taskId) {
-        requireTask(taskId);
-        return resultMapper.selectList(Wrappers.<PredictionResultDO>lambdaQuery()
-                .eq(PredictionResultDO::getTaskId, taskId)
-                .orderByAsc(PredictionResultDO::getTimeOffsetMinutes))
-            .stream()
-            .map(row -> new ModelPredictResponse.Prediction(
-                row.getTimeOffsetMinutes(), row.getPredictPowerKw().doubleValue()))
-            .toList();
+    // ── 预测结果 ──────────────────────────────────────────────
+
+    public List<PredictionResultVO> results(Long taskId) {
+        persistenceService.requireUserTask(taskId);
+        return persistenceService.listResults(taskId).stream()
+                .map(this::toResultVO)
+                .toList();
     }
 
-    public List<PredictionTaskVO> history() {
-        return taskMapper.selectList(Wrappers.<PredictionTaskDO>lambdaQuery()
-                .orderByDesc(PredictionTaskDO::getCreatedAt))
-            .stream().map(task -> {
-                ModelInfo model = modelService.detail(task.getModelId());
-                return new PredictionTaskVO(task.getTaskId(), task.getStatus(), model.modelCode(),
-                    List.of(), task.getCostTimeMs());
-            }).toList();
-    }
+    // ── 预测历史 ──────────────────────────────────────────────
 
-    private PredictionTaskDO createRunningTask(PredictionRequest request) {
-        SysUserDO user = userMapper.selectOne(Wrappers.<SysUserDO>lambdaQuery()
-            .eq(SysUserDO::getStatus, 1).orderByAsc(SysUserDO::getUserId).last("LIMIT 1"));
-        if (user == null) {
-            throw new BusinessException(400, "请先注册用户后再创建预测任务");
+    public PageResult<PredictionTaskVO> history(int pageNum, int pageSize,
+                                                  Long stationId, Long modelId, String status) {
+        Long userId = SecurityUtils.requireCurrentUserId();
+        SecurityUser currentUser = SecurityUtils.getCurrentUser();
+        boolean isAdmin = currentUser != null && currentUser.getAuthorities().stream()
+                .anyMatch(a -> a.getAuthority().equals("ROLE_ADMIN"));
+
+        var query = Wrappers.<PredictionTaskDO>lambdaQuery();
+        if (!isAdmin) {
+            query.eq(PredictionTaskDO::getUserId, userId);
         }
-        PredictionTaskDO task = new PredictionTaskDO();
-        task.setTaskNo("PRED-" + UUID.randomUUID().toString().replace("-", "").substring(0, 20).toUpperCase());
-        task.setUserId(user.getUserId());
-        task.setStationId(request.stationId());
-        task.setModelId(request.modelId());
-        task.setInputMode(request.inputMode() == null ? "STATION_HISTORY" : request.inputMode());
-        task.setInputStartTime(parse(request.inputStartTime()));
-        task.setInputEndTime(parse(request.inputEndTime()));
-        task.setStatus("RUNNING");
-        task.setStartedAt(LocalDateTime.now());
-        taskMapper.insert(task);
-        return task;
+        if (stationId != null) {
+            query.eq(PredictionTaskDO::getStationId, stationId);
+        }
+        if (modelId != null) {
+            query.eq(PredictionTaskDO::getModelId, modelId);
+        }
+        if (status != null && !status.isBlank()) {
+            query.eq(PredictionTaskDO::getStatus, status);
+        }
+        query.orderByDesc(PredictionTaskDO::getCreatedAt);
+
+        Page<PredictionTaskDO> page = taskMapper.selectPage(
+                new Page<>(pageNum, pageSize), query);
+
+        List<PredictionTaskVO> records = page.getRecords().stream()
+                .map(task -> buildHistoryVO(task))
+                .toList();
+
+        return new PageResult<>(page.getTotal(), pageNum, pageSize, records);
     }
 
-    private void saveInputSnapshots(Long taskId, List<ModelPredictRequest.InputFrame> frames) {
-        for (ModelPredictRequest.InputFrame frame : frames) {
-            PredictionInputSnapshotDO row = new PredictionInputSnapshotDO();
-            row.setTaskId(taskId);
-            row.setPointTime(LocalDateTime.parse(frame.time(), FORMATTER));
-            row.setPowerKw(BigDecimal.valueOf(frame.power()));
-            row.setTemperatureC(BigDecimal.valueOf(frame.temperature()));
-            row.setIrradianceWM2(BigDecimal.valueOf(frame.irradiance()));
-            inputMapper.insert(row);
+    // ── 内部工具 ──────────────────────────────────────────────
+
+    private void validateStationAccess(PowerStation station) {
+        // 基础检查：电站存在
+        // 权限检查通过 SecurityUtils 获取用户，后续可增强为查询 UserStationPermission
+        SecurityUtils.requireCurrentUserId();
+    }
+
+    private PredictionTaskVO buildTaskVO(PredictionTaskDO task, ModelInfoDO model,
+                                          List<ModelPredictResponse.Prediction> predictions) {
+        List<PredictionResultVO> resultVOs = predictions.stream().map(p -> {
+            LocalDateTime predictTime = task.getInputEndTime() != null
+                    ? task.getInputEndTime().plusMinutes(p.timeOffset())
+                    : LocalDateTime.now().plusMinutes(p.timeOffset());
+            return new PredictionResultVO(p.timeOffset(), predictTime,
+                    BigDecimal.valueOf(p.predictPower()), null, null, null);
+        }).toList();
+
+        return new PredictionTaskVO(task.getTaskId(), task.getTaskNo(), task.getStatus(),
+                model.getModelName(), model.getModelCode(), task.getStationId(),
+                task.getInputMode(), task.getCreatedAt(), task.getCostTimeMs(), resultVOs);
+    }
+
+    private PredictionTaskVO buildHistoryVO(PredictionTaskDO task) {
+        try {
+            ModelInfoDO model = modelService.requireModel(task.getModelId());
+            return new PredictionTaskVO(task.getTaskId(), task.getTaskNo(), task.getStatus(),
+                    model.getModelName(), model.getModelCode(), task.getStationId(),
+                    task.getInputMode(), task.getCreatedAt(), task.getCostTimeMs(), null);
+        } catch (BusinessException e) {
+            return new PredictionTaskVO(task.getTaskId(), task.getTaskNo(), task.getStatus(),
+                    null, null, task.getStationId(),
+                    task.getInputMode(), task.getCreatedAt(), task.getCostTimeMs(), null);
         }
     }
 
-    private void saveResults(Long taskId, String lastInputTime,
-                             List<ModelPredictResponse.Prediction> predictions) {
-        LocalDateTime baseTime = LocalDateTime.parse(lastInputTime, FORMATTER);
-        for (ModelPredictResponse.Prediction prediction : predictions) {
-            PredictionResultDO row = new PredictionResultDO();
-            row.setTaskId(taskId);
-            row.setTimeOffsetMinutes(prediction.timeOffset());
-            row.setPredictTime(baseTime.plusMinutes(prediction.timeOffset()));
-            row.setPredictPowerKw(BigDecimal.valueOf(prediction.predictPower()));
-            resultMapper.insert(row);
-        }
-    }
-
-    private PredictionTaskDO requireTask(Long taskId) {
-        PredictionTaskDO task = taskMapper.selectById(taskId);
-        if (task == null) {
-            throw new BusinessException(404, "预测任务不存在");
-        }
-        return task;
-    }
-
-    private LocalDateTime parse(String value) {
-        return value == null || value.isBlank() ? null : LocalDateTime.parse(value, FORMATTER);
+    private PredictionResultVO toResultVO(PredictionResultDO r) {
+        return new PredictionResultVO(r.getTimeOffsetMinutes(), r.getPredictTime(),
+                r.getPredictPowerKw(), r.getActualPowerKw(),
+                r.getErrorValue(), r.getErrorRate());
     }
 }

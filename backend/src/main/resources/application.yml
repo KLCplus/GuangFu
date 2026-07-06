@@ -24,6 +24,21 @@ spring:
     multipart:
       max-file-size: 20MB
       max-request-size: 20MB
+  mail:
+    host: ${MAIL_HOST:smtp.qq.com}
+    port: ${MAIL_PORT:465}
+    username: ${MAIL_USERNAME:}
+    password: ${MAIL_PASSWORD:}
+    protocol: smtp
+    properties:
+      mail:
+        smtp:
+          auth: true
+          ssl:
+            enable: ${MAIL_SSL_ENABLED:true}
+          starttls:
+            enable: false
+          from: ${MAIL_FROM:}
 
 mybatis-plus:
   mapper-locations: classpath*:/mapper/**/*.xml
@@ -39,6 +54,73 @@ mybatis-plus:
 
 model-service:
   base-url: ${MODEL_SERVICE_BASE_URL:http://localhost:9000}
+
+pv-data:
+  import:
+    storage-dir: ${PV_IMPORT_STORAGE_DIR:./data/pv-imports}
+    max-file-size: ${PV_IMPORT_MAX_FILE_SIZE:10485760}
+    max-rows: ${PV_IMPORT_MAX_ROWS:100000}
+
+weather:
+  provider: ${WEATHER_PROVIDER:QWEATHER}
+  api-key: ${WEATHER_API_KEY:}
+  base-url: ${WEATHER_BASE_URL:https://devapi.qweather.com}
+  connect-timeout: ${WEATHER_CONNECT_TIMEOUT:3000}
+  response-timeout: ${WEATHER_RESPONSE_TIMEOUT:5000}
+  cache-minutes: ${WEATHER_CACHE_MINUTES:10}
+
+security:
+  jwt:
+    secret: ${JWT_SECRET:pv-platform-dev-jwt-secret-do-not-use-in-production!!}
+    access-token-expiration: ${JWT_ACCESS_TOKEN_EXPIRATION:7200}
+    refresh-token-expiration: ${JWT_REFRESH_TOKEN_EXPIRATION:604800}
+  login:
+    max-failures: ${LOGIN_MAX_FAILURES:5}
+    lock-minutes: ${LOGIN_LOCK_MINUTES:15}
+  verification:
+    code-expire-minutes: ${VERIFY_CODE_EXPIRE_MINUTES:5}
+    code-length: ${VERIFY_CODE_LENGTH:6}
+
+oauth:
+  callback-base-url: ${OAUTH_CALLBACK_BASE_URL:http://localhost:5173}
+  providers:
+    github:
+      enabled: ${OAUTH_GITHUB_ENABLED:false}
+      client-id: ${OAUTH_GITHUB_CLIENT_ID:}
+      client-secret: ${OAUTH_GITHUB_CLIENT_SECRET:}
+      authorize-url: https://github.com/login/oauth/authorize
+      token-url: https://github.com/login/oauth/access_token
+      user-info-url: https://api.github.com/user
+      scopes: read:user
+    # WeChat and QQ are reserved for future implementation
+
+face:
+  provider: ${FACE_PROVIDER:local}
+  match-threshold: ${FACE_MATCH_THRESHOLD:75}
+  temp-url-expire-seconds: ${FACE_TEMP_URL_EXPIRE_SECONDS:300}
+  storage-dir: ${FACE_STORAGE_DIR:./data/faces}
+  aliyun:
+    access-key-id: ${ALIYUN_ACCESS_KEY_ID:}
+    access-key-secret: ${ALIYUN_ACCESS_KEY_SECRET:}
+    face-region: ${ALIYUN_FACE_REGION:cn-shanghai}
+    face-endpoint: ${ALIYUN_FACE_ENDPOINT:facebody.cn-shanghai.aliyuncs.com}
+    face-db-name: ${ALIYUN_FACE_DB_NAME:pv_platform}
+    oss-region: ${ALIYUN_OSS_REGION:cn-shanghai}
+    oss-endpoint: ${ALIYUN_OSS_ENDPOINT:oss-cn-shanghai.aliyuncs.com}
+    oss-bucket: ${ALIYUN_OSS_BUCKET:}
+
+mail:
+  enabled: ${MAIL_ENABLED:false}
+  host: ${MAIL_HOST:smtp.qq.com}
+  port: ${MAIL_PORT:465}
+  username: ${MAIL_USERNAME:}
+  password: ${MAIL_PASSWORD:}
+  from: ${MAIL_FROM:}
+  ssl-enabled: ${MAIL_SSL_ENABLED:true}
+
+file-storage:
+  avatar-dir: ${AVATAR_STORAGE_DIR:./data/avatars}
+  avatar-max-size: ${AVATAR_MAX_SIZE:2097152}
 
 springdoc:
   swagger-ui:

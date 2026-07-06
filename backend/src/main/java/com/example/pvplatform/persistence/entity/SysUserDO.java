@@ -23,6 +23,7 @@ public class SysUserDO {
     private Integer status;
     private LocalDateTime lastLoginTime;
     private String lastLoginIp;
+    private Integer tokenVersion;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
     @TableLogic

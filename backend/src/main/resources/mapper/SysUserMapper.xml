@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+    "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.pvplatform.persistence.mapper.SysUserMapper">
+    <select id="selectUserPage" resultType="com.example.pvplatform.persistence.entity.SysUserDO">
+        SELECT DISTINCT u.user_id, u.username, u.nickname, u.email, u.phone,
+               u.avatar_url, u.gender, u.status, u.last_login_time, u.last_login_ip,
+               u.token_version, u.created_at, u.updated_at, u.deleted
+        FROM sys_user u
+        <if test="role != null and role != ''">
+            INNER JOIN sys_user_role ur ON u.user_id = ur.user_id
+            INNER JOIN sys_role r ON ur.role_id = r.role_id AND r.role_code = #{role} AND r.status = 1
+        </if>
+        WHERE u.deleted = 0
+        <if test="keyword != null and keyword != ''">
+            AND (u.username LIKE CONCAT('%', #{keyword}, '%')
+                 OR u.nickname LIKE CONCAT('%', #{keyword}, '%')
+                 OR u.email LIKE CONCAT('%', #{keyword}, '%')
+                 OR u.phone LIKE CONCAT('%', #{keyword}, '%'))
+        </if>
+        <if test="status != null">
+            AND u.status = #{status}
+        </if>
+        ORDER BY u.user_id ASC
+    </select>
+</mapper>

@@ -1,3 +1,13 @@
 package com.example.pvplatform.module.news.dto;
 
-public record NewsRequest(String title, String content, String type) {}
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
+
+public record NewsRequest(
+    @NotBlank @Size(max = 255) String title,
+    @Size(max = 500) String summary,
+    @NotBlank String content,
+    @Size(max = 512) String coverUrl,
+    @NotBlank String newsType,
+    @NotBlank String targetRole
+) {}

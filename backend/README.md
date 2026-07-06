@@ -119,6 +119,14 @@ module/station/
 
 未实现且不在计划内：服务器 CPU、GPU、内存监控。
 
+### 模块开发指导
+
+- [后端功能完成度与剩余工作审计](../docs/backend_completion_status.md)
+- [用户、认证与权限模块开发指导](src/main/java/com/example/pvplatform/module/user/README.md)
+- [第二阶段：光伏数据与天气开发指导](src/main/java/com/example/pvplatform/module/pvdata/README.md)
+- [第三阶段：模型与预测开发指导](src/main/java/com/example/pvplatform/module/prediction/README.md)
+- [第四阶段：分析报告、开放平台与新闻通知开发指导](src/main/java/com/example/pvplatform/module/analysis/README.md)
+
 ## 5. 推荐开发顺序
 
 ### 第一阶段：身份和基础数据
