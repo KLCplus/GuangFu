@@ -1,0 +1,13 @@
+:root { font-family: Inter, "Microsoft YaHei", sans-serif; color: #1f2937; background: #f4f7f9; }
+* { box-sizing: border-box; }
+body { margin: 0; }
+.layout { min-height: 100vh; }
+.el-aside { background: #fff; border-right: 1px solid #e5e7eb; }
+.brand { padding: 22px; color: #15803d; font-size: 20px; font-weight: 700; }
+.el-header { display: flex; align-items: center; justify-content: space-between; background: #fff; border-bottom: 1px solid #e5e7eb; }
+.page-title { margin-top: 0; }
+.card-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; }
+.metric { font-size: 28px; color: #15803d; margin: 10px 0 0; }
+.login-page { min-height: 100vh; display: grid; place-items: center; background: linear-gradient(135deg, #ecfdf5, #eff6ff); }
+.login-card { width: 380px; }
+.toolbar { display: flex; gap: 12px; margin-bottom: 16px; }

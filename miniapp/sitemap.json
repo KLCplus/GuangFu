@@ -1,0 +1,4 @@
+{
+  "desc": "光伏发电平台小程序页面",
+  "rules": [{ "action": "allow", "page": "*" }]
+}

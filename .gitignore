@@ -1,0 +1,33 @@
+# IDE / OS
+.idea/
+.vscode/
+*.iml
+.DS_Store
+Thumbs.db
+
+# Java
+backend/target/
+backend/.m2-repository/
+.m2-repository/
+*.class
+
+# Node
+web-frontend/node_modules/
+web-frontend/dist/
+npm-debug.log*
+
+# Python
+model-service/.venv/
+model-service/venv/
+**/__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log
+logs/
