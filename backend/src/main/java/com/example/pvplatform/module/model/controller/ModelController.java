@@ -27,11 +27,13 @@ public class ModelController {
 
     @PostMapping("/api/admin/models")
     public Result<?> create(@RequestBody ModelRequest request) {
-        return Result.success(Map.of("modelId", 4L, "modelCode", request.modelCode()));
+        return Result.success(Map.of("modelId", modelService.create(request), "modelCode", request.modelCode()));
     }
 
     @PutMapping("/api/admin/models/{modelId}/status")
     public Result<?> updateStatus(@PathVariable Long modelId, @RequestBody Map<String, String> request) {
-        return Result.success(Map.of("modelId", modelId, "modelStatus", request.getOrDefault("modelStatus", "OFFLINE")));
+        String status = request.getOrDefault("modelStatus", "OFFLINE");
+        modelService.updateStatus(modelId, status);
+        return Result.success(Map.of("modelId", modelId, "modelStatus", status));
     }
 }

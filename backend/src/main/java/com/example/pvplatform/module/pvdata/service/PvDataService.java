@@ -1,28 +1,73 @@
 package com.example.pvplatform.module.pvdata.service;
 
+import com.baomidou.mybatisplus.core.toolkit.Wrappers;
+import com.example.pvplatform.common.exception.BusinessException;
 import com.example.pvplatform.module.pvdata.entity.PvData;
 import com.example.pvplatform.module.pvdata.vo.PvDataVO;
+import com.example.pvplatform.persistence.entity.PvDataDO;
+import com.example.pvplatform.persistence.mapper.PvDataMapper;
 import org.springframework.stereotype.Service;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
-import java.util.stream.IntStream;
 
 @Service
 public class PvDataService {
     private static final DateTimeFormatter FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+    private final PvDataMapper pvDataMapper;
 
-    public PvData realtime(Long stationId) {
-        return new PvData(stationId, LocalDateTime.now().format(FORMATTER), 523.5, 380.2,
-            120.6, 850.0, 31.5, 62.0, 2.5);
+    public PvDataService(PvDataMapper pvDataMapper) {
+        this.pvDataMapper = pvDataMapper;
     }
 
-    public List<PvDataVO> history() {
-        LocalDateTime start = LocalDateTime.now().minusMinutes(29);
-        return IntStream.range(0, 30)
-            .mapToObj(i -> new PvDataVO(start.plusMinutes(i).format(FORMATTER),
-                500.0 + i * 0.8, 810.0 + i, 30.5 + i * 0.02))
-            .toList();
+    public PvData realtime(Long stationId) {
+        PvDataDO data = pvDataMapper.selectOne(Wrappers.<PvDataDO>lambdaQuery()
+            .eq(PvDataDO::getStationId, stationId)
+            .orderByDesc(PvDataDO::getCollectTime)
+            .last("LIMIT 1"));
+        if (data == null) {
+            throw new BusinessException(404, "该电站暂无光伏数据");
+        }
+        return new PvData(data.getStationId(), format(data.getCollectTime()), number(data.getPowerKw()),
+            number(data.getVoltageV()), number(data.getCurrentA()), number(data.getIrradianceWM2()),
+            number(data.getAmbientTemperatureC()), number(data.getHumidityPercent()), number(data.getWindSpeedMS()));
+    }
+
+    public List<PvDataVO> history(Long stationId, LocalDateTime startTime, LocalDateTime endTime) {
+        var query = Wrappers.<PvDataDO>lambdaQuery()
+            .eq(PvDataDO::getStationId, stationId)
+            .ge(startTime != null, PvDataDO::getCollectTime, startTime)
+            .le(endTime != null, PvDataDO::getCollectTime, endTime)
+            .orderByAsc(PvDataDO::getCollectTime);
+        return pvDataMapper.selectList(query).stream().map(this::toVO).toList();
+    }
+
+    public List<PvDataVO> latestThirty(Long stationId) {
+        List<PvDataDO> rows = new ArrayList<>(pvDataMapper.selectList(Wrappers.<PvDataDO>lambdaQuery()
+            .eq(PvDataDO::getStationId, stationId)
+            .orderByDesc(PvDataDO::getCollectTime)
+            .last("LIMIT 30")));
+        Collections.reverse(rows);
+        if (rows.size() < 30) {
+            throw new BusinessException(400, "预测需要该电站连续 30 分钟的数据，当前仅有 " + rows.size() + " 条");
+        }
+        return rows.stream().map(this::toVO).toList();
+    }
+
+    private PvDataVO toVO(PvDataDO data) {
+        return new PvDataVO(format(data.getCollectTime()), number(data.getPowerKw()),
+            number(data.getIrradianceWM2()), number(data.getAmbientTemperatureC()));
+    }
+
+    private String format(LocalDateTime value) {
+        return value == null ? null : value.format(FORMATTER);
+    }
+
+    private double number(BigDecimal value) {
+        return value == null ? 0D : value.doubleValue();
     }
 }

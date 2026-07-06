@@ -4,7 +4,7 @@ services:
     container_name: pv-platform-mysql
     restart: unless-stopped
     environment:
-      MYSQL_ROOT_PASSWORD: "123456"
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?Set MYSQL_ROOT_PASSWORD in .env}
       MYSQL_DATABASE: pv_platform
       TZ: Asia/Shanghai
     ports:
@@ -12,7 +12,7 @@ services:
     volumes:
       - mysql-data:/var/lib/mysql
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-p123456"]
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -p$${MYSQL_ROOT_PASSWORD}"]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -25,7 +25,7 @@ services:
     environment:
       MYSQL_URL: jdbc:mysql://mysql:3306/pv_platform?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
       MYSQL_USERNAME: root
-      MYSQL_PASSWORD: "123456"
+      MYSQL_PASSWORD: ${MYSQL_ROOT_PASSWORD:?Set MYSQL_ROOT_PASSWORD in .env}
       MODEL_SERVICE_BASE_URL: http://model-service:9000
     ports:
       - "8080:8080"

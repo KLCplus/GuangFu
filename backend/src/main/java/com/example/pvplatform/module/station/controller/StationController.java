@@ -33,11 +33,13 @@ public class StationController {
 
     @PutMapping("/api/admin/stations/{stationId}")
     public Result<?> update(@PathVariable Long stationId, @RequestBody StationRequest request) {
+        stationService.update(stationId, request);
         return Result.success(Map.of("stationId", stationId, "updated", true));
     }
 
     @DeleteMapping("/api/admin/stations/{stationId}")
     public Result<?> delete(@PathVariable Long stationId) {
+        stationService.delete(stationId);
         return Result.success(Map.of("stationId", stationId, "deleted", true));
     }
 }

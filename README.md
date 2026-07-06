@@ -94,7 +94,7 @@ mvn spring-boot:run
 docker compose up -d mysql
 ```
 
-默认数据库为 `pv_platform`，本地开发密码按题设使用 `123456`。部署环境必须用环境变量覆盖，不能沿用示例密码。
+默认数据库为 `pv_platform`。启动前必须通过 `MYSQL_PASSWORD` 环境变量提供本机密码；Docker Compose 使用 `.env` 中的 `MYSQL_ROOT_PASSWORD`。初始化脚本位于 `backend/src/main/resources/sql/init.sql`，该脚本含 `DROP TABLE`，只应人工执行。
 
 ### 3. Vue Web
 
@@ -130,6 +130,8 @@ docker compose --profile full up --build
 
 - [需求分析](docs/requirements.md)
 - [API 定义与示例](docs/api.md)
+- [前端—Spring Boot 接口](docs/back_front_api.md)
+- [Spring Boot—模型服务接口](docs/module_back_api.md)
 - [数据库草案](docs/database.md)
 - [系统架构](docs/architecture.md)
 - 子项目说明：[backend](backend/README.md)、[web-frontend](web-frontend/README.md)、[model-service](model-service/README.md)、[miniapp](miniapp/README.md)

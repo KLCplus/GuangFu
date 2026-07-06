@@ -28,16 +28,18 @@ public class NewsController {
 
     @PostMapping("/api/admin/news")
     public Result<?> create(@RequestBody NewsRequest request) {
-        return Result.success(Map.of("newsId", 3L, "title", request.title()));
+        return Result.success(Map.of("newsId", newsService.create(request), "title", request.title()));
     }
 
     @PutMapping("/api/admin/news/{newsId}")
     public Result<?> update(@PathVariable Long newsId, @RequestBody NewsRequest request) {
+        newsService.update(newsId, request);
         return Result.success(Map.of("newsId", newsId, "updated", true));
     }
 
     @DeleteMapping("/api/admin/news/{newsId}")
     public Result<?> delete(@PathVariable Long newsId) {
+        newsService.delete(newsId);
         return Result.success(Map.of("newsId", newsId, "deleted", true));
     }
 }

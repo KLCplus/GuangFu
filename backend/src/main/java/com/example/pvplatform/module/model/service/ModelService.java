@@ -1,24 +1,61 @@
 package com.example.pvplatform.module.model.service;
 
+import com.baomidou.mybatisplus.core.toolkit.Wrappers;
+import com.example.pvplatform.common.exception.BusinessException;
+import com.example.pvplatform.module.model.dto.ModelRequest;
 import com.example.pvplatform.module.model.entity.ModelInfo;
+import com.example.pvplatform.persistence.entity.ModelInfoDO;
+import com.example.pvplatform.persistence.mapper.ModelInfoMapper;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
 
 @Service
 public class ModelService {
+    private final ModelInfoMapper modelInfoMapper;
+
+    public ModelService(ModelInfoMapper modelInfoMapper) {
+        this.modelInfoMapper = modelInfoMapper;
+    }
+
     public List<ModelInfo> list() {
-        return List.of(
-            new ModelInfo(1L, "LSTM 光伏预测模型", "lstm_v1", "NUMERIC", "v1.0", "ONLINE",
-                "基于历史功率数据的短期预测模型"),
-            new ModelInfo(2L, "Transformer 光伏预测模型", "transformer_v1", "NUMERIC", "v1.0", "ONLINE",
-                "基于 Transformer 的光伏功率预测模型"),
-            new ModelInfo(3L, "多模态光伏预测模型", "multimodal_v1", "MULTIMODAL", "v1.0", "OFFLINE",
-                "多模态光伏预测模型")
-        );
+        return modelInfoMapper.selectList(Wrappers.<ModelInfoDO>lambdaQuery()
+                .orderByAsc(ModelInfoDO::getModelId))
+            .stream().map(this::toEntity).toList();
     }
 
     public ModelInfo detail(Long modelId) {
-        return list().stream().filter(item -> item.modelId().equals(modelId)).findFirst().orElse(list().get(0));
+        ModelInfoDO model = modelInfoMapper.selectById(modelId);
+        if (model == null) {
+            throw new BusinessException(404, "模型不存在");
+        }
+        return toEntity(model);
+    }
+
+    public Long create(ModelRequest request) {
+        ModelInfoDO model = new ModelInfoDO();
+        model.setModelName(request.modelName());
+        model.setModelCode(request.modelCode());
+        model.setModelType(request.modelType());
+        model.setModelVersion(request.modelVersion());
+        model.setServiceModelName(request.modelCode());
+        model.setStatus(request.modelStatus() == null ? "OFFLINE" : request.modelStatus());
+        model.setDescription(request.description());
+        modelInfoMapper.insert(model);
+        return model.getModelId();
+    }
+
+    public void updateStatus(Long modelId, String status) {
+        ModelInfoDO model = new ModelInfoDO();
+        model.setModelId(modelId);
+        model.setStatus(status);
+        if (modelInfoMapper.updateById(model) == 0) {
+            throw new BusinessException(404, "模型不存在");
+        }
+    }
+
+    private ModelInfo toEntity(ModelInfoDO model) {
+        return new ModelInfo(model.getModelId(), model.getModelName(), model.getModelCode(),
+            model.getModelType(), model.getModelVersion(), model.getStatus(), model.getDescription());
     }
 }
