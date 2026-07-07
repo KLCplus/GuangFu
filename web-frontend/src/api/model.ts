@@ -1,4 +1,42 @@
 import request from './request'
 
-export const getModels = () => request.get('/models')
-export const getModel = (modelId: number) => request.get(`/models/${modelId}`)
+export type ModelType = 'NUMERIC' | 'IMAGE' | string
+export type ModelStatus = 'ONLINE' | 'OFFLINE' | 'TESTING' | string
+
+export interface ModelQuery {
+  type?: ModelType
+}
+
+export interface Model {
+  modelId: number
+  modelCode: string
+  modelName: string
+  modelType: ModelType
+  modelVersion: string
+  inputWindowMinutes: number
+  inputFrameIntervalSeconds: number
+  outputSteps: number
+  outputStepMinutes: number
+  serviceModelName: string
+  apiPath: string
+  inputSchema: string
+  outputSchema: string
+  modelStatus: ModelStatus
+  description?: string
+}
+
+export type ModelPayload = Omit<Model, 'modelId' | 'modelStatus'> & {
+  modelStatus?: ModelStatus
+}
+
+export interface UpdateModelStatusPayload {
+  modelStatus: ModelStatus
+}
+
+export const getModels = (params?: ModelQuery) => request.get<Model[]>('/models', { params })
+export const getModel = (modelId: number) => request.get<Model>(`/models/${modelId}`)
+export const getAdminModels = () => request.get<Model[]>('/admin/models')
+export const createModel = (data: ModelPayload) => request.post<Model>('/admin/models', data)
+export const updateModel = (modelId: number, data: ModelPayload) => request.put<Model>(`/admin/models/${modelId}`, data)
+export const updateModelStatus = (modelId: number, data: UpdateModelStatusPayload) =>
+  request.put<void>(`/admin/models/${modelId}/status`, data)

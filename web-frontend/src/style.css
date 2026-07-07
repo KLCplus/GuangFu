@@ -1,13 +1,313 @@
-:root { font-family: Inter, "Microsoft YaHei", sans-serif; color: #1f2937; background: #f4f7f9; }
-* { box-sizing: border-box; }
-body { margin: 0; }
-.layout { min-height: 100vh; }
-.el-aside { background: #fff; border-right: 1px solid #e5e7eb; }
-.brand { padding: 22px; color: #15803d; font-size: 20px; font-weight: 700; }
-.el-header { display: flex; align-items: center; justify-content: space-between; background: #fff; border-bottom: 1px solid #e5e7eb; }
-.page-title { margin-top: 0; }
-.card-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; }
-.metric { font-size: 28px; color: #15803d; margin: 10px 0 0; }
-.login-page { min-height: 100vh; display: grid; place-items: center; background: linear-gradient(135deg, #ecfdf5, #eff6ff); }
-.login-card { width: 380px; }
-.toolbar { display: flex; gap: 12px; margin-bottom: 16px; }
+:root {
+  font-family: Inter, "Microsoft YaHei", "PingFang SC", sans-serif;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  color: #172033;
+  background: #f4f8fc;
+  --color-primary: #1d6fdc;
+  --color-primary-dark: #1558b0;
+  --color-primary-soft: #e8f2ff;
+  --color-border: #d8e3f0;
+  --color-muted: #66758c;
+  --color-surface: #ffffff;
+  --shadow-panel: 0 10px 28px rgba(20, 65, 120, 0.08);
+}
+
+/* 协作提示：两人分别开发页面时，请复用 .page-shell、.page-section、.toolbar、.page-title 等公共类和上方主题变量。 */
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.brand-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  flex: 0 0 36px;
+  border-radius: 8px;
+  background: var(--color-primary);
+  color: #ffffff;
+  font-weight: 800;
+}
+
+.app-layout {
+  display: grid;
+  grid-template-columns: 216px minmax(0, 1fr);
+  min-height: 100vh;
+  background: #f4f8fc;
+}
+
+.app-sidebar {
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  padding: 18px 12px;
+  border-right: 1px solid var(--color-border);
+  background: #ffffff;
+}
+
+.app-logo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 48px;
+  padding: 0 10px;
+  color: #10274c;
+  font-weight: 700;
+}
+
+.app-menu {
+  margin-top: 18px;
+  border-right: 0;
+}
+
+.app-menu .el-menu-item {
+  height: 42px;
+  margin: 4px 0;
+  border-radius: 8px;
+  color: #40516b;
+}
+
+.app-menu .el-menu-item.is-active {
+  background: var(--color-primary-soft);
+  color: var(--color-primary);
+  font-weight: 700;
+}
+
+.app-main {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.app-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  min-height: 76px;
+  padding: 14px 28px;
+  border-bottom: 1px solid var(--color-border);
+  background: rgba(255, 255, 255, 0.92);
+}
+
+.app-header h1 {
+  margin: 2px 0 0;
+  font-size: 22px;
+  line-height: 1.25;
+}
+
+.page-kicker {
+  margin: 0;
+  color: var(--color-primary);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.app-content {
+  flex: 1;
+  min-width: 0;
+  padding: 24px 28px 36px;
+}
+
+.page-shell {
+  display: grid;
+  gap: 16px;
+}
+
+.page-title {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.page-title h2 {
+  margin: 0;
+  font-size: 20px;
+}
+
+.page-title p {
+  margin: 6px 0 0;
+  color: var(--color-muted);
+}
+
+.page-section {
+  min-height: 120px;
+  padding: 18px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-surface);
+  box-shadow: var(--shadow-panel);
+}
+
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.auth-layout {
+  min-height: 100vh;
+  display: grid;
+  grid-template-columns: minmax(280px, 1fr) minmax(320px, 420px);
+  align-items: center;
+  gap: 48px;
+  padding: 48px min(8vw, 96px);
+  background: #eef6ff;
+}
+
+.auth-brand {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  max-width: 560px;
+}
+
+.auth-brand h1 {
+  margin: 0 0 12px;
+  font-size: 34px;
+  line-height: 1.2;
+}
+
+.auth-brand p {
+  margin: 0;
+  color: var(--color-muted);
+  font-size: 16px;
+  line-height: 1.8;
+}
+
+.auth-panel,
+.result-panel {
+  width: 100%;
+  padding: 28px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: var(--shadow-panel);
+}
+
+.auth-title {
+  margin-bottom: 22px;
+}
+
+.auth-title h2 {
+  margin: 4px 0 0;
+  font-size: 26px;
+}
+
+.full-button {
+  width: 100%;
+}
+
+.auth-switch {
+  margin: 18px 0 0;
+  color: var(--color-muted);
+  text-align: center;
+}
+
+.auth-switch a {
+  color: var(--color-primary);
+  font-weight: 700;
+}
+
+.result-page {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: #eef6ff;
+}
+
+.result-panel {
+  max-width: 420px;
+  text-align: center;
+}
+
+.result-code {
+  margin: 0;
+  color: var(--color-primary);
+  font-size: 56px;
+  font-weight: 800;
+}
+
+.result-panel h1 {
+  margin: 6px 0;
+}
+
+.result-panel p:not(.result-code) {
+  margin: 0 0 20px;
+  color: var(--color-muted);
+}
+
+.el-button--primary {
+  --el-button-bg-color: var(--color-primary);
+  --el-button-border-color: var(--color-primary);
+  --el-button-hover-bg-color: var(--color-primary-dark);
+  --el-button-hover-border-color: var(--color-primary-dark);
+}
+
+.el-input__wrapper,
+.el-select__wrapper,
+.el-button {
+  border-radius: 8px;
+}
+
+@media (max-width: 900px) {
+  .app-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .app-sidebar {
+    position: static;
+    height: auto;
+    border-right: 0;
+    border-bottom: 1px solid var(--color-border);
+  }
+
+  .app-menu {
+    display: flex;
+    gap: 6px;
+    overflow-x: auto;
+  }
+
+  .app-menu .el-menu-item {
+    flex: 0 0 auto;
+  }
+
+  .app-header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .auth-layout {
+    grid-template-columns: 1fr;
+    gap: 24px;
+    padding: 28px 18px;
+  }
+}

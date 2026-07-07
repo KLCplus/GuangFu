@@ -1,1 +1,3 @@
-<template><h2 class="page-title">模型 API 开放平台</h2><el-card><el-alert title="当前 API Key 与鉴权均为 mock，禁止用于生产环境" type="warning" :closable="false" /><h3>开放预测接口</h3><el-tag>POST /openapi/v1/predict</el-tag><p>请求头预留：X-API-KEY。外部请求仍由 Spring Boot 校验并转发至模型服务。</p></el-card></template>
+<template>
+  <div></div>
+</template>

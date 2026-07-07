@@ -10,7 +10,12 @@ Set-Location $projectRoot
 
 function New-RandomSecret {
     $bytes = New-Object byte[] 32
-    [System.Security.Cryptography.RandomNumberGenerator]::Fill($bytes)
+    $rng = [System.Security.Cryptography.RandomNumberGenerator]::Create()
+    try {
+        $rng.GetBytes($bytes)
+    } finally {
+        $rng.Dispose()
+    }
     return [Convert]::ToBase64String($bytes).TrimEnd("=")
 }
 
@@ -124,7 +129,7 @@ if (-not (Test-Path -LiteralPath $rootEnv)) {
         Set-EnvValue $rootEnv "MYSQL_PASSWORD" $mysqlPassword
     }
     $jwtSecret = Read-EnvValue $rootEnv "JWT_SECRET"
-    if (-not $jwtSecret -or $jwtSecret -eq "change-me-at-least-32-random-characters") {
+    if (-not $jwtSecret -or $jwtSecret -eq "change-me-at-least-32-random-characters" -or [Text.Encoding]::UTF8.GetByteCount($jwtSecret) -lt 32) {
         Set-EnvValue $rootEnv "JWT_SECRET" (New-RandomSecret)
     }
 }

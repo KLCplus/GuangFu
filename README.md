@@ -14,7 +14,7 @@
 
 | 层 | 技术 |
 |---|---|
-| 后端 | Java 17+、Spring Boot 3、Spring Security、JWT、MyBatis Plus、MySQL、Redis、WebClient、Spring Cache |
+| 后端 | Java 21+、Spring Boot 3、Spring Security、JWT、MyBatis Plus、MySQL、Redis、WebClient、Spring Cache |
 | 模型服务 | Python、FastAPI、Pydantic、Uvicorn |
 | Web | Vue 3、Vite、TypeScript、Vue Router、Pinia、Axios、Element Plus、ECharts |
 | 小程序 | 微信小程序原生结构 |

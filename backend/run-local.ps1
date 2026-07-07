@@ -52,7 +52,19 @@ function Import-EnvFile {
 }
 
 # Java / Maven
-Set-AppEnv "JAVA_HOME" "C:\Program Files\Java\jdk-23"
+$javaHomeCandidates = @(
+    $env:JAVA_HOME,
+    "D:\Java\JDK",
+    "C:\Program Files\Java\jdk-23"
+) | Where-Object { $_ }
+
+$javaHome = $javaHomeCandidates | Where-Object {
+    Test-Path -LiteralPath (Join-Path -Path $_ -ChildPath "bin\java.exe")
+} | Select-Object -First 1
+
+if ($javaHome) {
+    Set-AppEnv "JAVA_HOME" $javaHome
+}
 $env:Path = "$env:JAVA_HOME\bin;$env:Path"
 
 # Server
@@ -169,7 +181,10 @@ Write-Host "Starting PV backend on http://localhost:$env:SERVER_PORT"
 Write-Host "Weather provider: $env:WEATHER_PROVIDER"
 Write-Host "Java: $env:JAVA_HOME"
 
-& mvn @MavenArgs
+$mavenRepo = Join-Path -Path $projectRoot -ChildPath ".m2\repository"
+New-Item -ItemType Directory -Force -Path $mavenRepo | Out-Null
+
+& mvn "-Dmaven.repo.local=$mavenRepo" @MavenArgs
 if ($LASTEXITCODE -ne 0) {
     exit $LASTEXITCODE
 }
