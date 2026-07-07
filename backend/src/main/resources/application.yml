@@ -1,9 +1,27 @@
 server:
   port: ${SERVER_PORT:8080}
+  tomcat:
+    threads:
+      max: ${TOMCAT_MAX_THREADS:200}
+      min-spare: ${TOMCAT_MIN_SPARE_THREADS:10}
+    max-connections: ${TOMCAT_MAX_CONNECTIONS:8192}
+    accept-count: ${TOMCAT_ACCEPT_COUNT:100}
 
 spring:
   application:
     name: pv-platform-backend
+  cache:
+    type: ${CACHE_TYPE:simple}
+    redis:
+      time-to-live: ${CACHE_REDIS_TTL:600000}
+      cache-null-values: false
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+      database: ${REDIS_DATABASE:0}
+      timeout: ${REDIS_TIMEOUT:3000}
   datasource:
     url: ${MYSQL_URL:jdbc:mysql://localhost:3306/pv_platform?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai}
     username: ${MYSQL_USERNAME:root}
@@ -12,14 +30,16 @@ spring:
     hikari:
       connection-timeout: 5000
       validation-timeout: 3000
-      maximum-pool-size: 10
-      minimum-idle: 2
+      maximum-pool-size: ${MYSQL_POOL_MAX_SIZE:10}
+      minimum-idle: ${MYSQL_POOL_MIN_IDLE:2}
   sql:
     init:
       # init.sql 包含 DROP TABLE，仅用于人工初始化，禁止应用启动时自动执行。
       mode: never
   jackson:
     default-property-inclusion: non_null
+    date-format: yyyy-MM-dd HH:mm:ss
+    time-zone: Asia/Shanghai
   servlet:
     multipart:
       max-file-size: 20MB
@@ -62,12 +82,20 @@ pv-data:
     max-rows: ${PV_IMPORT_MAX_ROWS:100000}
 
 weather:
-  provider: ${WEATHER_PROVIDER:QWEATHER}
+  # LOCAL is available for local development without a third-party key.
+  # Use QWEATHER with JWT credentials for real third-party weather calls.
+  provider: ${WEATHER_PROVIDER:LOCAL}
+  auth-type: ${WEATHER_AUTH_TYPE:JWT}
   api-key: ${WEATHER_API_KEY:}
   base-url: ${WEATHER_BASE_URL:https://devapi.qweather.com}
   connect-timeout: ${WEATHER_CONNECT_TIMEOUT:3000}
   response-timeout: ${WEATHER_RESPONSE_TIMEOUT:5000}
   cache-minutes: ${WEATHER_CACHE_MINUTES:10}
+  forecast-days: ${WEATHER_FORECAST_DAYS:3}
+  qweather-project-id: ${QWEATHER_PROJECT_ID:}
+  qweather-key-id: ${QWEATHER_KEY_ID:}
+  qweather-private-key-path: ${QWEATHER_PRIVATE_KEY_PATH:}
+  jwt-ttl-seconds: ${WEATHER_JWT_TTL_SECONDS:1800}
 
 security:
   jwt:
@@ -80,6 +108,12 @@ security:
   verification:
     code-expire-minutes: ${VERIFY_CODE_EXPIRE_MINUTES:5}
     code-length: ${VERIFY_CODE_LENGTH:6}
+    max-attempts: ${VERIFY_CODE_MAX_ATTEMPTS:5}
+    resend-cooldown-seconds: ${VERIFY_CODE_RESEND_COOLDOWN_SECONDS:60}
+    max-daily-sends: ${VERIFY_CODE_MAX_DAILY_SENDS:20}
+
+redis:
+  enabled: ${REDIS_ENABLED:false}
 
 oauth:
   callback-base-url: ${OAUTH_CALLBACK_BASE_URL:http://localhost:5173}

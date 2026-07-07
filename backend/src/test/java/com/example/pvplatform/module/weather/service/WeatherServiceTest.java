@@ -10,6 +10,7 @@ import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
@@ -21,6 +22,8 @@ class WeatherServiceTest {
         WeatherDataMapper mapper = mock(WeatherDataMapper.class);
         StationPermissionService permissions = mock(StationPermissionService.class);
         WeatherProvider provider = mock(WeatherProvider.class);
+        when(provider.supports("QWEATHER")).thenReturn(true);
+        when(provider.source()).thenReturn("QWEATHER");
         PowerStationDO station = new PowerStationDO();
         station.setLongitude(BigDecimal.valueOf(104));
         station.setLatitude(BigDecimal.valueOf(30));
@@ -33,10 +36,11 @@ class WeatherServiceTest {
         cached.setSource("QWEATHER");
         when(mapper.selectOne(any())).thenReturn(cached);
         WeatherProperties properties = new WeatherProperties();
-        WeatherService service = new WeatherService(mapper, permissions, provider,
+        WeatherService service = new WeatherService(mapper, permissions, List.of(provider),
             properties, new ObjectMapper().findAndRegisterModules());
 
         assertTrue(service.current(1L).cached());
-        verifyNoInteractions(provider);
+        verify(provider, never()).getCurrent(anyDouble(), anyDouble());
+        verify(provider, never()).getForecast(anyDouble(), anyDouble());
     }
 }

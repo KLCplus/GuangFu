@@ -10,6 +10,8 @@ import com.example.pvplatform.module.model.vo.ModelListItemVO;
 import com.example.pvplatform.persistence.entity.ModelInfoDO;
 import com.example.pvplatform.persistence.mapper.ModelInfoMapper;
 import com.example.pvplatform.security.SecurityUtils;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
@@ -32,6 +34,7 @@ public class ModelService {
 
     // ── 用户接口 ──────────────────────────────────────────────
 
+    @Cacheable(cacheNames = "model:list", key = "#type == null ? 'all' : #type")
     public List<ModelListItemVO> list(String type) {
         var query = Wrappers.<ModelInfoDO>lambdaQuery()
                 .eq(ModelInfoDO::getStatus, "ONLINE")
@@ -44,6 +47,7 @@ public class ModelService {
                 .toList();
     }
 
+    @Cacheable(cacheNames = "model:admin-list", key = "'all'")
     public List<ModelListItemVO> adminList() {
         return modelInfoMapper.selectList(Wrappers.<ModelInfoDO>lambdaQuery()
                         .orderByAsc(ModelInfoDO::getModelId))
@@ -52,6 +56,7 @@ public class ModelService {
                 .toList();
     }
 
+    @Cacheable(cacheNames = "model:detail", key = "#modelId")
     public ModelDetailVO detail(Long modelId) {
         ModelInfoDO model = requireModel(modelId);
         return toDetailVO(model);
@@ -59,6 +64,7 @@ public class ModelService {
 
     // ── 管理员接口 ──────────────────────────────────────────────
 
+    @CacheEvict(cacheNames = {"model:list", "model:admin-list", "model:detail"}, allEntries = true)
     public Long create(CreateModelRequest request) {
         validationService.validateCreate(
             request.modelCode(), request.modelType(), null,
@@ -88,6 +94,7 @@ public class ModelService {
         return model.getModelId();
     }
 
+    @CacheEvict(cacheNames = {"model:list", "model:admin-list", "model:detail"}, allEntries = true)
     public void update(Long modelId, UpdateModelRequest request) {
         ModelInfoDO existing = requireModel(modelId);
 
@@ -116,6 +123,7 @@ public class ModelService {
         modelInfoMapper.updateById(model);
     }
 
+    @CacheEvict(cacheNames = {"model:list", "model:admin-list", "model:detail"}, allEntries = true)
     public void updateStatus(Long modelId, String newStatus) {
         ModelInfoDO existing = requireModel(modelId);
         validationService.validateStatusTransition(existing.getStatus(), newStatus);

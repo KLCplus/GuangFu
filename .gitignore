@@ -27,6 +27,8 @@ model-service/venv/
 .env
 .env.*
 !.env.example
+backend/secrets/*
+!backend/secrets/README.md
 
 # Logs
 *.log

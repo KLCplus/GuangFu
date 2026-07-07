@@ -77,6 +77,7 @@ public class SecurityConfig {
                     "/api/auth/oauth/**",
                     "/api/avatars/**",
                     "/login.html",
+                    "/weather-debug.html",
                     "/swagger-ui/**",
                     "/v3/api-docs/**"
                 ).permitAll()

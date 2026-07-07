@@ -1,4 +1,6 @@
 spring:
+  cache:
+    type: simple
   datasource:
     url: jdbc:h2:mem:testdb;MODE=MySQL;DB_CLOSE_DELAY=-1;DATABASE_TO_LOWER=true
     username: sa
@@ -32,6 +34,12 @@ security:
   verification:
     code-expire-minutes: 5
     code-length: 6
+    max-attempts: 5
+    resend-cooldown-seconds: 60
+    max-daily-sends: 20
+
+redis:
+  enabled: false
 
 model-service:
   base-url: http://localhost:9000

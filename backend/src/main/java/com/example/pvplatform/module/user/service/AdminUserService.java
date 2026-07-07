@@ -185,8 +185,19 @@ public class AdminUserService {
         if (adminRole == null) {
             return 0;
         }
-        return userRoleMapper.selectCount(Wrappers.<SysUserRoleDO>lambdaQuery()
-            .eq(SysUserRoleDO::getRoleId, adminRole.getRoleId()));
+        List<SysUserRoleDO> adminRelations = userRoleMapper.selectList(
+            Wrappers.<SysUserRoleDO>lambdaQuery()
+                .eq(SysUserRoleDO::getRoleId, adminRole.getRoleId()));
+        if (adminRelations.isEmpty()) {
+            return 0;
+        }
+        List<Long> adminUserIds = adminRelations.stream()
+            .map(SysUserRoleDO::getUserId)
+            .distinct()
+            .toList();
+        return userMapper.selectCount(Wrappers.<SysUserDO>lambdaQuery()
+            .in(SysUserDO::getUserId, adminUserIds)
+            .eq(SysUserDO::getStatus, 1));
     }
 
     private UserListItemVO toListItemVO(SysUserDO user, List<String> roles) {

@@ -16,6 +16,8 @@ import com.example.pvplatform.persistence.mapper.SysUserMapper;
 import com.example.pvplatform.persistence.mapper.SysUserRoleMapper;
 import com.example.pvplatform.security.SecurityUser;
 import com.example.pvplatform.security.SecurityUtils;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -46,6 +48,8 @@ public class NewsService {
         this.userRoleMapper = userRoleMapper;
     }
 
+    @Cacheable(cacheNames = "news:public-list",
+        key = "#pageNum + ':' + #pageSize + ':' + (#type == null ? 'all' : #type) + ':' + T(java.lang.String).join(',', #root.target.currentRoles())")
     public PageResult<NewsVO> list(int pageNum, int pageSize, String type) {
         validatePage(pageNum, pageSize);
         validateOptional(type, TYPES, "新闻类型不合法");
@@ -74,6 +78,8 @@ public class NewsService {
         return pageResult(page, pageNum, pageSize);
     }
 
+    @Cacheable(cacheNames = "news:detail",
+        key = "#newsId + ':' + T(java.lang.String).join(',', #root.target.currentRoles())")
     public NewsVO detail(Long newsId) {
         NewsDO news = newsMapper.selectById(newsId);
         if (news == null || !"PUBLISHED".equals(news.getStatus()) || !canView(news.getTargetRole())) {
@@ -82,6 +88,7 @@ public class NewsService {
         return toVO(news);
     }
 
+    @CacheEvict(cacheNames = {"news:public-list", "news:detail"}, allEntries = true)
     public Long create(NewsRequest request) {
         validateRequest(request);
         NewsDO news = fromRequest(request);
@@ -94,6 +101,7 @@ public class NewsService {
         return news.getNewsId();
     }
 
+    @CacheEvict(cacheNames = {"news:public-list", "news:detail"}, allEntries = true)
     public void update(Long newsId, NewsRequest request) {
         validateRequest(request);
         requireNews(newsId);
@@ -104,6 +112,7 @@ public class NewsService {
     }
 
     @Transactional
+    @CacheEvict(cacheNames = {"news:public-list", "news:detail"}, allEntries = true)
     public void publish(Long newsId) {
         NewsDO news = requireNews(newsId);
         if (!"DRAFT".equals(news.getStatus()) && !"OFFLINE".equals(news.getStatus())) {
@@ -121,6 +130,7 @@ public class NewsService {
         }
     }
 
+    @CacheEvict(cacheNames = {"news:public-list", "news:detail"}, allEntries = true)
     public void offline(Long newsId) {
         NewsDO news = requireNews(newsId);
         if (!"PUBLISHED".equals(news.getStatus())) {
@@ -131,6 +141,7 @@ public class NewsService {
         newsMapper.updateById(news);
     }
 
+    @CacheEvict(cacheNames = {"news:public-list", "news:detail"}, allEntries = true)
     public void delete(Long newsId) {
         if (newsMapper.deleteById(newsId) == 0) {
             throw new BusinessException(404, "新闻不存在");
@@ -167,7 +178,7 @@ public class NewsService {
         return "ALL".equals(targetRole) || currentRoles().contains(targetRole);
     }
 
-    private List<String> currentRoles() {
+    public List<String> currentRoles() {
         SecurityUser user = SecurityUtils.getCurrentUser();
         if (user == null) {
             throw new BusinessException(401, "未登录");

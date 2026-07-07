@@ -9,6 +9,7 @@ import com.example.pvplatform.persistence.mapper.ApiCallLogMapper;
 import com.example.pvplatform.security.SecurityUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -24,6 +25,7 @@ public class ApiCallLogService {
         this.logMapper = logMapper;
     }
 
+    @Async("applicationTaskExecutor")
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void save(Long userId, Long apiKeyId, Long modelId, String path, String method,
                      String ip, LocalDateTime requestTime, int httpStatus, String error,

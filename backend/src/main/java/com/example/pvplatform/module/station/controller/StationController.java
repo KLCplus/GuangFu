@@ -1,6 +1,5 @@
 package com.example.pvplatform.module.station.controller;
 
-import com.example.pvplatform.common.PageResult;
 import com.example.pvplatform.common.Result;
 import com.example.pvplatform.module.station.dto.StationRequest;
 import com.example.pvplatform.module.station.service.StationService;
@@ -17,8 +16,11 @@ public class StationController {
     }
 
     @GetMapping("/api/stations")
-    public Result<?> list() {
-        return Result.success(PageResult.of(stationService.list()));
+    public Result<?> list(@RequestParam(defaultValue = "1") int pageNum,
+                          @RequestParam(defaultValue = "10") int pageSize,
+                          @RequestParam(required = false) String keyword,
+                          @RequestParam(required = false) String status) {
+        return Result.success(stationService.list(pageNum, pageSize, keyword, status));
     }
 
     @GetMapping("/api/stations/{stationId}")
