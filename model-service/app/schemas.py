@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta
+from typing import List, Optional
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -25,16 +26,16 @@ def _parse_time(value: str) -> datetime:
 class InputFrame(BaseModel):
     time: str
     power: float = Field(ge=0)
-    cloudImage: str | None = None
-    cloudImageBase64: str | None = None
+    cloudImage: Optional[str] = None
+    cloudImageBase64: Optional[str] = None
 
 
 class CloudImageFrame(BaseModel):
     time: str
-    cloudImage: str | None = None
-    cloudImageBase64: str | None = None
-    source: str | None = None
-    file: str | None = None
+    cloudImage: Optional[str] = None
+    cloudImageBase64: Optional[str] = None
+    source: Optional[str] = None
+    file: Optional[str] = None
 
     @model_validator(mode="after")
     def validate_cloud_image_payload(self):
@@ -45,8 +46,8 @@ class CloudImageFrame(BaseModel):
 
 class PredictRequest(BaseModel):
     modelName: str = Field(min_length=1)
-    input: list[InputFrame] = Field(min_length=30, max_length=30)
-    cloudImages: list[CloudImageFrame] | None = None
+    input: List[InputFrame] = Field(min_length=30, max_length=30)
+    cloudImages: Optional[List[CloudImageFrame]] = None
 
     @model_validator(mode="after")
     def validate_input_sequence(self):
@@ -73,7 +74,7 @@ class Prediction(BaseModel):
 
 class PredictData(BaseModel):
     modelName: str
-    predictions: list[Prediction]
+    predictions: List[Prediction]
     costTime: int
 
 
@@ -92,4 +93,4 @@ class ModelInfo(BaseModel):
 class ModelListResponse(BaseModel):
     code: int = 200
     message: str = "success"
-    data: list[ModelInfo]
+    data: List[ModelInfo]

@@ -536,25 +536,75 @@ PUT /api/admin/models/{modelId}
 PUT /api/admin/models/{modelId}/status
 ```
 
-普通用户只看到在线模型；管理员接口可管理全部模型。
+需携带 `Authorization: Bearer <jwt-token>`。
 
-新增模型：
+普通用户只看到在线模型；管理员接口可管理全部模型。当前已接入模型服务的数值预测模型包括：
+
+```text
+DLinear
+PatchTST
+iTransformer
+TimeXer
+TimeMixer
+TSMixer
+Transformer
+```
+
+模型列表响应字段：
 
 ```json
 {
-  "modelCode": "lstm_v1",
-  "modelName": "LSTM 光伏功率预测",
+  "modelId": 3,
+  "modelName": "iTransformer光伏功率预测模型",
+  "modelCode": "iTransformer",
+  "modelType": "NUMERIC",
+  "modelVersion": "v1.0",
+  "status": "ONLINE",
+  "description": "iTransformer 通道独立 Transformer 时序预测模型"
+}
+```
+
+模型详情会额外返回输入输出配置：
+
+```json
+{
+  "modelId": 3,
+  "modelCode": "iTransformer",
+  "modelName": "iTransformer光伏功率预测模型",
   "modelType": "NUMERIC",
   "modelVersion": "v1.0",
   "inputWindowMinutes": 30,
   "inputFrameIntervalSeconds": 60,
   "outputSteps": 6,
   "outputStepMinutes": 5,
-  "serviceModelName": "lstm_v1",
-  "apiPath": "/predict",
+  "serviceModelName": "iTransformer",
+  "apiPath": "/model-api/predict",
   "inputSchema": "{}",
   "outputSchema": "{}",
-  "description": "短期功率预测"
+  "status": "ONLINE",
+  "description": "iTransformer 通道独立 Transformer 时序预测模型",
+  "createdAt": "2026-07-08 10:00:00",
+  "updatedAt": "2026-07-08 10:00:00"
+}
+```
+
+新增模型：
+
+```json
+{
+  "modelCode": "iTransformer",
+  "modelName": "iTransformer光伏功率预测模型",
+  "modelType": "NUMERIC",
+  "modelVersion": "v1.0",
+  "inputWindowMinutes": 30,
+  "inputFrameIntervalSeconds": 60,
+  "outputSteps": 6,
+  "outputStepMinutes": 5,
+  "serviceModelName": "iTransformer",
+  "apiPath": "/model-api/predict",
+  "inputSchema": "{}",
+  "outputSchema": "{}",
+  "description": "iTransformer 通道独立 Transformer 时序预测模型"
 }
 ```
 
@@ -575,17 +625,29 @@ GET  /api/predictions/{taskId}/results
 GET  /api/predictions/history?pageNum=1&pageSize=10&stationId=&modelId=&status=
 ```
 
+需携带 `Authorization: Bearer <jwt-token>`。
+
 创建预测：
 
 ```json
 {
   "stationId": 1,
-  "modelId": 1,
+  "modelId": 3,
   "inputMode": "STATION_HISTORY",
-  "inputStartTime": "2026-07-06 10:00:00",
-  "inputEndTime": "2026-07-06 10:30:00"
+  "inputStartTime": null,
+  "inputEndTime": null
 }
 ```
+
+当前前端预测只支持 `STATION_HISTORY`。前端不向 `/api/predictions` 传 30 帧原始数据；后端会读取该电站 `pv_data` 最新 30 条采集数据作为模型输入。数据要求：
+
+- 恰好 30 条；
+- 时间升序后相邻间隔为 1 分钟；
+- 最新一条不能超过 5 分钟；
+- `power_kw`、`ambient_temperature_c`、`irradiance_w_m2` 非空；
+- `power_kw` 和 `irradiance_w_m2` 不能为负。
+
+`inputStartTime`、`inputEndTime` 当前可传 `null`，不用于选择历史窗口。
 
 预测任务响应关键字段：
 
@@ -594,23 +656,59 @@ GET  /api/predictions/history?pageNum=1&pageSize=10&stationId=&modelId=&status=
   "taskId": 1001,
   "taskNo": "PRED-xxx",
   "taskStatus": "SUCCESS",
-  "modelName": "LSTM 光伏功率预测",
-  "modelCode": "lstm_v1",
+  "modelName": "iTransformer光伏功率预测模型",
+  "modelCode": "iTransformer",
   "stationId": 1,
   "inputMode": "STATION_HISTORY",
-  "createdAt": "2026-07-06 10:30:00",
-  "costTime": 120,
+  "createdAt": "2026-07-08 11:09:55",
+  "costTime": 20,
   "predictions": [
     {
       "timeOffset": 5,
-      "predictTime": "2026-07-06 10:35:00",
-      "predictPower": 530.2,
+      "predictTime": "2026-07-08 11:14:00",
+      "predictPower": 75.85,
       "actualPowerKw": null,
       "errorValue": null,
       "errorRate": null
     }
   ]
 }
+```
+
+`GET /api/predictions/{taskId}` 返回任务详情，不包含 `predictions`：
+
+```json
+{
+  "taskId": 1001,
+  "taskNo": "PRED-xxx",
+  "stationId": 1,
+  "stationName": "成都站",
+  "modelId": 3,
+  "modelName": "iTransformer光伏功率预测模型",
+  "modelCode": "iTransformer",
+  "inputMode": "STATION_HISTORY",
+  "status": "SUCCESS",
+  "createdAt": "2026-07-08 11:09:55",
+  "startedAt": "2026-07-08 11:09:55",
+  "finishedAt": "2026-07-08 11:09:55",
+  "costTimeMs": 20,
+  "errorMessage": null
+}
+```
+
+`GET /api/predictions/{taskId}/results` 返回预测结果数组：
+
+```json
+[
+  {
+    "timeOffset": 5,
+    "predictTime": "2026-07-08 11:14:00",
+    "predictPower": 75.85,
+    "actualPowerKw": null,
+    "errorValue": null,
+    "errorRate": null
+  }
+]
 ```
 
 ## 10. 综合分析
@@ -692,19 +790,54 @@ X-API-KEY: <api-key>
 ```json
 {
   "stationId": 1,
-  "modelName": "lstm_v1",
+  "modelName": "iTransformer",
   "input": [
     {
-      "time": "2026-07-06 10:00:00",
-      "power": 500.2,
-      "temperature": 31.2,
-      "irradiance": 820.5
+      "time": "2026-07-08 10:40:00",
+      "power": 52.0,
+      "temperature": 26.0,
+      "irradiance": 620.0,
+      "cloudImage": null,
+      "cloudImageBase64": null
     }
-  ]
+  ],
+  "cloudImages": []
 }
 ```
 
-`input` 必须正好 30 帧。
+`input` 必须正好 30 帧，时间格式为 `yyyy-MM-dd HH:mm:ss`，相邻间隔按模型配置校验，当前数值预测模型为 60 秒。`temperature`、`irradiance` 可省略，后端会按 `0.0` 传给模型服务；`power` 不能为空。`stationId` 可为空；不为空时会校验 API Key 所属用户是否有该电站权限。
+
+`cloudImages` 可选，用于云图/融合模型透传给模型服务：
+
+```json
+[
+  {
+    "time": "2026-07-08 10:40:00",
+    "cloudImage": "https://example.com/cloud/202607081040.jpg",
+    "cloudImageBase64": null,
+    "source": "satellite",
+    "file": null
+  }
+]
+```
+
+响应：
+
+```json
+{
+  "taskId": 1002,
+  "taskNo": "PRED-xxx",
+  "status": "SUCCESS",
+  "modelName": "iTransformer",
+  "predictions": [
+    {
+      "timeOffset": 5,
+      "predictPower": 75.85
+    }
+  ],
+  "costTime": 12
+}
+```
 
 ### 11.3 管理员开放平台
 

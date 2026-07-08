@@ -30,10 +30,17 @@ public class PredictionExecutionService {
      * 返回响应数据，异常时抛出 BusinessException。
      */
     public ModelPredictResponse.Data execute(ModelInfoDO model, List<ModelInputFrame> frames) {
-        long startMs = System.currentTimeMillis();
-
         ModelPredictRequest request = ModelRequestConverter.toPredictRequest(
                 model.getServiceModelName(), frames);
+
+        return execute(model, request);
+    }
+
+    /**
+     * 执行已组装好的模型请求，用于开放 API 透传云图字段。
+     */
+    public ModelPredictResponse.Data execute(ModelInfoDO model, ModelPredictRequest request) {
+        long startMs = System.currentTimeMillis();
 
         ModelPredictResponse response = modelServiceClient.predict(
                 request, model.getServiceModelName(), model.getOutputSteps());

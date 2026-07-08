@@ -152,6 +152,7 @@ class PredictionServiceTest {
         assertEquals("SUCCESS", result.status());
         assertEquals("test_lstm", result.modelCode());
         assertEquals(100L, result.costTimeMs());
+        assertEquals(nowLastInputTime().plusMinutes(5), result.predictions().getFirst().predictTime());
 
         // Verify 30 snapshots saved
         Long snapshotCount = inputMapper.selectCount(Wrappers.<PredictionInputSnapshotDO>lambdaQuery()
@@ -162,6 +163,15 @@ class PredictionServiceTest {
         Long resultCount = resultMapper.selectCount(Wrappers.<PredictionResultDO>lambdaQuery()
                 .eq(PredictionResultDO::getTaskId, result.taskId()));
         assertEquals(6, resultCount);
+    }
+
+    private LocalDateTime nowLastInputTime() {
+        return pvDataMapper.selectList(Wrappers.<PvDataDO>lambdaQuery()
+                .eq(PvDataDO::getStationId, testStationId)
+                .orderByDesc(PvDataDO::getCollectTime)
+                .last("LIMIT 1"))
+            .getFirst()
+            .getCollectTime();
     }
 
     @Test

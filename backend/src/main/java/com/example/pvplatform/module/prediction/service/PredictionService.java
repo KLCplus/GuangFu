@@ -24,7 +24,6 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -95,8 +94,9 @@ public class PredictionService {
             log.info("预测任务成功: taskId={}, costTimeMs={}", taskId, responseData.costTime());
 
             PredictionTaskDO completed = taskMapper.selectById(taskId);
+            List<PredictionResultDO> savedResults = persistenceService.listResults(taskId);
             return buildTaskVO(completed == null ? task : completed,
-                    model, responseData.predictions());
+                    model, savedResults);
 
         } catch (BusinessException e) {
             // 9. 异常时更新 FAILED（独立事务）
@@ -178,15 +178,10 @@ public class PredictionService {
     }
 
     private PredictionTaskVO buildTaskVO(PredictionTaskDO task, ModelInfoDO model,
-                                          List<ModelPredictResponse.Prediction> predictions) {
-        List<PredictionResultVO> resultVOs = predictions.stream().map(p -> {
-            LocalDateTime predictTime = task.getInputEndTime() != null
-                    ? task.getInputEndTime().plusMinutes(p.timeOffset())
-                    : LocalDateTime.now().plusMinutes(p.timeOffset());
-            return new PredictionResultVO(p.timeOffset(), predictTime,
-                    BigDecimal.valueOf(p.predictPower()), null, null, null);
-        }).toList();
-
+                                          List<PredictionResultDO> predictions) {
+        List<PredictionResultVO> resultVOs = predictions.stream()
+                .map(this::toResultVO)
+                .toList();
         return new PredictionTaskVO(task.getTaskId(), task.getTaskNo(), task.getStatus(),
                 model.getModelName(), model.getModelCode(), task.getStationId(),
                 task.getInputMode(), task.getCreatedAt(), task.getCostTimeMs(), resultVOs);

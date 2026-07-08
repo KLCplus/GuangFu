@@ -20,7 +20,9 @@ import os
 import sys
 import importlib
 from datetime import datetime, timedelta
+from pathlib import Path
 from time import perf_counter
+from typing import Dict, Optional, Tuple
 
 import numpy as np
 import torch
@@ -34,10 +36,10 @@ from app.schemas import PredictData, PredictRequest, Prediction
 # ---------------------------------------------------------------------------
 # Paths
 # ---------------------------------------------------------------------------
-_BASE = "/root/shixun/GuangFu/model-service"
-TSL_PATH = os.path.join(_BASE, "Time-Series-Library")
-OpenSTL_PATH = os.path.join(_BASE, "OpenSTL")
-CKPT_DIR = os.path.join(_BASE, "checkpoints")
+_BASE = Path(__file__).resolve().parents[2]
+TSL_PATH = str(_BASE / "Time-Series-Library")
+OpenSTL_PATH = str(_BASE / "OpenSTL")
+CKPT_DIR = str(_BASE / "checkpoints")
 for _p in (TSL_PATH, OpenSTL_PATH):
     if _p not in sys.path:
         sys.path.insert(0, _p)
@@ -51,7 +53,7 @@ PRED_LEN = 6         # prediction horizon
 TIME_FEAT_DIM = 5    # freq='t' → [Minute, Hour, DayOfWeek, DayOfMonth, DayOfYear]
 IMG_SIZE = 64
 TIME_OFFSETS = list(range(5, 31, 5))  # [5, 10, 15, 20, 25, 30]
-_IMAGE_TENSOR_CACHE: dict[tuple[str, str], torch.Tensor] = {}
+_IMAGE_TENSOR_CACHE: Dict[Tuple[str, str], torch.Tensor] = {}
 
 
 def _resize_images(img: torch.Tensor) -> torch.Tensor:
@@ -182,7 +184,7 @@ def _cloud_image_lookup(request: PredictRequest):
     return lookup
 
 
-def _load_cloud_image(path: str | None, mode: str, cloud_image_base64: str | None = None):
+def _load_cloud_image(path: Optional[str], mode: str, cloud_image_base64: Optional[str] = None):
     if cloud_image_base64 is not None:
         digest = hashlib.sha1(cloud_image_base64.encode("utf-8")).hexdigest()
         cache_key = (f"base64:{digest}", mode)
@@ -782,7 +784,7 @@ class RealPredictor:
     """Loads models lazily and runs real inference."""
 
     def __init__(self):
-        self._cache: dict[str, nn.Module] = {}
+        self._cache: Dict[str, nn.Module] = {}
 
     def _get_model(self, name: str):
         if name not in self._cache:

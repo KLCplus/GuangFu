@@ -1,3 +1,5 @@
+from typing import Dict
+
 from fastapi import FastAPI
 
 from app.routers.predict import router as predict_router
@@ -11,5 +13,5 @@ app.include_router(predict_router)
 
 
 @app.get("/health", tags=["health"])
-def health() -> dict[str, str]:
+def health() -> Dict[str, str]:
     return {"status": "ok", "service": "model-service"}

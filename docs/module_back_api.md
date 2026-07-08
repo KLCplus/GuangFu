@@ -88,7 +88,7 @@ GET /health
 - Docker/Kubernetes 健康检查。
 - 后端管理端展示模型服务是否可用。
 
-当前 `ModelServiceClient` 尚未主动调用该接口，可在后续增加健康检查方法。
+后端已通过 `ModelServiceHealthClient` 调用该接口，用于模型上线前的可用性校验。
 
 ## 4. 模型列表
 
@@ -104,19 +104,19 @@ GET /model-api/models
   "message": "success",
   "data": [
     {
-      "modelName": "lstm_v1",
+      "modelName": "DLinear",
       "modelType": "NUMERIC",
-      "description": "基于历史功率数据的短期预测模型"
+      "description": "DLinear 线性分解时序预测模型"
     },
     {
-      "modelName": "transformer_v1",
+      "modelName": "iTransformer",
       "modelType": "NUMERIC",
-      "description": "基于 Transformer 的光伏功率预测模型"
+      "description": "iTransformer 通道独立 Transformer 模型"
     },
     {
-      "modelName": "multimodal_v1",
-      "modelType": "MULTIMODAL",
-      "description": "多模态光伏预测模型"
+      "modelName": "CNN_LSTM",
+      "modelType": "FUSION",
+      "description": "CNN-LSTM 图像CNN+数值LSTM融合模型"
     }
   ]
 }
@@ -127,6 +127,7 @@ GET /model-api/models
 - `model_info` 是业务系统中的模型元数据和上下线状态来源。
 - `/model-api/models` 表示当前模型服务实际可执行的模型。
 - 后续上线模型时，应校验数据库的 `service_model_name` 是否存在于该列表。
+- 当前后端初始化 SQL 已同步模型服务 19 个真实模型名；数值模型默认 `ONLINE`，需要云图的 `MULTIMODAL/FUSION` 模型默认 `OFFLINE`。
 
 ## 5. 模型预测
 
@@ -141,7 +142,7 @@ Content-Type: application/json
 
 ```json
 {
-  "modelName": "lstm_v1",
+  "modelName": "iTransformer",
   "input": [
     {
       "time": "2026-07-06 10:00:00",
@@ -196,7 +197,7 @@ Content-Type: application/json
   "code": 200,
   "message": "success",
   "data": {
-    "modelName": "lstm_v1",
+    "modelName": "iTransformer",
     "predictions": [
       {
         "timeOffset": 5,
@@ -390,32 +391,25 @@ curl http://localhost:9000/health
 ```bash
 curl -X POST http://localhost:9000/model-api/predict \
   -H "Content-Type: application/json" \
-  -d '{
-    "modelName": "lstm_v1",
-    "input": [
-      {
-        "time": "2026-07-06 10:00:00",
-        "power": 500.2,
-        "temperature": 31.2,
-        "irradiance": 820.5
-      }
-    ]
-  }'
+  -d @request.json
 ```
 
 Windows PowerShell 可使用：
 
 ```powershell
+$start = [datetime]"2026-07-06 10:00:00"
+$inputFrames = 0..29 | ForEach-Object {
+  @{
+    time = $start.AddMinutes($_).ToString("yyyy-MM-dd HH:mm:ss")
+    power = 500.2 + $_
+    temperature = 31.2
+    irradiance = 820.5
+  }
+}
+
 $body = @{
-  modelName = "lstm_v1"
-  input = @(
-    @{
-      time = "2026-07-06 10:00:00"
-      power = 500.2
-      temperature = 31.2
-      irradiance = 820.5
-    }
-  )
+  modelName = "iTransformer"
+  input = $inputFrames
 } | ConvertTo-Json -Depth 5
 
 Invoke-RestMethod `

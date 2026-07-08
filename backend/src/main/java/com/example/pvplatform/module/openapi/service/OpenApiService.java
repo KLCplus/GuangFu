@@ -70,7 +70,9 @@ public class OpenApiService {
             task = persistenceService.createTaskWithSnapshotsForUser(principal.userId(),
                 request.stationId(), model.getModelId(), "OPEN_API", start, end, frames);
             persistenceService.markRunning(task.getTaskId());
-            ModelPredictResponse.Data data = executionService.execute(model, frames);
+            ModelPredictRequest modelRequest = new ModelPredictRequest(
+                model.getServiceModelName(), request.input(), request.cloudImages());
+            ModelPredictResponse.Data data = executionService.execute(model, modelRequest);
             persistenceService.saveResultsAndMarkSuccess(task.getTaskId(), data,
                 executionService.getLastInputTime(frames));
             return new OpenPredictVO(task.getTaskId(), task.getTaskNo(), "SUCCESS",
@@ -109,7 +111,7 @@ public class OpenApiService {
         try {
             frames = input.stream().map(frame -> new ModelInputFrame(
                 LocalDateTime.parse(frame.time(), FORMATTER), frame.power(),
-                frame.temperature(), frame.irradiance())).toList();
+                optionalFinite(frame.temperature(), 0.0), optionalFinite(frame.irradiance(), 0.0))).toList();
         } catch (DateTimeParseException | NullPointerException e) {
             throw new BusinessException(400, "输入时间格式不合法");
         }
@@ -121,11 +123,24 @@ public class OpenApiService {
                 || !Double.isFinite(frame.irradiance())) {
                 throw new BusinessException(400, "输入包含非法数值");
             }
+            if (frame.power() < 0 || frame.irradiance() < 0) {
+                throw new BusinessException(400, "输入功率和辐照度不能为负");
+            }
             if (i > 0 && Duration.between(frames.get(i - 1).time(), frame.time()).toSeconds() != interval) {
                 throw new BusinessException(400, "输入时间序列不连续");
             }
         }
         return frames;
+    }
+
+    private double optionalFinite(Double value, double fallback) {
+        if (value == null) {
+            return fallback;
+        }
+        if (!Double.isFinite(value)) {
+            throw new BusinessException(400, "输入包含非法数值");
+        }
+        return value;
     }
 
     private void validateStation(Long stationId, Long userId) {
