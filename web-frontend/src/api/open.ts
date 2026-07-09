@@ -14,7 +14,11 @@ export interface ApiKey {
   apiKey?: string
   apiKeyPrefix?: string
   status: ApiKeyStatus
+  rateLimitPerMinute?: number
+  dailyQuota?: number
+  expireTime?: DateTimeString
   expireAt?: DateTimeString
+  lastUsedAt?: DateTimeString
   createdAt?: DateTimeString
 }
 
@@ -29,13 +33,26 @@ export interface ApiCallLogQuery extends PageQuery {
 
 export interface ApiCallLog {
   logId: number
-  apiKeyId: number
-  path: string
-  method: string
-  status: string
+  apiKeyId?: number
+  modelId?: number
+  modelName?: string
+  path?: string
+  method?: string
+  status?: string
   statusCode?: number
   costTime?: number
-  createdAt: DateTimeString
+  requestPath?: string
+  requestMethod?: string
+  requestIp?: string
+  requestTime?: DateTimeString
+  responseTime?: DateTimeString
+  costTimeMs?: number
+  httpStatus?: number
+  bizStatus?: string
+  errorMessage?: string
+  requestSummary?: string
+  responseSummary?: string
+  createdAt?: DateTimeString
 }
 
 export interface OpenPredictInputFrame {

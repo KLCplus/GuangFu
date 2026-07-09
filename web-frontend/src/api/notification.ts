@@ -14,7 +14,8 @@ export interface Notification {
 }
 
 export interface UnreadCount {
-  count: number
+  count?: number
+  unreadCount?: number
 }
 
 export const getNotifications = (params?: NotificationQuery) =>

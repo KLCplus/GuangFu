@@ -45,6 +45,12 @@ export interface OAuthAccount {
   bindTime?: DateTimeString
 }
 
+export interface BindOAuthAccountPayload {
+  code?: string
+  state?: string
+  redirectUri?: string
+}
+
 export const getProfile = () => request.get<UserProfile>('/user/profile')
 export const updateProfile = (data: UpdateProfilePayload) => request.put<UserProfile>('/user/profile', data)
 export const changePassword = (data: ChangePasswordPayload) => request.put<void>('/user/password', data)
@@ -55,7 +61,8 @@ export const uploadAvatar = (file: File) => {
   return request.post<AvatarUploadResult>('/user/avatar', form)
 }
 export const getOAuthAccounts = () => request.get<OAuthAccount[]>('/user/oauth-accounts')
-export const bindOAuthAccount = (provider: string) => request.post<OAuthAccount>(`/user/oauth-accounts/${provider}/bind`)
+export const bindOAuthAccount = (provider: string, data: BindOAuthAccountPayload) =>
+  request.post<OAuthAccount>(`/user/oauth-accounts/${provider}/bind`, data)
 export const unbindOAuthAccount = (oauthId: number) => request.delete<void>(`/user/oauth-accounts/${oauthId}`)
 export const enrollFace = (file: File) => {
   const form = new FormData()

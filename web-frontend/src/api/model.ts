@@ -1,4 +1,5 @@
 import request from './request'
+import type { DateTimeString } from './types'
 
 export type ModelType = 'NUMERIC' | 'IMAGE' | string
 export type ModelStatus = 'ONLINE' | 'OFFLINE' | 'TESTING' | string
@@ -9,23 +10,26 @@ export interface ModelQuery {
 
 export interface Model {
   modelId: number
-  modelCode: string
+  modelCode?: string
   modelName: string
   modelType: ModelType
-  modelVersion: string
-  inputWindowMinutes: number
-  inputFrameIntervalSeconds: number
-  outputSteps: number
-  outputStepMinutes: number
-  serviceModelName: string
-  apiPath: string
-  inputSchema: string
-  outputSchema: string
-  modelStatus: ModelStatus
+  modelVersion?: string
+  inputWindowMinutes?: number
+  inputFrameIntervalSeconds?: number
+  outputSteps?: number
+  outputStepMinutes?: number
+  serviceModelName?: string
+  apiPath?: string
+  inputSchema?: string
+  outputSchema?: string
+  modelStatus?: ModelStatus
+  status?: ModelStatus
   description?: string
+  createdAt?: DateTimeString
+  updatedAt?: DateTimeString
 }
 
-export type ModelPayload = Omit<Model, 'modelId' | 'modelStatus'> & {
+export type ModelPayload = Omit<Model, 'modelId' | 'modelStatus' | 'status' | 'createdAt' | 'updatedAt'> & {
   modelStatus?: ModelStatus
 }
 

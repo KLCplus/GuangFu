@@ -37,7 +37,7 @@ async function submit() {
       <p class="page-kicker">创建账号</p>
       <h2>开始使用平台</h2>
     </div>
-    <el-form label-position="top" @submit.prevent>
+    <el-form label-position="top" @submit.prevent="submit">
       <el-form-item label="用户名">
         <el-input v-model="form.username" size="large" placeholder="请输入用户名" />
       </el-form-item>
@@ -47,7 +47,7 @@ async function submit() {
       <el-form-item label="密码">
         <el-input v-model="form.password" size="large" type="password" placeholder="请输入密码" show-password />
       </el-form-item>
-      <el-button class="full-button" type="primary" size="large" :loading="loading" @click="submit">
+      <el-button class="full-button" type="primary" size="large" native-type="submit" :loading="loading">
         注册
       </el-button>
     </el-form>

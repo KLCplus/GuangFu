@@ -35,7 +35,9 @@ service.interceptors.response.use(
   unwrapResponse as never,
   (error) => {
     const status = error?.response?.status
-    if (status === 401) {
+    const requestUrl = String(error?.config?.url ?? '')
+    const isAuthRequest = requestUrl.startsWith('/auth/')
+    if (status === 401 && !isAuthRequest) {
       localStorage.removeItem('token')
       localStorage.removeItem('userInfo')
       window.location.href = '/login'
