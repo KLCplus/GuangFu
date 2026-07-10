@@ -1,4 +1,4 @@
-# Spring Boot—模型服务接口文档
+﻿# Spring Boot—模型服务接口文档
 
 本文定义 Spring Boot 业务后端与 Python FastAPI 模型服务之间的内部接口。
 
@@ -42,7 +42,7 @@ model-service:
 http://localhost:9000
 ```
 
-Docker Compose 内部地址：
+本机联调地址：
 
 ```text
 http://model-service:9000
@@ -85,7 +85,7 @@ GET /health
 用途：
 
 - 启动验证。
-- Docker/Kubernetes 健康检查。
+- 生产环境健康检查。
 - 后端管理端展示模型服务是否可用。
 
 当前 `ModelServiceClient` 尚未主动调用该接口，可在后续增加健康检查方法。

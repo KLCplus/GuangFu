@@ -60,6 +60,45 @@ CREATE TABLE IF NOT EXISTS sys_face_auth (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS external_pv_station (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    source VARCHAR(32) DEFAULT 'PVOUTPUT',
+    external_system_id BIGINT NOT NULL UNIQUE,
+    system_name VARCHAR(255),
+    system_size_w INT,
+    postcode VARCHAR(64),
+    orientation VARCHAR(32),
+    outputs INT,
+    last_output_text VARCHAR(64),
+    panel VARCHAR(255),
+    inverter VARCHAR(255),
+    distance_km DECIMAL(10,2),
+    latitude DECIMAL(10,6),
+    longitude DECIMAL(10,6),
+    enabled BOOLEAN DEFAULT TRUE,
+    last_sync_time TIMESTAMP,
+    last_sync_status VARCHAR(32),
+    last_sync_error VARCHAR(512),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS external_pv_station_status (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    external_system_id BIGINT NOT NULL,
+    sample_time TIMESTAMP NOT NULL,
+    energy_generation_wh INT,
+    power_generation_w INT,
+    energy_consumption_wh INT,
+    power_consumption_w INT,
+    normalised_output DECIMAL(10,4),
+    temperature_c DECIMAL(8,2),
+    voltage_v DECIMAL(8,2),
+    raw_payload TEXT,
+    fetched_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(external_system_id, sample_time)
+);
+
 CREATE TABLE IF NOT EXISTS model_info (
     model_id BIGINT AUTO_INCREMENT PRIMARY KEY,
     model_code VARCHAR(64) NOT NULL UNIQUE,
@@ -247,7 +286,17 @@ CREATE TABLE IF NOT EXISTS analysis_report (
     suggestion TEXT,
     report_content TEXT,
     report_json TEXT,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    include_weather BOOLEAN,
+    include_prediction BOOLEAN,
+    model_name VARCHAR(128),
+    prompt_snapshot TEXT,
+    context_snapshot TEXT,
+    raw_response TEXT,
+    risk_level VARCHAR(32),
+    status VARCHAR(32) DEFAULT 'SUCCESS',
+    error_message TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE IF NOT EXISTS api_key (

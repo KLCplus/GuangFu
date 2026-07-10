@@ -44,6 +44,18 @@ redis:
 model-service:
   base-url: http://localhost:9000
 
+analysis:
+  llm:
+    enabled: false
+    provider: deepseek
+    base-url: https://api.deepseek.com
+    api-key: ""
+    model: deepseek-v4-flash
+    temperature: 0.2
+    max-tokens: 4096
+    timeout-ms: 60000
+    json-mode: true
+
 face:
   provider: local
   match-threshold: 75

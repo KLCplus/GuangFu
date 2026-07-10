@@ -5,8 +5,15 @@ export interface CreateAnalysisReportRequest {
   stationId: number
   taskId?: number
   title: string
+  userInstruction?: string
   includeWeather: boolean
   includePrediction: boolean
+}
+
+export interface AnalysisSection {
+  title?: string
+  content?: string
+  [key: string]: unknown
 }
 
 export interface AnalysisReportListItem {
@@ -34,6 +41,9 @@ export interface AnalysisReportDetail {
   summary?: string
   abstract?: string
   overview?: string
+  riskLevel?: string
+  sections?: AnalysisSection[]
+  suggestions?: string[]
   content?: string
   markdown?: string
   body?: string
@@ -43,6 +53,14 @@ export interface AnalysisReportDetail {
   abnormalAnalysis?: string
   suggestion?: string
   recommendations?: string
+  modelName?: string
+  status?: string
+  errorMessage?: string
+  rawResponse?: string
+  promptSnapshot?: string
+  contextSnapshot?: string
+  llmEnabled?: boolean
+  llmProvider?: string
   reportContent?: string
   reportJson?: string
   createdAt?: DateTimeString

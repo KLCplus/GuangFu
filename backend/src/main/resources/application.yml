@@ -75,6 +75,18 @@ mybatis-plus:
 model-service:
   base-url: ${MODEL_SERVICE_BASE_URL:http://localhost:9000}
 
+analysis:
+  llm:
+    enabled: ${ANALYSIS_LLM_ENABLED:true}
+    provider: ${ANALYSIS_LLM_PROVIDER:deepseek}
+    base-url: ${DEEPSEEK_BASE_URL:https://api.deepseek.com}
+    api-key: ${DEEPSEEK_API_KEY:}
+    model: ${DEEPSEEK_MODEL:deepseek-v4-flash}
+    temperature: ${DEEPSEEK_TEMPERATURE:0.2}
+    max-tokens: ${DEEPSEEK_MAX_TOKENS:4096}
+    timeout-ms: ${DEEPSEEK_TIMEOUT_MS:60000}
+    json-mode: ${DEEPSEEK_JSON_MODE:true}
+
 pv-data:
   import:
     storage-dir: ${PV_IMPORT_STORAGE_DIR:./data/pv-imports}
@@ -97,7 +109,15 @@ weather:
   qweather-private-key-path: ${QWEATHER_PRIVATE_KEY_PATH:}
   jwt-ttl-seconds: ${WEATHER_JWT_TTL_SECONDS:1800}
 
+pvoutput:
+  enabled: ${PVOUTPUT_ENABLED:true}
+  api-key: ${PVOUTPUT_API_KEY:}
+  auth-system-id: ${PVOUTPUT_AUTH_SYSTEM_ID:}
+  base-url: ${PVOUTPUT_BASE_URL:https://pvoutput.org/service/r2}
+  sync-interval-ms: ${PVOUTPUT_SYNC_INTERVAL_MS:600000}
+
 security:
+  debug-open: ${SECURITY_DEBUG_OPEN:false}
   jwt:
     secret: ${JWT_SECRET:pv-platform-dev-jwt-secret-do-not-use-in-production!!}
     access-token-expiration: ${JWT_ACCESS_TOKEN_EXPIRATION:7200}

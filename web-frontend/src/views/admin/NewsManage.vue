@@ -186,9 +186,9 @@ async function fetchList() {
     const params: AdminNewsQuery = { pageNum: 1, pageSize: 200 }
     if (filters.status) params.status = filters.status
     if (filters.type) params.type = filters.type
-    const res = await getAdminNewsList(params)
-    rows.value = res.data.records as NewsRow[]
-    page.total = res.data.total
+    const pageResult = await getAdminNewsList(params)
+    rows.value = pageResult.records as NewsRow[]
+    page.total = pageResult.total
     remoteReady.value = true
   } catch {
     if (!remoteReady.value) {
@@ -223,11 +223,11 @@ async function submitForm() {
     return
   }
 
-  saving.value = true
-  try {
-    if (mode.value === 'create') {
-      const res = await createNews(toPayload(form))
-      rows.value.unshift({ ...res.data, status: 'DRAFT', publishedAt: '', createdAt: new Date().toISOString() } as NewsRow)
+    saving.value = true
+    try {
+      if (mode.value === 'create') {
+      const created = await createNews(toPayload(form))
+      rows.value.unshift({ ...created, status: 'DRAFT', publishedAt: '', createdAt: new Date().toISOString() } as NewsRow)
       ElMessage.success('新闻创建成功')
     } else {
       await updateNews(editingId.value!, toPayload(form))

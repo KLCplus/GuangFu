@@ -8,6 +8,12 @@ public record AnalysisRequest(
     @NotNull @Positive Long stationId,
     @Positive Long taskId,
     @Size(max = 255) String title,
+    @Size(max = 2000) String userInstruction,
     boolean includeWeather,
     boolean includePrediction
-) {}
+) {
+    public AnalysisRequest(Long stationId, Long taskId, String title,
+                           boolean includeWeather, boolean includePrediction) {
+        this(stationId, taskId, title, null, includeWeather, includePrediction);
+    }
+}

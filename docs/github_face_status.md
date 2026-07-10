@@ -1,10 +1,10 @@
-# GitHub OAuth 与人脸登录联调状态
+﻿# GitHub OAuth 与人脸登录联调状态
 
 更新时间：2026-07-07
 
 ## 当前结论
 
-后端已经提供 OAuth 和人脸登录相关接口，前端联调时按 [back_front_api.md](back_front_api.md) 调用即可。真实第三方凭证统一放在根目录 `.env`，不要写入源码目录或提交到 Git。
+后端已经提供 OAuth 和人脸登录相关接口，前端联调时按 [back_front_api.md](back_front_api.md) 调用即可。真实第三方凭证统一放在 `backend/.env.local`，不要写入源码目录或提交到 Git。
 
 ## GitHub OAuth
 
@@ -38,7 +38,7 @@ DELETE /api/user/oauth-accounts/{oauthId}
 
 ### 配置
 
-在根目录 `.env` 中配置：
+在 `backend/.env.local` 中配置：
 
 ```env
 OAUTH_CALLBACK_BASE_URL=http://localhost:5173
@@ -98,7 +98,7 @@ ALIYUN_OSS_BUCKET=your-bucket
 
 ## 联调注意
 
-1. 所有真实凭证只放根目录 `.env`。
+1. 所有真实凭证只放 `backend/.env.local`。
 2. 推荐从根目录启动：`powershell -ExecutionPolicy Bypass -File .\start-local.ps1`。
 3. 前端不要保存 GitHub Secret、阿里云 Secret 或人脸服务凭证。
 4. `mock` OAuth 和 `local` face 可用于无外部服务时验证流程。

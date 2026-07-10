@@ -22,6 +22,8 @@ DROP TABLE IF EXISTS weather_data;
 DROP TABLE IF EXISTS pv_data_import_task;
 DROP TABLE IF EXISTS pv_data;
 DROP TABLE IF EXISTS user_station_permission;
+DROP TABLE IF EXISTS external_pv_station_status;
+DROP TABLE IF EXISTS external_pv_station;
 DROP TABLE IF EXISTS power_station;
 DROP TABLE IF EXISTS sys_face_auth;
 DROP TABLE IF EXISTS sys_oauth_account;
@@ -196,6 +198,55 @@ CREATE TABLE power_station (
     CONSTRAINT fk_station_owner
         FOREIGN KEY (owner_user_id) REFERENCES sys_user(user_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='光伏电站表';
+
+
+-- =========================================================
+-- 7. 外部公开电站表（PVOutput）
+-- =========================================================
+CREATE TABLE external_pv_station (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT COMMENT '主键ID',
+    source VARCHAR(32) NOT NULL DEFAULT 'PVOUTPUT' COMMENT '数据源',
+    external_system_id BIGINT NOT NULL COMMENT '外部系统ID',
+    system_name VARCHAR(255) DEFAULT NULL COMMENT '系统名称',
+    system_size_w INT DEFAULT NULL COMMENT '系统容量，单位W',
+    postcode VARCHAR(64) DEFAULT NULL COMMENT '邮编',
+    orientation VARCHAR(32) DEFAULT NULL COMMENT '朝向',
+    outputs INT DEFAULT NULL COMMENT '输出记录数',
+    last_output_text VARCHAR(64) DEFAULT NULL COMMENT '最近输出文本',
+    panel VARCHAR(255) DEFAULT NULL COMMENT '组件信息',
+    inverter VARCHAR(255) DEFAULT NULL COMMENT '逆变器信息',
+    distance_km DECIMAL(10,2) DEFAULT NULL COMMENT '距离，单位km',
+    latitude DECIMAL(10,6) DEFAULT NULL COMMENT '纬度',
+    longitude DECIMAL(10,6) DEFAULT NULL COMMENT '经度',
+    enabled TINYINT NOT NULL DEFAULT 1 COMMENT '是否启用同步',
+    last_sync_time DATETIME DEFAULT NULL COMMENT '最近同步时间',
+    last_sync_status VARCHAR(32) DEFAULT NULL COMMENT '最近同步状态',
+    last_sync_error VARCHAR(512) DEFAULT NULL COMMENT '最近同步错误',
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+
+    UNIQUE KEY uk_external_system_id (external_system_id),
+    KEY idx_external_station_enabled (enabled)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='外部公开光伏电站表';
+
+CREATE TABLE external_pv_station_status (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT COMMENT '主键ID',
+    external_system_id BIGINT NOT NULL COMMENT '外部系统ID',
+    sample_time DATETIME NOT NULL COMMENT '采样时间',
+    energy_generation_wh INT DEFAULT NULL COMMENT '发电量，单位Wh',
+    power_generation_w INT DEFAULT NULL COMMENT '发电功率，单位W',
+    energy_consumption_wh INT DEFAULT NULL COMMENT '用电量，单位Wh',
+    power_consumption_w INT DEFAULT NULL COMMENT '用电功率，单位W',
+    normalised_output DECIMAL(10,4) DEFAULT NULL COMMENT '归一化输出',
+    temperature_c DECIMAL(8,2) DEFAULT NULL COMMENT '温度，摄氏度',
+    voltage_v DECIMAL(8,2) DEFAULT NULL COMMENT '电压，单位V',
+    raw_payload TEXT DEFAULT NULL COMMENT '原始CSV',
+    fetched_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '抓取时间',
+
+    UNIQUE KEY uk_external_station_sample_time (external_system_id, sample_time),
+    KEY idx_external_system_id (external_system_id),
+    KEY idx_sample_time (sample_time)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='外部公开光伏电站状态表';
 
 
 -- =========================================================
@@ -505,12 +556,23 @@ CREATE TABLE analysis_report (
     suggestion TEXT DEFAULT NULL COMMENT '运维建议',
     report_content LONGTEXT DEFAULT NULL COMMENT '完整报告正文',
     report_json JSON DEFAULT NULL COMMENT '结构化报告JSON',
+    include_weather TINYINT(1) DEFAULT NULL COMMENT '是否包含天气上下文',
+    include_prediction TINYINT(1) DEFAULT NULL COMMENT '是否包含预测上下文',
+    model_name VARCHAR(128) DEFAULT NULL COMMENT 'LLM模型名称',
+    prompt_snapshot LONGTEXT DEFAULT NULL COMMENT 'Prompt快照',
+    context_snapshot LONGTEXT DEFAULT NULL COMMENT '上下文快照',
+    raw_response LONGTEXT DEFAULT NULL COMMENT '模型原始响应',
+    risk_level VARCHAR(32) DEFAULT NULL COMMENT '风险等级',
+    status VARCHAR(32) NOT NULL DEFAULT 'SUCCESS' COMMENT '状态：PENDING，SUCCESS，FAILED',
+    error_message TEXT DEFAULT NULL COMMENT '错误信息',
 
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
 
     KEY idx_report_user (user_id),
     KEY idx_report_station (station_id),
     KEY idx_report_task (task_id),
+    KEY idx_report_status (status),
     KEY idx_report_created_at (created_at),
 
     CONSTRAINT fk_report_user

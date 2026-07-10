@@ -20,16 +20,10 @@
 
 ## 配置
 
-完整模板见：
+本地配置统一放在：
 
 ```text
-.env.example
-```
-
-本地真实值放在：
-
-```text
-.env
+backend/.env.local
 ```
 
 QWeather 关键配置：

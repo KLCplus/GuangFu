@@ -3,13 +3,20 @@ param(
     [switch]$SkipDocker,
     [switch]$BackendOnly,
     [switch]$FrontendOnly,
-    [switch]$ModelOnly
+    [switch]$ModelOnly,
+    [switch]$WithModel,
+    [switch]$NoRestart,
+    [switch]$ForcePorts
 )
 
 $ErrorActionPreference = "Stop"
 
 $projectRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 Set-Location $projectRoot
+
+$pathValue = $env:Path
+[Environment]::SetEnvironmentVariable("PATH", $null, "Process")
+[Environment]::SetEnvironmentVariable("Path", $pathValue, "Process")
 
 function New-RandomSecret {
     $bytes = New-Object byte[] 32
@@ -83,56 +90,191 @@ function Set-EnvValueIfMissing {
     }
 }
 
-function Merge-EnvTemplate {
+function Convert-ToIntOrDefault {
     param(
-        [string]$TemplatePath,
-        [string]$TargetPath
+        [string]$Value,
+        [int]$DefaultValue
     )
 
-    Get-Content -LiteralPath $TemplatePath | ForEach-Object {
-        $line = $_.Trim()
-        if ($line.Length -eq 0 -or $line.StartsWith("#")) {
-            return
-        }
-
-        $index = $line.IndexOf("=")
-        if ($index -le 0) {
-            return
-        }
-
-        $name = $line.Substring(0, $index).Trim()
-        $value = $line.Substring($index + 1).Trim()
-        Set-EnvValueIfMissing $TargetPath $name $value
+    $parsed = 0
+    if ([int]::TryParse($Value, [ref]$parsed)) {
+        return $parsed
     }
+    return $DefaultValue
+}
+
+function Join-Url {
+    param(
+        [string]$HostName,
+        [int]$Port
+    )
+
+    return "http://${HostName}:$Port"
+}
+
+function Format-PSString {
+    param([string]$Value)
+    return "'" + $Value.Replace("'", "''") + "'"
 }
 
 function Test-PortListening {
     param([int]$Port)
 
-    foreach ($hostName in @("127.0.0.1", "::1")) {
-        $client = New-Object System.Net.Sockets.TcpClient
-        try {
-            $connect = $client.BeginConnect($hostName, $Port, $null, $null)
-            if ($connect.AsyncWaitHandle.WaitOne(500, $false)) {
-                $client.EndConnect($connect)
-                return $true
-            }
-        } catch {
-            # Try the next loopback address.
-        } finally {
-            $client.Close()
+    $client = [System.Net.Sockets.TcpClient]::new()
+    try {
+        $async = $client.BeginConnect("127.0.0.1", $Port, $null, $null)
+        if (-not $async.AsyncWaitHandle.WaitOne(500)) {
+            return $false
         }
+        $client.EndConnect($async)
+        return $true
+    } catch {
+        return $false
+    } finally {
+        $client.Close()
     }
-    return $false
 }
 
-function Repair-ProcessPathEnvironment {
-    $processEnv = [Environment]::GetEnvironmentVariables("Process")
-    if ($processEnv.Contains("Path") -and $processEnv.Contains("PATH")) {
-        $pathValue = $env:Path
-        [Environment]::SetEnvironmentVariable("PATH", $null, "Process")
-        [Environment]::SetEnvironmentVariable("Path", $pathValue, "Process")
+function Get-PortOwners {
+    param([int]$Port)
+
+    $processIds = @()
+    try {
+        $connections = Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction Stop
+        $processIds += $connections | Where-Object { $_.OwningProcess } | ForEach-Object { [int]$_.OwningProcess }
+    } catch {
     }
+
+    if ($processIds.Count -eq 0) {
+        $netstatLines = & netstat.exe -ano -p tcp 2>$null
+        foreach ($line in $netstatLines) {
+            $parts = $line -split "\s+" | Where-Object { $_ }
+            if ($parts.Count -ge 5 -and $parts[0] -eq "TCP" -and $parts[1].EndsWith(":$Port") -and $parts[3] -eq "LISTENING") {
+                $pidValue = 0
+                if ([int]::TryParse($parts[4], [ref]$pidValue)) {
+                    $processIds += $pidValue
+                }
+            }
+        }
+    }
+
+    $owners = @()
+    foreach ($processId in ($processIds | Sort-Object -Unique)) {
+        try {
+            $proc = Get-CimInstance Win32_Process -Filter "ProcessId = $processId" -ErrorAction Stop
+            $owners += [pscustomobject]@{
+                Pid = [int]$processId
+                Name = $proc.Name
+                CommandLine = $proc.CommandLine
+            }
+        } catch {
+            $proc = Get-Process -Id $processId -ErrorAction SilentlyContinue
+            $owners += [pscustomobject]@{
+                Pid = [int]$processId
+                Name = if ($proc) { $proc.ProcessName } else { "unknown" }
+                CommandLine = ""
+            }
+        }
+    }
+
+    return $owners | Sort-Object Pid -Unique
+}
+
+function Stop-ProcessByPid {
+    param(
+        [int]$ProcessId,
+        [string]$Reason
+    )
+
+    $proc = Get-Process -Id $ProcessId -ErrorAction SilentlyContinue
+    if (-not $proc) {
+        return
+    }
+
+    Write-Host "Stopping PID=$ProcessId ($Reason)."
+    Stop-Process -Id $ProcessId -Force -ErrorAction SilentlyContinue
+}
+
+function Stop-ProcessTree {
+    param(
+        [int]$ProcessId,
+        [string]$Reason
+    )
+
+    $children = Get-CimInstance Win32_Process -Filter "ParentProcessId = $ProcessId" -ErrorAction SilentlyContinue
+    foreach ($child in $children) {
+        Stop-ProcessTree -ProcessId ([int]$child.ProcessId) -Reason $Reason
+    }
+
+    Stop-ProcessByPid -ProcessId $ProcessId -Reason $Reason
+}
+
+function Stop-TrackedProcess {
+    param(
+        [string]$Name,
+        [string]$PidFile
+    )
+
+    if (-not (Test-Path -LiteralPath $PidFile)) {
+        return
+    }
+
+    $pidText = (Get-Content -LiteralPath $PidFile -ErrorAction SilentlyContinue | Select-Object -First 1)
+    $pidValue = 0
+    if (-not [int]::TryParse($pidText, [ref]$pidValue)) {
+        Remove-Item -LiteralPath $PidFile -Force -ErrorAction SilentlyContinue
+        return
+    }
+
+    $proc = Get-CimInstance Win32_Process -Filter "ProcessId = $pidValue" -ErrorAction SilentlyContinue
+    if ($proc -and $proc.CommandLine -and $proc.CommandLine.Contains($projectRoot)) {
+        Stop-ProcessTree -ProcessId $pidValue -Reason "$Name from previous start-local.ps1 run"
+    }
+
+    Remove-Item -LiteralPath $PidFile -Force -ErrorAction SilentlyContinue
+}
+
+function Stop-PortOwners {
+    param(
+        [int]$Port,
+        [string]$Name
+    )
+
+    $owners = @(Get-PortOwners $Port)
+    foreach ($owner in $owners) {
+        Stop-ProcessTree -ProcessId $owner.Pid -Reason "existing $Name on port $Port"
+    }
+}
+
+function Assert-PortAvailable {
+    param(
+        [int]$Port,
+        [string]$Name,
+        [switch]$Force
+    )
+
+    if (-not (Test-PortListening $Port)) {
+        return
+    }
+
+    $owners = @(Get-PortOwners $Port)
+    if ($Force) {
+        foreach ($owner in $owners) {
+            Stop-ProcessByPid -ProcessId $owner.Pid -Reason "port $Port for $Name"
+        }
+        Start-Sleep -Seconds 1
+        if (-not (Test-PortListening $Port)) {
+            return
+        }
+    }
+
+    $details = if ($owners.Count -gt 0) {
+        ($owners | ForEach-Object { "PID=$($_.Pid) $($_.Name) $($_.CommandLine)" }) -join [Environment]::NewLine
+    } else {
+        "No process details available. Try: Get-NetTCPConnection -LocalPort $Port -State Listen"
+    }
+
+    throw "$Name port $Port is already in use.$([Environment]::NewLine)$details$([Environment]::NewLine)Run .\stop-local.ps1, close that process, choose another port in backend\.env.local, or rerun with -ForcePorts."
 }
 
 function Start-LoggedProcess {
@@ -145,22 +287,25 @@ function Start-LoggedProcess {
         [Parameter(Mandatory = $true)][string]$PidFile
     )
 
-    if (Test-Path -LiteralPath $OutLog) {
-        Remove-Item -LiteralPath $OutLog -Force
-    }
-    if (Test-Path -LiteralPath $ErrLog) {
-        Remove-Item -LiteralPath $ErrLog -Force
+    foreach ($path in @($OutLog, $ErrLog)) {
+        if (Test-Path -LiteralPath $path) {
+            $archive = [System.IO.Path]::Combine(
+                [System.IO.Path]::GetDirectoryName($path),
+                "$([System.IO.Path]::GetFileNameWithoutExtension($path)).$(Get-Date -Format 'yyyyMMddHHmmss')$([System.IO.Path]::GetExtension($path))"
+            )
+            Move-Item -LiteralPath $path -Destination $archive -Force -ErrorAction SilentlyContinue
+        }
     }
 
     $escapedDir = $WorkingDirectory.Replace("'", "''")
-    $wrappedCommand = "Set-Location -LiteralPath '$escapedDir'; $Command"
-    Repair-ProcessPathEnvironment
+    New-Item -ItemType File -Force -Path $ErrLog | Out-Null
+    $script = "Set-Location -LiteralPath '$escapedDir'; $Command"
+    $encodedCommand = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($script))
+    $cmdCommand = "powershell.exe -NoProfile -ExecutionPolicy Bypass -EncodedCommand $encodedCommand > `"$OutLog`" 2> `"$ErrLog`""
     $process = Start-Process `
-        -FilePath "powershell.exe" `
-        -ArgumentList @("-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", $wrappedCommand) `
+        -FilePath "cmd.exe" `
+        -ArgumentList @("/d", "/c", $cmdCommand) `
         -WindowStyle Hidden `
-        -RedirectStandardOutput $OutLog `
-        -RedirectStandardError $ErrLog `
         -PassThru
 
     Set-Content -LiteralPath $PidFile -Value $process.Id -Encoding ASCII
@@ -187,96 +332,152 @@ function Wait-Port {
     return $false
 }
 
-$rootEnv = Join-Path -Path $projectRoot -ChildPath ".env"
-$rootEnvExample = Join-Path -Path $projectRoot -ChildPath ".env.example"
-$startBackend = -not $FrontendOnly -and -not $ModelOnly
-$startModel = -not $BackendOnly -and -not $FrontendOnly
-$startFrontend = -not $BackendOnly -and -not $ModelOnly
-$needsDatabase = $startBackend
-$startDockerMysql = $UseDocker -and -not $SkipDocker -and $needsDatabase
+function Wait-PortFree {
+    param(
+        [int]$Port,
+        [string]$Name,
+        [int]$TimeoutSeconds = 10
+    )
 
-if (-not (Test-Path -LiteralPath $rootEnv)) {
-    Copy-Item -LiteralPath $rootEnvExample -Destination $rootEnv
-    if ($UseDocker -and -not $SkipDocker) {
-        $mysqlPassword = "pv-platform-local-" + (New-RandomSecret).Substring(0, 16)
-        Set-EnvValue $rootEnv "MYSQL_ROOT_PASSWORD" $mysqlPassword
-        Set-EnvValue $rootEnv "MYSQL_PASSWORD" $mysqlPassword
-        Write-Host "Created project .env for Docker MySQL."
-    } else {
-        Write-Host "Created project .env for local MySQL. Update MYSQL_URL, MYSQL_USERNAME, and MYSQL_PASSWORD if needed."
+    $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+    while ((Get-Date) -lt $deadline) {
+        if (-not (Test-PortListening $Port)) {
+            return $true
+        }
+        Start-Sleep -Milliseconds 300
     }
-    Set-EnvValue $rootEnv "JWT_SECRET" (New-RandomSecret)
-    Set-EnvValue $rootEnv "WEATHER_PROVIDER" "LOCAL"
-    Set-EnvValue $rootEnv "CACHE_TYPE" "simple"
-    Set-EnvValue $rootEnv "REDIS_ENABLED" "false"
+
+    Write-Host "Warning: $Name port $Port is still occupied after cleanup."
+    return $false
+}
+
+$localEnv = Join-Path -Path $projectRoot -ChildPath "backend\.env.local"
+if (-not (Test-Path -LiteralPath $localEnv)) {
+    New-Item -ItemType File -Force -Path $localEnv | Out-Null
+    $mysqlPassword = "pv-platform-local-" + (New-RandomSecret).Substring(0, 16)
+    Set-EnvValue $localEnv "MYSQL_ROOT_PASSWORD" $mysqlPassword
+    Set-EnvValue $localEnv "MYSQL_PASSWORD" $mysqlPassword
+    Set-EnvValue $localEnv "JWT_SECRET" (New-RandomSecret)
+    Set-EnvValue $localEnv "WEATHER_PROVIDER" "LOCAL"
+    Set-EnvValue $localEnv "CACHE_TYPE" "simple"
+    Set-EnvValue $localEnv "REDIS_ENABLED" "false"
+    Write-Host "Created backend\.env.local for local development."
 } else {
-    Merge-EnvTemplate $rootEnvExample $rootEnv
-    if ($UseDocker -and -not $SkipDocker) {
-        $mysqlPassword = Read-EnvValue $rootEnv "MYSQL_ROOT_PASSWORD"
-        if (-not $mysqlPassword -or $mysqlPassword -eq "change-me") {
-            $mysqlPassword = "pv-platform-local-" + (New-RandomSecret).Substring(0, 16)
-            Set-EnvValue $rootEnv "MYSQL_ROOT_PASSWORD" $mysqlPassword
-            Write-Host "Updated project .env Docker MySQL root password."
-        }
-        $backendMysqlPassword = Read-EnvValue $rootEnv "MYSQL_PASSWORD"
-        if (-not $backendMysqlPassword -or $backendMysqlPassword -eq "change-me" -or $backendMysqlPassword -eq "your-mysql-password") {
-            Set-EnvValue $rootEnv "MYSQL_PASSWORD" $mysqlPassword
-        }
+    $mysqlPassword = Read-EnvValue $localEnv "MYSQL_ROOT_PASSWORD"
+    if (-not $mysqlPassword -or $mysqlPassword -eq "change-me") {
+        $mysqlPassword = "pv-platform-local-" + (New-RandomSecret).Substring(0, 16)
+        Set-EnvValue $localEnv "MYSQL_ROOT_PASSWORD" $mysqlPassword
+        Set-EnvValue $localEnv "MYSQL_PASSWORD" $mysqlPassword
+        Write-Host "Updated backend\.env.local MySQL password."
     }
-    if (-not $UseDocker -and $needsDatabase) {
-        $backendMysqlPassword = Read-EnvValue $rootEnv "MYSQL_PASSWORD"
-        if (-not $backendMysqlPassword -or $backendMysqlPassword -eq "change-me" -or $backendMysqlPassword -eq "your-mysql-password") {
-            Write-Host "Warning: .env MYSQL_PASSWORD is not configured. Set it to your local MySQL password before using database-backed APIs."
-        } elseif ($backendMysqlPassword -like "pv-platform-local-*") {
-            Write-Host "Warning: .env MYSQL_PASSWORD looks like an auto-generated Docker password. Set it to your local MySQL password."
-        }
+    $backendMysqlPassword = Read-EnvValue $localEnv "MYSQL_PASSWORD"
+    if (-not $backendMysqlPassword -or $backendMysqlPassword -eq "change-me" -or $backendMysqlPassword -eq "your-mysql-password") {
+        Set-EnvValue $localEnv "MYSQL_PASSWORD" $mysqlPassword
     }
-    $jwtSecret = Read-EnvValue $rootEnv "JWT_SECRET"
+    $jwtSecret = Read-EnvValue $localEnv "JWT_SECRET"
     if (-not $jwtSecret -or $jwtSecret -eq "change-me-at-least-32-random-characters" -or [Text.Encoding]::UTF8.GetByteCount($jwtSecret) -lt 32) {
-        Set-EnvValue $rootEnv "JWT_SECRET" (New-RandomSecret)
+        Set-EnvValue $localEnv "JWT_SECRET" (New-RandomSecret)
     }
 }
 
-if ($startDockerMysql) {
-    $docker = Get-Command docker -ErrorAction SilentlyContinue
-    if ($docker) {
-        docker compose up -d mysql
-    } else {
-        Write-Host "Docker not found. Skipping Docker MySQL startup."
-    }
+Set-EnvValueIfMissing $localEnv "BACKEND_HOST" "127.0.0.1"
+Set-EnvValueIfMissing $localEnv "SERVER_PORT" "8080"
+Set-EnvValueIfMissing $localEnv "FRONTEND_HOST" "127.0.0.1"
+Set-EnvValueIfMissing $localEnv "FRONTEND_PORT" "5173"
+Set-EnvValueIfMissing $localEnv "MODEL_HOST" "127.0.0.1"
+Set-EnvValueIfMissing $localEnv "MODEL_PORT" "9000"
+
+$backendHost = Read-EnvValue $localEnv "BACKEND_HOST"
+if (-not $backendHost) {
+    $backendHost = "127.0.0.1"
+}
+$frontendHost = Read-EnvValue $localEnv "FRONTEND_HOST"
+if (-not $frontendHost) {
+    $frontendHost = "127.0.0.1"
+}
+$modelHost = Read-EnvValue $localEnv "MODEL_HOST"
+if (-not $modelHost) {
+    $modelHost = "127.0.0.1"
+}
+
+$backendPort = Convert-ToIntOrDefault (Read-EnvValue $localEnv "SERVER_PORT") 8080
+$frontendPort = Convert-ToIntOrDefault (Read-EnvValue $localEnv "FRONTEND_PORT") 5173
+$modelPort = Convert-ToIntOrDefault (Read-EnvValue $localEnv "MODEL_PORT") 9000
+
+$backendUrl = Join-Url $backendHost $backendPort
+$frontendUrl = Join-Url $frontendHost $frontendPort
+$modelUrl = Join-Url $modelHost $modelPort
+
+$currentModelServiceBaseUrl = Read-EnvValue $localEnv "MODEL_SERVICE_BASE_URL"
+if (-not $currentModelServiceBaseUrl -or $currentModelServiceBaseUrl -eq "http://localhost:9000" -or $currentModelServiceBaseUrl -eq "http://127.0.0.1:9000") {
+    Set-EnvValue $localEnv "MODEL_SERVICE_BASE_URL" $modelUrl
+}
+
+$currentOAuthCallbackBaseUrl = Read-EnvValue $localEnv "OAUTH_CALLBACK_BASE_URL"
+if (-not $currentOAuthCallbackBaseUrl -or $currentOAuthCallbackBaseUrl -eq "http://localhost:5173" -or $currentOAuthCallbackBaseUrl -eq "http://127.0.0.1:5173") {
+    Set-EnvValue $localEnv "OAUTH_CALLBACK_BASE_URL" $frontendUrl
 }
 
 $logsDir = Join-Path -Path $projectRoot -ChildPath "logs"
 New-Item -ItemType Directory -Force -Path $logsDir | Out-Null
 
+$startDockerMysql = $UseDocker -and -not $SkipDocker -and -not $FrontendOnly
 if ($startDockerMysql) {
-    Wait-Port -Port 3306 -Name "MySQL" -TimeoutSeconds 25 | Out-Null
-}
-if (-not (Test-PortListening 3306)) {
-    if ($UseDocker -and -not $SkipDocker) {
-        Write-Host "Warning: MySQL port 3306 is not listening after Docker startup. Check Docker Desktop and the mysql container logs."
-    } elseif ($needsDatabase) {
-        Write-Host "Warning: local MySQL is not listening on localhost:3306. Start local MySQL, or rerun with -UseDocker to start the Docker MySQL container."
+    $composeFile = Join-Path -Path $projectRoot -ChildPath "docker-compose.yml"
+    $docker = Get-Command docker -ErrorAction SilentlyContinue
+    if ($docker -and (Test-Path -LiteralPath $composeFile)) {
+        docker compose up -d mysql
+    } else {
+        Write-Host "Warning: Docker MySQL requested, but Docker or docker-compose.yml is not available. Using configured MySQL instead."
     }
-} elseif ($needsDatabase -and -not $startDockerMysql) {
-    Write-Host "Using local MySQL on localhost:3306."
+}
+
+Wait-Port -Port 3306 -Name "MySQL" -TimeoutSeconds 5 | Out-Null
+if (-not (Test-PortListening 3306)) {
+    Write-Host "Warning: MySQL port 3306 is not listening. Start local MySQL first."
 }
 
 $backendDir = Join-Path -Path $projectRoot -ChildPath "backend"
-$weatherProvider = Read-EnvValue $rootEnv "WEATHER_PROVIDER"
+$weatherProvider = Read-EnvValue $localEnv "WEATHER_PROVIDER"
 
 $modelDir = Join-Path -Path $projectRoot -ChildPath "model-service"
 $frontendDir = Join-Path -Path $projectRoot -ChildPath "web-frontend"
 $condaPython = "C:\Users\99140\.conda\envs\d2l\python.exe"
 
+$startBackend = -not $FrontendOnly -and -not $ModelOnly
+$startFrontend = -not $BackendOnly -and -not $ModelOnly
+$startModel = $ModelOnly -or ($WithModel -and -not $BackendOnly -and -not $FrontendOnly)
+
+$selectedServices = @()
+if ($startBackend) {
+    $selectedServices += [pscustomobject]@{ Name = "Backend"; Port = $backendPort; PidFile = (Join-Path $logsDir "backend.pid") }
+}
+if ($startFrontend) {
+    $selectedServices += [pscustomobject]@{ Name = "Frontend"; Port = $frontendPort; PidFile = (Join-Path $logsDir "frontend.pid") }
+}
 if ($startModel) {
-    if (Test-PortListening 9000) {
-        Write-Host "Model service already listening on http://localhost:9000"
-    } elseif (Test-Path -LiteralPath $condaPython) {
+    $selectedServices += [pscustomobject]@{ Name = "Model service"; Port = $modelPort; PidFile = (Join-Path $logsDir "model-service.pid") }
+}
+
+if (-not $NoRestart) {
+    foreach ($service in $selectedServices) {
+        Stop-TrackedProcess -Name $service.Name -PidFile $service.PidFile
+        Stop-PortOwners -Port $service.Port -Name $service.Name
+        Wait-PortFree -Port $service.Port -Name $service.Name | Out-Null
+    }
+}
+
+foreach ($service in $selectedServices) {
+    Assert-PortAvailable -Port $service.Port -Name $service.Name -Force:$ForcePorts
+}
+
+if ($startModel) {
+    if (Test-Path -LiteralPath $condaPython) {
+        $modelCommand = "& $(Format-PSString $condaPython) -m uvicorn app.main:app --host $modelHost --port $modelPort"
         Start-LoggedProcess `
             -Name "model-service" `
             -WorkingDirectory $modelDir `
-            -Command "`"$condaPython`" -m uvicorn app.main:app --host 127.0.0.1 --port 9000" `
+            -Command $modelCommand `
             -OutLog (Join-Path $logsDir "model-service.out.log") `
             -ErrLog (Join-Path $logsDir "model-service.err.log") `
             -PidFile (Join-Path $logsDir "model-service.pid")
@@ -286,47 +487,55 @@ if ($startModel) {
 }
 
 if ($startBackend) {
-    if (Test-PortListening 8080) {
-        Write-Host "Backend already listening on http://localhost:8080"
-    } else {
-        Write-Host "Starting backend with WEATHER_PROVIDER=$weatherProvider."
-        Start-LoggedProcess `
-            -Name "backend" `
-            -WorkingDirectory $backendDir `
-            -Command ".\run-local.ps1" `
-            -OutLog (Join-Path $logsDir "backend.out.log") `
-            -ErrLog (Join-Path $logsDir "backend.err.log") `
-            -PidFile (Join-Path $logsDir "backend.pid")
-    }
+    Write-Host "Starting backend with WEATHER_PROVIDER=$weatherProvider."
+    Start-LoggedProcess `
+        -Name "backend" `
+        -WorkingDirectory $backendDir `
+        -Command ".\run-local.ps1" `
+        -OutLog (Join-Path $logsDir "backend.out.log") `
+        -ErrLog (Join-Path $logsDir "backend.err.log") `
+        -PidFile (Join-Path $logsDir "backend.pid")
 }
 
 if ($startFrontend) {
-    if (Test-PortListening 5173) {
-        Write-Host "Frontend already listening on http://localhost:5173"
-    } else {
-        Start-LoggedProcess `
-            -Name "frontend" `
-            -WorkingDirectory $frontendDir `
-            -Command "npm run dev -- --host 127.0.0.1" `
-            -OutLog (Join-Path $logsDir "frontend.out.log") `
-            -ErrLog (Join-Path $logsDir "frontend.err.log") `
-            -PidFile (Join-Path $logsDir "frontend.pid")
+    if (-not (Test-Path -LiteralPath (Join-Path $frontendDir "node_modules"))) {
+        Write-Host "Warning: web-frontend node_modules not found. Run 'npm install' in web-frontend first."
     }
+
+    $frontendCommand = @(
+        "`$env:CI='true'",
+        "`$env:VITE_DEV_HOST=$(Format-PSString $frontendHost)",
+        "`$env:VITE_DEV_PORT=$(Format-PSString ([string]$frontendPort))",
+        "`$env:VITE_BACKEND_URL=$(Format-PSString $backendUrl)",
+        "npm run dev -- --host $frontendHost --port $frontendPort --strictPort"
+    ) -join "; "
+
+    Start-LoggedProcess `
+        -Name "frontend" `
+        -WorkingDirectory $frontendDir `
+        -Command $frontendCommand `
+        -OutLog (Join-Path $logsDir "frontend.out.log") `
+        -ErrLog (Join-Path $logsDir "frontend.err.log") `
+        -PidFile (Join-Path $logsDir "frontend.pid")
 }
 
 if ($startModel) {
-    Wait-Port -Port 9000 -Name "Model service" -TimeoutSeconds 30 | Out-Null
+    Wait-Port -Port $modelPort -Name "Model service" -TimeoutSeconds 30 | Out-Null
 }
 if ($startBackend) {
-    Wait-Port -Port 8080 -Name "Backend" -TimeoutSeconds 60 | Out-Null
+    Wait-Port -Port $backendPort -Name "Backend" -TimeoutSeconds 60 | Out-Null
 }
 if ($startFrontend) {
-    Wait-Port -Port 5173 -Name "Frontend" -TimeoutSeconds 40 | Out-Null
+    Wait-Port -Port $frontendPort -Name "Frontend" -TimeoutSeconds 40 | Out-Null
 }
 
 Write-Host ""
 Write-Host "Local startup finished."
-Write-Host "Frontend: http://localhost:5173"
-Write-Host "Backend:  http://localhost:8080"
-Write-Host "Model:    http://localhost:9000"
+Write-Host "Frontend: $frontendUrl"
+Write-Host "Backend:  $backendUrl"
+if ($startModel) {
+    Write-Host "Model:    $modelUrl"
+} else {
+    Write-Host "Model:    skipped (use -WithModel when prediction endpoints need it)"
+}
 Write-Host "Logs:     $logsDir"

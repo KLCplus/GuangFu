@@ -4,6 +4,7 @@ import com.example.pvplatform.security.JwtAuthenticationFilter;
 import com.example.pvplatform.module.openapi.security.ApiKeyAuthenticationFilter;
 import com.example.pvplatform.security.RestAccessDeniedHandler;
 import com.example.pvplatform.security.RestAuthenticationEntryPoint;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -27,6 +28,9 @@ public class SecurityConfig {
     private final RestAuthenticationEntryPoint authenticationEntryPoint;
     private final RestAccessDeniedHandler accessDeniedHandler;
     private final ApiKeyAuthenticationFilter apiKeyAuthenticationFilter;
+
+    @Value("${security.debug-open:false}")
+    private boolean debugOpen;
 
     public SecurityConfig(JwtAuthenticationFilter jwtAuthenticationFilter,
                           RestAuthenticationEntryPoint authenticationEntryPoint,
@@ -57,6 +61,20 @@ public class SecurityConfig {
 
     @Bean
     SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+        if (debugOpen) {
+            http
+                .csrf(csrf -> csrf.disable())
+                .cors(cors -> cors.configurationSource(corsConfigurationSource()))
+                .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                .exceptionHandling(ex -> ex
+                    .authenticationEntryPoint(authenticationEntryPoint)
+                    .accessDeniedHandler(accessDeniedHandler))
+                .authorizeHttpRequests(auth -> auth.anyRequest().permitAll())
+                .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
+                .addFilterAfter(apiKeyAuthenticationFilter, JwtAuthenticationFilter.class);
+            return http.build();
+        }
+
         http
             .csrf(csrf -> csrf.disable())
             .cors(cors -> cors.configurationSource(corsConfigurationSource()))

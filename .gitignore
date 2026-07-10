@@ -27,7 +27,7 @@ model-service/venv/
 # Environment and secrets
 .env
 .env.*
-!.env.example
+backend/.env.local
 backend/secrets/*
 !backend/secrets/README.md
 

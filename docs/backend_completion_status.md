@@ -1,4 +1,4 @@
-# 后端收束状态
+﻿# 后端收束状态
 
 更新时间：2026-07-07
 
@@ -6,8 +6,8 @@
 
 后端已经具备前后端联调条件。当前代码覆盖了用户认证、权限、电站、光伏数据、天气、模型、预测、分析报告、开放平台、新闻通知等核心模块。配置入口和前端接口文档已经收敛：
 
-- 配置模板：根目录 `.env.example`
-- 本机真实配置：根目录 `.env`，不提交
+- 配置文件：`backend/.env.local`
+- 本机真实配置：`backend/.env.local`，不提交
 - 一键启动：根目录 `start-local.ps1`
 - 前端接口交付：`docs/back_front_api.md`
 
@@ -84,8 +84,8 @@
 - Redis 可选，支持本地内存降级。
 - Spring Cache 已接入热点数据。
 - Tomcat、HikariCP、Redis、验证码、天气、文件上传等配置参数化。
-- `start-local.ps1` 一键生成 `.env`、启动 Docker MySQL、启动后端。
-- `.env.example` 已覆盖 `application.yml` 中全部环境变量。
+- `start-local.ps1` 一键生成 `backend/.env.local`、检查本机 MySQL、启动后端。
+- `backend/.env.local` 已覆盖 `application.yml` 中全部环境变量。
 
 ## 当前限制
 
@@ -95,7 +95,7 @@
 - 微信/QQ OAuth 未实现，当前可用 `mock` 和 `github`。
 - 人脸识别默认 local provider 只适合流程演示；真实识别需要阿里云配置。
 - Redis 未启用时，验证码、登录锁定和 OpenAPI 限流都是单实例内存状态。
-- 生产化还需要 Dockerfile、CI、健康检查、日志采集、监控告警和数据库迁移工具。
+- 生产化还需要 CI、健康检查、日志采集、监控告警和数据库迁移工具。
 
 ## 可联调判断
 
@@ -105,7 +105,7 @@
 2. 后端通过 `run-local.ps1` 或等价环境变量启动。
 3. 具备管理员账号和普通用户账号。
 4. 需要天气时，目标电站必须配置经纬度。
-5. 需要 QWeather 时，根目录 `.env` 中必须配置 QWeather JWT 凭证和私钥路径。
+5. 需要 QWeather 时，`backend/.env.local` 中必须配置 QWeather JWT 凭证和私钥路径。
 6. 需要预测时，`model-service` 必须启动并可访问。
 7. 前端只按 `docs/back_front_api.md` 对接。
 
@@ -122,13 +122,13 @@ powershell -ExecutionPolicy Bypass -File .\run-local.ps1 -DskipTests compile
 
 - Maven 使用 JDK 23。
 - 后端编译通过。
-- `.env.example` 覆盖 `application.yml` 中全部 69 个环境变量。
+- `backend/.env.local` 覆盖 `application.yml` 中全部 69 个环境变量。
 
 ## 收尾建议
 
 后端代码可以进入交付联调。后续修改应遵守：
 
 - 接口变更同步 `docs/back_front_api.md`。
-- 配置变更同步根目录 `.env.example`。
-- 不提交 `.env`、私钥、JWT、数据库密码、第三方 Key。
+- 配置变更同步 `backend/.env.local`。
+- 不提交 `backend/.env.local`、私钥、JWT、数据库密码、第三方 Key。
 - 部署环境启用 Redis，并对模型服务、天气服务做真实联调验收。

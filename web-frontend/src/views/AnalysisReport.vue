@@ -119,29 +119,25 @@ const form = reactive({
 
 const slashCommands: SlashCommand[] = [
   { command: '/report', title: '综合分析', detail: '调用 /analysis/report', action: 'report' },
-  { command: '/station', title: '电站上下文', detail: '查询电站列表或详情', action: 'station' },
-  { command: '/weather', title: '天气分析', detail: '查询当前天气和预报', action: 'weather' },
-  { command: '/predict', title: '预测解读', detail: '查询预测任务和结果', action: 'predict' },
-  { command: '/api', title: 'API 查看', detail: '查询 API Key 和调用日志', action: 'api' },
-  { command: '/model', title: '模型信息', detail: '查询模型列表或详情', action: 'model' },
-  { command: '/news', title: '新闻资讯', detail: '查询新闻列表或详情', action: 'news' },
-  { command: '/notify', title: '通知中心', detail: '查询通知和未读数', action: 'notify' },
-  { command: '/user', title: '用户资料', detail: '查询当前用户资料', action: 'user' }
+  { command: '/predict', title: '预测解读', detail: '工具尚未接入真实接口', action: 'predict' },
+  { command: '/weather', title: '天气分析', detail: '工具尚未接入真实接口', action: 'weather' },
+  { command: '/station', title: '电站上下文', detail: '工具尚未接入真实接口', action: 'station' },
+  { command: '/api', title: 'API 查看', detail: '工具尚未接入真实接口', action: 'api' }
 ]
 
 const tools: ToolItem[] = [
   { group: '分析', name: '综合分析报告', command: '/report', status: 'connected' },
   { group: '分析', name: '异常诊断', command: '/diagnose', status: 'pending' },
   { group: '分析', name: '运维建议', command: '/ops', status: 'pending' },
-  { group: '数据', name: '电站上下文', command: '/station', status: 'connected' },
-  { group: '数据', name: '天气信息', command: '/weather', status: 'connected' },
-  { group: '数据', name: '预测任务', command: '/predict', status: 'connected' },
-  { group: '模型', name: '模型信息', command: '/model', status: 'connected' },
+  { group: '数据', name: '电站上下文', command: '/station', status: 'pending' },
+  { group: '数据', name: '天气信息', command: '/weather', status: 'pending' },
+  { group: '数据', name: '预测任务', command: '/predict', status: 'pending' },
+  { group: '模型', name: '模型信息', command: '/model', status: 'pending' },
   { group: '模型', name: '云图预测', command: '/cloud', status: 'pending' },
-  { group: '平台', name: 'API 状态', command: '/api', status: 'connected' },
-  { group: '平台', name: '用户资料', command: '/user', status: 'connected' },
-  { group: '平台', name: '新闻资讯', command: '/news', status: 'connected' },
-  { group: '平台', name: '通知中心', command: '/notify', status: 'connected' },
+  { group: '平台', name: 'API 状态', command: '/api', status: 'pending' },
+  { group: '平台', name: '用户资料', command: '/user', status: 'pending' },
+  { group: '平台', name: '新闻资讯', command: '/news', status: 'pending' },
+  { group: '平台', name: '通知中心', command: '/notify', status: 'pending' },
   { group: '平台', name: '报告导出', command: '/export', status: 'pending' }
 ]
 
@@ -199,12 +195,50 @@ const currentSummary = computed(() => {
 
 const currentBody = computed(() => {
   const report = currentReport.value
-  return firstText(report?.markdown, report?.content, report?.reportContent, report?.body)
+  const parsed = parsedReportJson(report)
+  return firstText(report?.markdown, parsed.markdown, report?.content, report?.reportContent, report?.body)
+})
+
+const currentRiskLevel = computed(() => {
+  const report = currentReport.value
+  const parsed = parsedReportJson(report)
+  return firstText(report?.riskLevel, parsed.riskLevel, 'unknown')
+})
+
+const currentSuggestions = computed(() => {
+  const report = currentReport.value
+  const parsed = parsedReportJson(report)
+  return stringList(report?.suggestions, parsed.suggestions, report?.recommendations, report?.suggestion)
+})
+
+const currentModelName = computed(() => firstText(currentReport.value?.modelName, parsedReportJson(currentReport.value).modelName, '未返回'))
+const currentGeneratedAt = computed(() => currentReport.value ? getReportTime(currentReport.value) : '-')
+
+const reportDebugMeta = computed(() => {
+  const report = currentReport.value
+  const parsed = parsedReportJson(report)
+  return {
+    modelName: currentModelName.value,
+    llmEnabled: report?.llmEnabled ?? parsed.llmEnabled ?? null,
+    llmProvider: firstText(report?.llmProvider, parsed.llmProvider, '未返回'),
+    hasRawResponse: Boolean(firstText(report?.rawResponse)),
+    hasPromptSnapshot: Boolean(firstText(report?.promptSnapshot)),
+    hasContextSnapshot: Boolean(firstText(report?.contextSnapshot))
+  }
 })
 
 const reportSections = computed<ReportSection[]>(() => {
   const report = currentReport.value
   if (!report) return []
+  const parsed = parsedReportJson(report)
+  const structured = Array.isArray(report.sections) && report.sections.length > 0 ? report.sections : parsed.sections
+  if (structured.length > 0) {
+    return structured.map((section, index) => ({
+      key: `${section.title || 'section'}-${index}`,
+      title: firstText(section.title, `章节 ${index + 1}`),
+      content: firstText(section.content)
+    }))
+  }
   return [
     { key: 'summary', title: '摘要', content: currentSummary.value },
     { key: 'weather', title: '天气', content: firstText(report.weatherAnalysis) },
@@ -217,9 +251,13 @@ const reportSections = computed<ReportSection[]>(() => {
 
 const copyText = computed(() => {
   if (!currentReport.value) return ''
-  const lines = [`# ${currentTitle.value}`]
+  if (currentBody.value) return currentBody.value
+  const lines = [`# ${currentTitle.value}`, '', currentSummary.value]
   for (const section of reportSections.value) {
     if (section.content) lines.push(`\n## ${section.title}\n${section.content}`)
+  }
+  if (currentSuggestions.value.length > 0) {
+    lines.push(`\n## 建议\n${currentSuggestions.value.map((item) => `- ${item}`).join('\n')}`)
   }
   return lines.join('\n')
 })
@@ -259,6 +297,79 @@ function firstText(...values: unknown[]) {
     if (typeof value === 'string' && value.trim()) return value.trim()
   }
   return ''
+}
+
+function parsedReportJson(report?: AnalysisReportDetail | null) {
+  const empty = {
+    summary: '',
+    riskLevel: '',
+    sections: [] as ReportSection[],
+    suggestions: [] as string[],
+    markdown: '',
+    modelName: '',
+    llmEnabled: null as boolean | null,
+    llmProvider: ''
+  }
+  if (!report?.reportJson || typeof report.reportJson !== 'string') return empty
+  try {
+    const parsed = JSON.parse(report.reportJson) as Record<string, unknown>
+    const sections = Array.isArray(parsed.sections)
+      ? parsed.sections.map((item, index) => {
+        const section = item && typeof item === 'object' ? item as Record<string, unknown> : {}
+        return {
+          key: `${firstText(section.title, 'section')}-${index}`,
+          title: firstText(section.title, `章节 ${index + 1}`),
+          content: firstText(section.content)
+        }
+      })
+      : []
+    return {
+      summary: firstText(parsed.summary),
+      riskLevel: firstText(parsed.riskLevel),
+      sections,
+      suggestions: stringList(parsed.suggestions),
+      markdown: firstText(parsed.markdown),
+      modelName: firstText(parsed.modelName),
+      llmEnabled: typeof parsed.llmEnabled === 'boolean' ? parsed.llmEnabled : null,
+      llmProvider: firstText(parsed.llmProvider)
+    }
+  } catch {
+    return empty
+  }
+}
+
+function stringList(...values: unknown[]) {
+  const result: string[] = []
+  for (const value of values) {
+    if (Array.isArray(value)) {
+      for (const item of value) {
+        const text = firstText(item)
+        if (text) result.push(text)
+      }
+    } else {
+      const text = firstText(value)
+      if (text) {
+        result.push(...text.split(/\n+/).map((item) => item.trim()).filter(Boolean))
+      }
+    }
+  }
+  return Array.from(new Set(result))
+}
+
+function riskClass(riskLevel?: string) {
+  const value = (riskLevel || '').toLowerCase()
+  if (value === 'high') return 'danger'
+  if (value === 'medium') return 'warning'
+  if (value === 'low') return 'success'
+  return 'info'
+}
+
+function riskText(riskLevel?: string) {
+  const value = (riskLevel || '').toLowerCase()
+  if (value === 'high') return '高风险'
+  if (value === 'medium') return '中风险'
+  if (value === 'low') return '低风险'
+  return '未知'
 }
 
 function asPageRecords<T>(value: unknown): T[] {
@@ -542,17 +653,19 @@ function buildPayload(): CreateAnalysisReportRequest | null {
     rightCollapsed.value = false
     return null
   }
+  const typedInstruction = composerText.value.trim().replace(/^\/report\s*/i, '').trim()
   return {
     stationId: form.stationId,
     taskId: form.taskId && form.taskId > 0 ? form.taskId : undefined,
     title: form.title.trim() || `电站 ${form.stationId} 综合分析报告`,
+    userInstruction: typedInstruction || undefined,
     includeWeather: form.includeWeather,
     includePrediction: form.includePrediction
   }
 }
 
 function buildUserTask(payload: CreateAnalysisReportRequest) {
-  const text = composerText.value.trim()
+  const text = firstText(payload.userInstruction, composerText.value.trim())
   if (text && !text.startsWith('/report')) return text
   const parts = []
   if (payload.includeWeather) parts.push('天气分析')
@@ -575,6 +688,7 @@ async function runAnalysis() {
   setStep(0, 'success', `stationId=${payload.stationId}, taskId=${payload.taskId ?? '未传'}`)
   addMessage({ role: 'user', type: 'text', content: taskText })
   addMessage({ role: 'tool', type: 'status', content: '调用工具：综合分析报告' })
+  addMessage({ role: 'agent', type: 'status', content: '正在生成报告...' })
   composerText.value = ''
 
   try {
@@ -877,15 +991,10 @@ async function runToolCommand(command: SlashCommand, args: string[]) {
     await runAnalysis()
     return
   }
-  if (command.action === 'station') return runStationTool(args)
-  if (command.action === 'weather') return runWeatherTool(args)
-  if (command.action === 'predict') return runPredictTool(args)
-  if (command.action === 'api') return runApiTool()
-  if (command.action === 'model') return runModelTool(args)
-  if (command.action === 'news') return runNewsTool(args)
-  if (command.action === 'notify') return runNotifyTool()
-  if (command.action === 'user') return runUserTool()
-  addMessage({ role: 'tool', type: 'status', content: `${command.title} 尚未接入真实接口。` })
+  showSlashMenu.value = false
+  addMessage({ role: 'user', type: 'text', content: [command.command, ...args].join(' ').trim() })
+  addMessage({ role: 'tool', type: 'status', content: '工具尚未接入真实接口。' })
+  composerText.value = ''
 }
 
 function onComposerInput() {
@@ -987,6 +1096,23 @@ async function copyReport() {
   } catch {
     ElMessage.error('复制失败')
   }
+}
+
+async function copySummary() {
+  if (!currentSummary.value) {
+    ElMessage.warning('暂无可复制的摘要')
+    return
+  }
+  try {
+    await navigator.clipboard.writeText(currentSummary.value)
+    ElMessage.success('已复制摘要')
+  } catch {
+    ElMessage.error('复制失败')
+  }
+}
+
+function regenerateDisabled() {
+  ElMessage.info('暂未接入')
 }
 
 function logout() {
@@ -1274,23 +1400,61 @@ loadReports()
 
           <el-tab-pane label="结果" name="result">
             <div class="result-actions">
-              <el-button size="small" :disabled="!currentReport" @click="copyReport">复制</el-button>
-              <el-button size="small" disabled>导出</el-button>
+              <el-button size="small" :disabled="!currentReport" @click="copyReport">复制 Markdown</el-button>
+              <el-button size="small" :disabled="!currentSummary" @click="copySummary">复制摘要</el-button>
+              <el-button size="small" :loading="loadingHistory" @click="loadReports">刷新历史</el-button>
+              <el-button size="small" :disabled="!currentReport" @click="regenerateDisabled">重新生成</el-button>
             </div>
             <el-alert v-if="detailError" class="inline-alert" type="error" :title="detailError" show-icon />
             <div v-loading="loadingDetail" class="preview-pane">
               <el-empty v-if="!currentReport && !loadingDetail" description="暂无结果" />
               <article v-else-if="currentReport">
-                <h3>{{ currentTitle }}</h3>
-                <section v-for="section in reportSections" :key="section.key">
-                  <h4>{{ section.title }}</h4>
-                  <p>{{ section.content || '后端未返回该字段' }}</p>
+                <div class="report-title-line">
+                  <h3>{{ currentTitle }}</h3>
+                  <el-tag size="small" :type="riskClass(currentRiskLevel)">{{ riskText(currentRiskLevel) }}</el-tag>
+                </div>
+                <div class="summary-card">
+                  <span>Summary</span>
+                  <p>{{ currentSummary || '后端未返回摘要' }}</p>
+                </div>
+                <el-collapse class="section-collapse">
+                  <el-collapse-item v-for="section in reportSections" :key="section.key" :title="section.title" :name="section.key">
+                    <p>{{ section.content || '后端未返回该字段' }}</p>
+                  </el-collapse-item>
+                </el-collapse>
+                <section v-if="currentSuggestions.length > 0">
+                  <h4>Suggestions</h4>
+                  <ul class="suggestion-list">
+                    <li v-for="suggestion in currentSuggestions" :key="suggestion">{{ suggestion }}</li>
+                  </ul>
                 </section>
+                <section>
+                  <h4>Markdown</h4>
+                  <pre class="markdown-preview">{{ currentBody || '后端未返回 Markdown 正文' }}</pre>
+                </section>
+                <div class="meta-grid">
+                  <p><span>模型名称</span><strong>{{ currentModelName }}</strong></p>
+                  <p><span>生成时间</span><strong>{{ currentGeneratedAt }}</strong></p>
+                  <p><span>状态</span><strong>{{ currentReport.status || '未返回' }}</strong></p>
+                  <p><span>风险等级</span><strong>{{ currentRiskLevel }}</strong></p>
+                </div>
               </article>
             </div>
           </el-tab-pane>
 
           <el-tab-pane label="调试" name="debug">
+            <div class="debug-meta">
+              <p><span>modelName</span><strong>{{ reportDebugMeta.modelName }}</strong></p>
+              <p><span>llmEnabled</span><strong>{{ reportDebugMeta.llmEnabled === null ? '未返回' : reportDebugMeta.llmEnabled }}</strong></p>
+              <p><span>llmProvider</span><strong>{{ reportDebugMeta.llmProvider }}</strong></p>
+              <p><span>rawResponse</span><strong>{{ reportDebugMeta.hasRawResponse ? '存在' : '不存在' }}</strong></p>
+              <p><span>promptSnapshot</span><strong>{{ reportDebugMeta.hasPromptSnapshot ? '存在' : '不存在' }}</strong></p>
+              <p><span>contextSnapshot</span><strong>{{ reportDebugMeta.hasContextSnapshot ? '存在' : '不存在' }}</strong></p>
+            </div>
+            <details v-if="currentReport?.rawResponse" class="raw-response">
+              <summary>原始响应</summary>
+              <pre>{{ currentReport.rawResponse }}</pre>
+            </details>
             <el-empty v-if="debugRecords.length === 0" description="暂无调用" />
             <div v-else class="debug-list">
               <article v-for="record in debugRecords" :key="`${record.name}-${record.time}-${record.duration}`" class="debug-record">
@@ -2115,6 +2279,13 @@ button {
   gap: 10px;
 }
 
+.report-title-line {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  align-items: center;
+}
+
 .preview-pane h3 {
   font-size: 16px;
 }
@@ -2134,6 +2305,77 @@ button {
   color: #34445f;
   line-height: 1.7;
   white-space: pre-wrap;
+}
+
+.summary-card {
+  display: grid;
+  gap: 5px;
+  padding: 10px;
+  border-radius: 8px;
+  background: rgba(29, 111, 220, 0.07);
+}
+
+.summary-card span,
+.meta-grid span {
+  color: #7a879a;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.section-collapse :deep(.el-collapse-item__content) {
+  padding-bottom: 12px;
+}
+
+.suggestion-list {
+  margin: 0;
+  padding-left: 18px;
+  color: #34445f;
+  line-height: 1.7;
+}
+
+.markdown-preview,
+.raw-response pre {
+  max-height: 260px;
+  overflow: auto;
+  margin: 0;
+  padding: 10px;
+  border-radius: 8px;
+  background: #111827;
+  color: #e5eef9;
+  font-size: 12px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.meta-grid,
+.debug-meta {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.meta-grid p,
+.debug-meta p {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+  margin: 0;
+  padding: 8px;
+  border-radius: 8px;
+  background: rgba(23, 32, 51, 0.045);
+}
+
+.meta-grid strong,
+.debug-meta strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: #34445f;
+  font-size: 12px;
+}
+
+.raw-response {
+  margin-bottom: 10px;
 }
 
 .debug-list {
