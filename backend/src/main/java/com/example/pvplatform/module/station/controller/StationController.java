@@ -30,13 +30,14 @@ public class StationController {
 
     @PostMapping("/api/admin/stations")
     public Result<?> create(@RequestBody StationRequest request) {
-        return Result.success(Map.of("stationId", stationService.create(request)));
+        Long stationId = stationService.create(request);
+        return Result.success(stationService.detail(stationId));
     }
 
     @PutMapping("/api/admin/stations/{stationId}")
     public Result<?> update(@PathVariable Long stationId, @RequestBody StationRequest request) {
         stationService.update(stationId, request);
-        return Result.success(Map.of("stationId", stationId, "updated", true));
+        return Result.success(stationService.detail(stationId));
     }
 
     @DeleteMapping("/api/admin/stations/{stationId}")

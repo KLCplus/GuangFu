@@ -24,7 +24,8 @@ public class NotificationController {
 
     @GetMapping("/unread-count")
     public Result<?> unreadCount() {
-        return Result.success(Map.of("unreadCount", notificationService.unreadCount()));
+        long count = notificationService.unreadCount();
+        return Result.success(Map.of("count", count, "unreadCount", count));
     }
 
     @PutMapping("/{notificationId}/read")

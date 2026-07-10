@@ -8,8 +8,6 @@ import com.example.pvplatform.module.model.service.ModelService;
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.Map;
-
 @RestController
 @RequestMapping("/api/admin")
 public class AdminModelController {
@@ -28,18 +26,18 @@ public class AdminModelController {
     @PostMapping("/models")
     public Result<?> create(@Valid @RequestBody CreateModelRequest request) {
         Long modelId = modelService.create(request);
-        return Result.success(Map.of("modelId", modelId, "modelCode", request.modelCode()));
+        return Result.success(modelService.detail(modelId));
     }
 
     @PutMapping("/models/{modelId}")
     public Result<?> update(@PathVariable Long modelId, @Valid @RequestBody UpdateModelRequest request) {
         modelService.update(modelId, request);
-        return Result.success(Map.of("modelId", modelId));
+        return Result.success(modelService.detail(modelId));
     }
 
     @PutMapping("/models/{modelId}/status")
     public Result<?> updateStatus(@PathVariable Long modelId, @Valid @RequestBody UpdateModelStatusRequest request) {
         modelService.updateStatus(modelId, request.modelStatus());
-        return Result.success(Map.of("modelId", modelId, "modelStatus", request.modelStatus()));
+        return Result.success(modelService.detail(modelId));
     }
 }

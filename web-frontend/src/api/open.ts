@@ -40,12 +40,12 @@ export interface ApiCallLog {
   method?: string
   status?: string
   statusCode?: number
-  costTime?: number
-  requestPath?: string
-  requestMethod?: string
   requestIp?: string
   requestTime?: DateTimeString
   responseTime?: DateTimeString
+  costTime?: number
+  requestPath?: string
+  requestMethod?: string
   costTimeMs?: number
   httpStatus?: number
   bizStatus?: string

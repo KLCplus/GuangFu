@@ -49,8 +49,10 @@ public class OpenApiController {
 
     @GetMapping("/api/open/call-logs")
     public Result<?> callLogs(@RequestParam(defaultValue = "1") int pageNum,
-                              @RequestParam(defaultValue = "10") int pageSize) {
-        return Result.success(callLogService.ownLogs(pageNum, pageSize));
+                              @RequestParam(defaultValue = "10") int pageSize,
+                              @RequestParam(required = false) Long apiKeyId,
+                              @RequestParam(required = false) String status) {
+        return Result.success(callLogService.ownLogs(pageNum, pageSize, apiKeyId, status));
     }
 
     @PostMapping("/openapi/v1/predict")
@@ -73,7 +75,9 @@ public class OpenApiController {
 
     @GetMapping("/api/admin/api-call-logs")
     public Result<?> adminLogs(@RequestParam(defaultValue = "1") int pageNum,
-                               @RequestParam(defaultValue = "10") int pageSize) {
-        return Result.success(callLogService.adminLogs(pageNum, pageSize));
+                               @RequestParam(defaultValue = "10") int pageSize,
+                               @RequestParam(required = false) Long apiKeyId,
+                               @RequestParam(required = false) String status) {
+        return Result.success(callLogService.adminLogs(pageNum, pageSize, apiKeyId, status));
     }
 }

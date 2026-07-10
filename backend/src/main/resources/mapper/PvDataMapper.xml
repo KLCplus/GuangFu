@@ -2,20 +2,33 @@
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
     "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="com.example.pvplatform.persistence.mapper.PvDataMapper">
+    <resultMap id="PvDataVOMap" type="com.example.pvplatform.module.pvdata.vo.PvDataVO">
+        <constructor>
+            <arg column="time" javaType="java.lang.String"/>
+            <arg column="power" javaType="java.lang.Double"/>
+            <arg column="irradiance" javaType="java.lang.Double"/>
+            <arg column="temperature" javaType="java.lang.Double"/>
+        </constructor>
+    </resultMap>
+
     <select id="selectHistoryAggregated"
-            resultType="com.example.pvplatform.module.pvdata.vo.PvDataVO">
-        SELECT DATE_FORMAT(
-                   FROM_UNIXTIME(FLOOR(UNIX_TIMESTAMP(collect_time) / (#{intervalMinutes} * 60))
-                   * (#{intervalMinutes} * 60)), '%Y-%m-%d %H:%i:%s') AS time,
-               AVG(power_kw) AS power,
-               AVG(irradiance_w_m2) AS irradiance,
-               AVG(ambient_temperature_c) AS temperature
-        FROM pv_data
-        WHERE station_id = #{stationId}
-          AND collect_time <![CDATA[ >= ]]> #{startTime}
-          AND collect_time <![CDATA[ <= ]]> #{endTime}
-        GROUP BY FLOOR(UNIX_TIMESTAMP(collect_time) / (#{intervalMinutes} * 60))
-        ORDER BY MIN(collect_time)
+            resultMap="PvDataVOMap">
+        SELECT DATE_FORMAT(FROM_UNIXTIME(bucket * #{intervalMinutes} * 60), '%Y-%m-%d %H:%i:%s') AS time,
+               COALESCE(AVG(power_kw), 0) AS power,
+               COALESCE(AVG(irradiance_w_m2), 0) AS irradiance,
+               COALESCE(AVG(ambient_temperature_c), 0) AS temperature
+        FROM (
+            SELECT FLOOR(UNIX_TIMESTAMP(collect_time) / (#{intervalMinutes} * 60)) AS bucket,
+                   power_kw,
+                   irradiance_w_m2,
+                   ambient_temperature_c
+            FROM pv_data
+            WHERE station_id = #{stationId}
+              AND collect_time <![CDATA[ >= ]]> #{startTime}
+              AND collect_time <![CDATA[ <= ]]> #{endTime}
+        ) t
+        GROUP BY bucket
+        ORDER BY bucket
     </select>
 
     <insert id="batchInsert">

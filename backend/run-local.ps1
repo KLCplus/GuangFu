@@ -59,7 +59,7 @@ $javaHomeCandidates = @(
 ) | Where-Object { $_ }
 
 $javaHome = $javaHomeCandidates | Where-Object {
-    Test-Path -LiteralPath (Join-Path -Path $_ -ChildPath "bin\java.exe")
+    Test-Path -LiteralPath (Join-Path -Path $_ -ChildPath "bin\javac.exe")
 } | Select-Object -First 1
 
 if ($javaHome) {
@@ -157,15 +157,21 @@ Set-AppEnv "PV_IMPORT_MAX_ROWS" "100000"
 
 $rootEnvPath = Join-Path -Path (Split-Path -Parent $projectRoot) -ChildPath ".env"
 $localEnvPath = Join-Path -Path $projectRoot -ChildPath ".env.local"
-if (Test-Path -LiteralPath $rootEnvPath) {
-    Import-EnvFile $rootEnvPath
-}
+# Legacy backend/.env.local is loaded first. The project root .env is the current
+# single source of local configuration and must win when both files exist.
 if (Test-Path -LiteralPath $localEnvPath) {
     Import-EnvFile $localEnvPath
+}
+if (Test-Path -LiteralPath $rootEnvPath) {
+    Import-EnvFile $rootEnvPath
 }
 if (-not (Test-Path -LiteralPath $rootEnvPath) -and -not (Test-Path -LiteralPath $localEnvPath)) {
     Write-Host "Warning: no .env found. Using safe defaults from run-local.ps1."
     Write-Host "Run from project root: powershell -ExecutionPolicy Bypass -File .\start-local.ps1"
+}
+
+if (-not $env:JWT_SECRET -or [Text.Encoding]::UTF8.GetByteCount($env:JWT_SECRET) -lt 32) {
+    throw "JWT_SECRET must be at least 32 bytes. Update the project root .env or run start-local.ps1 to generate one."
 }
 
 $javaExe = Join-Path -Path $env:JAVA_HOME -ChildPath "bin\java.exe"

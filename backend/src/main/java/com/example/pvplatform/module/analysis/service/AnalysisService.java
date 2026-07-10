@@ -54,13 +54,18 @@ public class AnalysisService {
     public AnalysisReportVO report(AnalysisRequest request) {
         Long userId = SecurityUtils.requireCurrentUserId();
         PowerStationDO station = stationPermissionService.requireView(request.stationId());
-        PredictionTaskDO task = taskMapper.selectById(request.taskId());
-        if (task == null || !request.stationId().equals(task.getStationId())
-            || (!stationPermissionService.isAdmin() && !userId.equals(task.getUserId()))) {
-            throw new BusinessException(404, "预测任务不存在");
-        }
-        if (!"SUCCESS".equals(task.getStatus())) {
-            throw new BusinessException(400, "预测任务尚未成功");
+        PredictionTaskDO task = null;
+        if (request.taskId() != null) {
+            task = taskMapper.selectById(request.taskId());
+            if (task == null || !request.stationId().equals(task.getStationId())
+                || (!stationPermissionService.isAdmin() && !userId.equals(task.getUserId()))) {
+                throw new BusinessException(404, "预测任务不存在");
+            }
+            if (!"SUCCESS".equals(task.getStatus())) {
+                throw new BusinessException(400, "预测任务尚未成功");
+            }
+        } else if (request.includePrediction()) {
+            throw new BusinessException(400, "包含预测分析时必须提供 taskId");
         }
 
         PvDataDO latestPv = pvDataMapper.selectOne(Wrappers.<PvDataDO>lambdaQuery()
@@ -77,7 +82,7 @@ public class AnalysisService {
         if (pvRows.size() < 2) {
             throw new BusinessException(400, "数据不足，无法生成报告");
         }
-        List<PredictionResultDO> predictions = resultMapper.selectList(
+        List<PredictionResultDO> predictions = task == null ? List.of() : resultMapper.selectList(
             Wrappers.<PredictionResultDO>lambdaQuery().eq(PredictionResultDO::getTaskId, task.getTaskId())
                 .orderByAsc(PredictionResultDO::getTimeOffsetMinutes));
         if (request.includePrediction() && predictions.size() < 2) {
@@ -111,7 +116,7 @@ public class AnalysisService {
         AnalysisReportDO row = new AnalysisReportDO();
         row.setUserId(userId);
         row.setStationId(station.getStationId());
-        row.setTaskId(task.getTaskId());
+        row.setTaskId(task == null ? null : task.getTaskId());
         row.setTitle(title);
         row.setSummary(summary);
         row.setWeatherAnalysis(weatherText);

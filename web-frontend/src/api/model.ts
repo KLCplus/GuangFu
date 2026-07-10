@@ -43,4 +43,4 @@ export const getAdminModels = () => request.get<Model[]>('/admin/models')
 export const createModel = (data: ModelPayload) => request.post<Model>('/admin/models', data)
 export const updateModel = (modelId: number, data: ModelPayload) => request.put<Model>(`/admin/models/${modelId}`, data)
 export const updateModelStatus = (modelId: number, data: UpdateModelStatusPayload) =>
-  request.put<void>(`/admin/models/${modelId}/status`, data)
+  request.put<Model>(`/admin/models/${modelId}/status`, data)

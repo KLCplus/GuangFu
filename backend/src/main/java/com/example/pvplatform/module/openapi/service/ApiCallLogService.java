@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.example.pvplatform.common.PageResult;
 import com.example.pvplatform.common.exception.BusinessException;
+import com.example.pvplatform.module.openapi.vo.ApiCallLogVO;
 import com.example.pvplatform.persistence.entity.ApiCallLogDO;
 import com.example.pvplatform.persistence.mapper.ApiCallLogMapper;
 import com.example.pvplatform.security.SecurityUtils;
@@ -53,23 +54,55 @@ public class ApiCallLogService {
         }
     }
 
-    public PageResult<ApiCallLogDO> ownLogs(int pageNum, int pageSize) {
-        return logs(pageNum, pageSize, SecurityUtils.requireCurrentUserId());
+    public PageResult<ApiCallLogVO> ownLogs(int pageNum, int pageSize) {
+        return ownLogs(pageNum, pageSize, null, null);
     }
 
-    public PageResult<ApiCallLogDO> adminLogs(int pageNum, int pageSize) {
-        return logs(pageNum, pageSize, null);
+    public PageResult<ApiCallLogVO> ownLogs(int pageNum, int pageSize, Long apiKeyId, String status) {
+        return logs(pageNum, pageSize, SecurityUtils.requireCurrentUserId(), apiKeyId, status);
     }
 
-    private PageResult<ApiCallLogDO> logs(int pageNum, int pageSize, Long userId) {
+    public PageResult<ApiCallLogVO> adminLogs(int pageNum, int pageSize) {
+        return adminLogs(pageNum, pageSize, null, null);
+    }
+
+    public PageResult<ApiCallLogVO> adminLogs(int pageNum, int pageSize, Long apiKeyId, String status) {
+        return logs(pageNum, pageSize, null, apiKeyId, status);
+    }
+
+    private PageResult<ApiCallLogVO> logs(int pageNum, int pageSize, Long userId, Long apiKeyId, String status) {
         if (pageNum < 1 || pageSize < 1 || pageSize > 100) {
             throw new BusinessException(400, "分页参数不合法");
         }
         var query = Wrappers.<ApiCallLogDO>lambdaQuery()
             .eq(userId != null, ApiCallLogDO::getUserId, userId)
+            .eq(apiKeyId != null, ApiCallLogDO::getApiKeyId, apiKeyId)
+            .eq(status != null && !status.isBlank(), ApiCallLogDO::getBizStatus, status)
             .orderByDesc(ApiCallLogDO::getRequestTime);
         Page<ApiCallLogDO> page = logMapper.selectPage(new Page<>(pageNum, pageSize), query);
-        return new PageResult<>(page.getTotal(), pageNum, pageSize, page.getRecords());
+        return new PageResult<>(page.getTotal(), pageNum, pageSize,
+            page.getRecords().stream().map(this::toVO).toList());
+    }
+
+    private ApiCallLogVO toVO(ApiCallLogDO row) {
+        return new ApiCallLogVO(
+            row.getLogId(),
+            row.getApiKeyId(),
+            row.getModelId(),
+            row.getRequestPath(),
+            row.getRequestMethod(),
+            row.getRequestIp(),
+            row.getRequestTime(),
+            row.getResponseTime(),
+            row.getCostTimeMs(),
+            row.getCostTimeMs(),
+            row.getHttpStatus(),
+            row.getBizStatus(),
+            row.getErrorMessage(),
+            row.getRequestSummary(),
+            row.getResponseSummary(),
+            row.getRequestTime()
+        );
     }
 
     private String sanitize(String value) {
