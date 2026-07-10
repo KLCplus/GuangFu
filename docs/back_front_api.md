@@ -721,37 +721,27 @@ GET  /api/predictions/history?pageNum=1&pageSize=10&stationId=&modelId=&status=
 {
   "stationId": 1,
   "modelId": 1,
-  "inputMode": "STATION_HISTORY",
-  "inputStartTime": "2026-07-06 10:00:00",
-  "inputEndTime": "2026-07-06 10:30:00"
-}
-```
-
-预测任务响应关键字段：
-
-```json
-{
-  "taskId": 1001,
-  "taskNo": "PRED-xxx",
-  "taskStatus": "SUCCESS",
-  "modelName": "LSTM 光伏功率预测",
-  "modelCode": "lstm_v1",
-  "stationId": 1,
-  "inputMode": "STATION_HISTORY",
-  "createdAt": "2026-07-06 10:30:00",
-  "costTime": 120,
-  "predictions": [
-    {
-      "timeOffset": 5,
-      "predictTime": "2026-07-06 10:35:00",
-      "predictPower": 530.2,
-      "actualPowerKw": null,
-      "errorValue": null,
-      "errorRate": null
-    }
+  "inputMode": "MANUAL_MULTIMODAL",
+  "numericValues": [
+    { "time": "2026-07-06 10:00:00", "value": 500.2 }
+  ],
+  "inputImages": [
+    { "time": "2026-07-06 10:00:00", "image": "data:image/png;base64,..." }
   ]
 }
 ```
+
+`numericValues` 必须正好 30 个数值，`inputImages` 必须正好 30 张图片；两组数据都按时间升序排列，时间间隔均为 1 分钟，且同一序号的数值和图片时间必须一致。图片支持 data URL 或纯 base64 字符串。
+
+创建预测响应：
+
+```json
+{
+  "taskId": 1001
+}
+```
+
+预测任务详情和结果通过下面两个接口查询。
 
 `GET /api/predictions/{taskId}` 返回任务详情，不包含 `predictions`：
 
@@ -1002,11 +992,14 @@ X-API-KEY: <api-key>
       "temperature": 31.2,
       "irradiance": 820.5
     }
+  ],
+  "inputImages": [
+    { "time": "2026-07-06 10:00:00", "image": "data:image/png;base64,..." }
   ]
 }
 ```
 
-`input` 必须正好 30 帧。
+`input` 必须正好 30 帧，`inputImages` 必须正好 30 张图片；两组数据都按时间升序排列，时间间隔均为 1 分钟，且同一序号时间必须一致。
 
 ### 14.3 管理员开放平台
 

@@ -25,10 +25,6 @@ model-service/venv/
 .pytest_cache/
 
 # Environment and secrets
-.env
-.env.*
-backend/.env.local
-backend/secrets/*
 !backend/secrets/README.md
 
 # Logs

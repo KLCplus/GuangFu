@@ -88,6 +88,17 @@ function predictionInput() {
   })
 }
 
+function predictionImages() {
+  const start = new Date(Date.now() - 29 * 60 * 1000)
+  return Array.from({ length: 30 }, (_, index) => {
+    const time = new Date(start.getTime() + index * 60 * 1000)
+      .toISOString()
+      .replace('T', ' ')
+      .slice(0, 19)
+    return { time, image: 'data:image/png;base64,aGVsbG8=' }
+  })
+}
+
 const tests = [
   { name: 'auth.login.missing', method: 'POST', path: '/api/auth/login', body: {}, expect: (s) => s >= 400 },
   { name: 'auth.profile.no-token', method: 'GET', path: '/api/user/profile', expect: (s) => s === 401 || s === 403 },
@@ -127,7 +138,7 @@ const tests = [
     name: 'openapi.predict.no-key',
     method: 'POST',
     path: '/openapi/v1/predict',
-    body: { stationId, modelName: 'DLinear', input: predictionInput() },
+    body: { stationId, modelName: 'DLinear', input: predictionInput(), inputImages: predictionImages() },
     expect: (s) => s === 401 || s === 403
   },
   {
@@ -135,7 +146,7 @@ const tests = [
     method: 'POST',
     path: '/openapi/v1/predict',
     auth: 'apiKey',
-    body: { stationId, modelName: 'DLinear', input: predictionInput() },
+    body: { stationId, modelName: 'DLinear', input: predictionInput(), inputImages: predictionImages() },
     skip: !apiKey
   },
   { name: 'news.list', method: 'GET', path: '/api/news?pageNum=1&pageSize=10', auth: 'jwt' },

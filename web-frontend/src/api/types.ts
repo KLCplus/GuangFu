@@ -999,6 +999,22 @@ export interface UpdateModelStatusBody {
   modelStatus: ModelStatus
 }
 
+/** 预测数值输入点 */
+export interface PredictionNumericValue {
+  /** 采集时间 */
+  time: DateTimeString
+  /** 数值 */
+  value: number
+}
+
+/** 预测图片输入帧 */
+export interface PredictionImageFrame {
+  /** 采集时间 */
+  time: DateTimeString
+  /** data URL 或纯 base64 图片 */
+  image: string
+}
+
 /** 创建预测请求体 */
 export interface PredictionCreateBody {
   /** 电站 ID */
@@ -1011,6 +1027,10 @@ export interface PredictionCreateBody {
   inputStartTime?: DateTimeString
   /** 输入结束时间 */
   inputEndTime?: DateTimeString
+  /** 30 个数值点，1 分钟间隔 */
+  numericValues: PredictionNumericValue[]
+  /** 30 张图片，1 分钟间隔 */
+  inputImages: PredictionImageFrame[]
 }
 
 /** 预测任务路径参数 */
@@ -1264,7 +1284,7 @@ export type CreateModelApi = ApiEndpoint<NoParams, ModelBody, ModelDetail>
 export type UpdateModelApi = ApiEndpoint<ModelIdParams, ModelBody, ModelDetail>
 export type UpdateModelStatusApi = ApiEndpoint<ModelIdParams, UpdateModelStatusBody, void>
 
-export type CreatePredictionApi = ApiEndpoint<NoParams, PredictionCreateBody, PredictionTaskResponse>
+export type CreatePredictionApi = ApiEndpoint<NoParams, PredictionCreateBody, { taskId: number }>
 export type PredictionDetailApi = ApiEndpoint<PredictionTaskParams, NoBody, PredictionTaskResponse>
 export type PredictionResultsApi = ApiEndpoint<PredictionTaskParams, NoBody, PredictionResultItem[]>
 export type PredictionHistoryApi = ApiEndpoint<PredictionHistoryParams, NoBody, PageResult<PredictionTaskResponse>>

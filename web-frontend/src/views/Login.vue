@@ -66,6 +66,13 @@ function firstQueryValue(value: unknown) {
   return Array.isArray(value) ? value[0] : typeof value === 'string' ? value : ''
 }
 
+function getOAuthRedirectUri() {
+  const loc = window.location
+  const callbackHost = loc.hostname === "127.0.0.1" ? "localhost" : loc.hostname
+  const callbackPort = loc.port ? ":" + loc.port : ""
+  return loc.protocol + "//" + callbackHost + callbackPort + "/login"
+}
+
 function saveLogin(result: LoginResult) {
   userStore.setToken(result.token)
   userStore.setRefreshToken(result.refreshToken)
@@ -128,7 +135,7 @@ async function handleOAuthReturn() {
       const result = await oauthCallback(provider, {
         code,
         state,
-        redirectUri: `${window.location.origin}/login`
+        redirectUri: getOAuthRedirectUri()
       })
       await finishLogin(result)
     } catch (err) {
@@ -311,9 +318,10 @@ async function loginWithGithub() {
   loading.value = true
   try {
     const result = await getOAuthAuthorizeUrl('github', {
-      redirectUri: `${window.location.origin}/login`
+      redirectUri: getOAuthRedirectUri()
     })
-    window.location.href = result.authorizeUrl
+    if (!result.authorizeUrl) throw new Error('未获取到 GitHub 授权地址')
+    window.location.assign(result.authorizeUrl)
   } catch (err) {
     ElMessage.error(err instanceof Error ? err.message : 'GitHub 登录暂不可用')
     loading.value = false

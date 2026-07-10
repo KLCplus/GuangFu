@@ -71,7 +71,7 @@ class ModelServiceClientTest {
     @Test
     void shouldCallPredictAndValidateResponse() {
         ModelPredictResponse response = modelServiceClient.predict(
-            new ModelPredictRequest("iTransformer", numericFrames()),
+            new ModelPredictRequest("iTransformer", numericFrames(), imageFrames()),
             "iTransformer",
             6);
 
@@ -86,7 +86,7 @@ class ModelServiceClientTest {
     void shouldMapModelServiceValidationErrorToBusinessException() {
         BusinessException ex = assertThrows(BusinessException.class, () ->
             modelServiceClient.predict(
-                new ModelPredictRequest("Unknown", numericFrames()),
+                new ModelPredictRequest("Unknown", numericFrames(), imageFrames()),
                 "Unknown",
                 6));
 
@@ -117,6 +117,15 @@ class ModelServiceClientTest {
               }
             }
             """);
+    }
+
+    private List<ModelPredictRequest.ImageFrame> imageFrames() {
+        LocalDateTime start = LocalDateTime.of(2026, 7, 6, 10, 0);
+        return IntStream.range(0, 30)
+            .mapToObj(i -> new ModelPredictRequest.ImageFrame(
+                start.plusMinutes(i).format(FORMATTER),
+                "data:image/png;base64,aGVsbG8="))
+            .toList();
     }
 
     private List<ModelPredictRequest.InputFrame> numericFrames() {

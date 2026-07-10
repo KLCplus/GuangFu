@@ -7,6 +7,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.client.reactive.ReactorClientHttpConnector;
 import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.client.WebClient;
+import org.springframework.web.reactive.function.client.WebClientResponseException;
 import reactor.netty.http.client.HttpClient;
 
 import java.math.BigDecimal;
@@ -33,6 +34,7 @@ public class QWeatherProvider implements WeatherProvider {
     public QWeatherProvider(WeatherProperties properties) {
         this.properties = properties;
         HttpClient httpClient = HttpClient.create()
+            .compress(true)
             .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, properties.getConnectTimeout())
             .responseTimeout(Duration.ofMillis(properties.getResponseTimeout()));
         this.client = WebClient.builder().baseUrl(properties.getBaseUrl())
@@ -63,8 +65,10 @@ public class QWeatherProvider implements WeatherProvider {
                 kmhToMs(now.windSpeed()), parseTime(now.obsTime()));
         } catch (BusinessException exception) {
             throw exception;
+        } catch (WebClientResponseException exception) {
+            throw unavailable(exception);
         } catch (RuntimeException exception) {
-            throw unavailable();
+            throw unavailable(exception);
         }
     }
 
@@ -88,8 +92,39 @@ public class QWeatherProvider implements WeatherProvider {
                 day.windDirDay(), day.windScaleDay())).toList();
         } catch (BusinessException exception) {
             throw exception;
+        } catch (WebClientResponseException exception) {
+            throw unavailable(exception);
         } catch (RuntimeException exception) {
-            throw unavailable();
+            throw unavailable(exception);
+        }
+    }
+
+    @Override
+    public WeatherLocation resolveLocation(String location) {
+        requireConfigured();
+        if (location == null || location.isBlank()) {
+            throw new BusinessException(400, "地点不能为空");
+        }
+        try {
+            LookupResponse response = client.get().uri(builder -> builder.path("/geo/v2/city/lookup")
+                    .queryParam("location", location.trim())
+                    .queryParam("lang", "zh").build())
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + createJwt())
+                .retrieve().bodyToMono(LookupResponse.class)
+                .block(Duration.ofMillis(properties.getResponseTimeout() + 500L));
+            if (response == null || !"200".equals(response.code())
+                || response.location() == null || response.location().isEmpty()) {
+                throw new BusinessException(404, "未找到该地点的天气位置");
+            }
+            LookupLocation first = response.location().get(0);
+            return new WeatherLocation(first.name(), decimal(first.lon()).doubleValue(),
+                decimal(first.lat()).doubleValue());
+        } catch (BusinessException exception) {
+            throw exception;
+        } catch (WebClientResponseException exception) {
+            throw unavailable(exception);
+        } catch (RuntimeException exception) {
+            throw unavailable(exception);
         }
     }
 
@@ -215,6 +250,25 @@ public class QWeatherProvider implements WeatherProvider {
         return new BusinessException(502, "调用和风天气接口失败");
     }
 
+    private BusinessException unavailable(WebClientResponseException exception) {
+        String body = exception.getResponseBodyAsString();
+        String detail = body == null || body.isBlank() ? exception.getStatusCode().toString() : body;
+        return new BusinessException(502, "调用和风天气接口失败: " + abbreviate(detail));
+    }
+
+    private BusinessException unavailable(RuntimeException exception) {
+        String message = exception.getMessage();
+        return new BusinessException(502, "调用和风天气接口失败: "
+            + abbreviate(message == null ? exception.getClass().getSimpleName() : message));
+    }
+
+    private String abbreviate(String value) {
+        String normalized = value.replaceAll("\\s+", " ").trim();
+        return normalized.length() <= 240 ? normalized : normalized.substring(0, 240);
+    }
+
+    private record LookupResponse(String code, List<LookupLocation> location) {}
+    private record LookupLocation(String name, String lon, String lat) {}
     private record NowResponse(String code, Now now) {}
     private record Now(String obsTime, String temp, String icon, String text, String humidity,
                        String windDir, String windScale, String windSpeed) {}

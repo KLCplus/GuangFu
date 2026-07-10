@@ -29,11 +29,12 @@ public class PredictionExecutionService {
      * 执行预测调用（无数据库事务）。
      * 返回响应数据，异常时抛出 BusinessException。
      */
-    public ModelPredictResponse.Data execute(ModelInfoDO model, List<ModelInputFrame> frames) {
+    public ModelPredictResponse.Data execute(ModelInfoDO model, List<ModelInputFrame> frames,
+                                             List<ModelPredictRequest.ImageFrame> imageFrames) {
         long startMs = System.currentTimeMillis();
 
         ModelPredictRequest request = ModelRequestConverter.toPredictRequest(
-                model.getServiceModelName(), frames);
+                model.getServiceModelName(), frames, imageFrames);
 
         ModelPredictResponse response = modelServiceClient.predict(
                 request, model.getServiceModelName(), model.getOutputSteps());

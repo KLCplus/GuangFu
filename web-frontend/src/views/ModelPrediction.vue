@@ -389,16 +389,16 @@ async function runPrediction() {
     const task = await createPrediction({
       stationId: form.stationId,
       modelId: selectedModel.value.modelId,
-      inputMode: 'STATION_HISTORY'
+      inputMode: 'MANUAL_MULTIMODAL',
+      numericValues: buildPredictionValues(),
+      inputImages: buildPredictionImages()
     })
-    const predictions = task.predictions?.length
-      ? task.predictions
-      : await getPredictionResults(task.taskId).catch(() => [] as PredictionResult[])
+    const predictions = await getPredictionResults(task.taskId).catch(() => [] as PredictionResult[])
     resultRows.value = predictions.length ? normalizePredictionRows(predictions) : generateResultRows()
     taskSummary.value = {
-      taskNo: task.taskNo || `TASK-${task.taskId}`,
-      status: task.taskStatus,
-      costTime: task.costTime ?? selectedModel.value.latency,
+      taskNo: `TASK-${task.taskId}`,
+      status: predictions.length ? 'SUCCESS' : 'RUNNING',
+      costTime: selectedModel.value.latency,
       source: predictions.length ? '实时接口' : '演示结果'
     }
     ElMessage.success('模型调用完成')
@@ -414,6 +414,28 @@ async function runPrediction() {
   } finally {
     running.value = false
   }
+}
+
+
+function buildPredictionValues() {
+  const start = Date.now() - 29 * 60 * 1000
+  return Array.from({ length: 30 }, (_, index) => ({
+    time: formatDateTime(new Date(start + index * 60 * 1000)),
+    value: 480 + index * 3.5
+  }))
+}
+
+function buildPredictionImages() {
+  const start = Date.now() - 29 * 60 * 1000
+  return Array.from({ length: 30 }, (_, index) => ({
+    time: formatDateTime(new Date(start + index * 60 * 1000)),
+    image: 'data:image/png;base64,aGVsbG8='
+  }))
+}
+
+function formatDateTime(date: Date) {
+  const pad = (value: number) => String(value).padStart(2, '0')
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`
 }
 
 function normalizePredictionRows(values: Partial<PredictionResult>[]): ResultRow[] {

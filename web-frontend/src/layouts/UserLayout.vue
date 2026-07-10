@@ -13,6 +13,7 @@ const menus = [
   { path: '/dashboard', label: '看板' },
   { path: '/models/use', label: '模型' },
   { path: '/cloud-forecast', label: '云图' },
+  { path: '/weather', label: '天气' },
   { path: '/marketplace', label: '广场' },
   { path: '/api', label: 'API' },
   { path: '/reports', label: '报告' },

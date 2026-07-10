@@ -12,7 +12,8 @@ public final class ModelRequestConverter {
 
     private ModelRequestConverter() {}
 
-    public static ModelPredictRequest toPredictRequest(String serviceModelName, List<ModelInputFrame> frames) {
+    public static ModelPredictRequest toPredictRequest(String serviceModelName, List<ModelInputFrame> frames,
+                                                       List<ModelPredictRequest.ImageFrame> imageFrames) {
         List<ModelPredictRequest.InputFrame> inputFrames = frames.stream()
                 .map(f -> new ModelPredictRequest.InputFrame(
                         f.time().format(FORMATTER),
@@ -20,6 +21,6 @@ public final class ModelRequestConverter {
                         f.temperature(),
                         f.irradiance()))
                 .toList();
-        return new ModelPredictRequest(serviceModelName, inputFrames);
+        return new ModelPredictRequest(serviceModelName, inputFrames, imageFrames);
     }
 }

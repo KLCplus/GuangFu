@@ -29,7 +29,7 @@ class ModelServiceIntegrationTest {
 
         ModelServiceClient client = new ModelServiceClient(webClient);
         ModelPredictResponse response = client.predict(
-            new ModelPredictRequest("iTransformer", numericFrames()),
+            new ModelPredictRequest("iTransformer", numericFrames(), imageFrames()),
             "iTransformer",
             6);
 
@@ -39,6 +39,15 @@ class ModelServiceIntegrationTest {
         assertEquals(List.of(5, 10, 15, 20, 25, 30),
             response.data().predictions().stream().map(ModelPredictResponse.Prediction::timeOffset).toList());
         assertTrue(response.data().costTime() >= 0);
+    }
+
+    private List<ModelPredictRequest.ImageFrame> imageFrames() {
+        LocalDateTime start = LocalDateTime.of(2026, 7, 6, 10, 0);
+        return IntStream.range(0, 30)
+            .mapToObj(i -> new ModelPredictRequest.ImageFrame(
+                start.plusMinutes(i).format(FORMATTER),
+                "data:image/png;base64,aGVsbG8="))
+            .toList();
     }
 
     private List<ModelPredictRequest.InputFrame> numericFrames() {

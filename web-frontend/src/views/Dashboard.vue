@@ -4,7 +4,8 @@ import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { getDashboardOverview } from '../api/dashboard'
 import type { DashboardResource } from '../api/dashboard'
-import { getCurrentWeather, getForecast, getRealtime, getStations } from '../api/station'
+import { getRealtime, getStations } from '../api/station'
+import { getCurrentWeather, getForecast, getLocationCurrentWeather, getLocationForecast } from '../api/weather'
 import { mockForecast, mockRealtime, mockStations, mockWeather } from '../data/mock'
 
 interface StationOption {
@@ -63,6 +64,8 @@ const selectedStationId = ref<number>()
 const dataSource = ref('接口优先')
 const lastUpdate = ref('')
 const dashboardResources = ref<DashboardResource[]>([])
+const weatherError = ref('')
+const weatherLocation = ref('')
 
 const weather = ref<WeatherSnapshot>(normalizeWeather(mockWeather, 1))
 const forecasts = ref<ForecastRow[]>(mockForecast.map(normalizeForecast))
@@ -211,15 +214,17 @@ async function loadDashboard() {
   ])
 
   if (weatherResult.status === 'fulfilled') {
+    weatherError.value = ''
     weather.value = normalizeWeather(weatherResult.value, stationId)
   } else {
-    weather.value = normalizeWeather(mockWeather, stationId)
+    weatherError.value = weatherResult.reason instanceof Error ? weatherResult.reason.message : '天气接口调用失败'
+    weather.value = unavailableWeather(weatherError.value)
   }
 
   if (forecastResult.status === 'fulfilled' && forecastResult.value.length) {
     forecasts.value = forecastResult.value.slice(0, 3).map(normalizeForecast)
   } else {
-    forecasts.value = mockForecast.map(normalizeForecast)
+    forecasts.value = []
   }
 
   if (realtimeResult.status === 'fulfilled') {
@@ -231,7 +236,7 @@ async function loadDashboard() {
   const usingFallback = [weatherResult, forecastResult, realtimeResult].some(
     (item) => item.status === 'rejected'
   )
-  dataSource.value = usingFallback ? '演示数据' : '实时接口'
+  dataSource.value = usingFallback ? '部分接口' : '实时接口'
   lastUpdate.value = weather.value.reportTime || realtime.value.collectTime
   loading.value = false
 }
@@ -275,11 +280,32 @@ function applyDashboardOverview(overview: Awaited<ReturnType<typeof getDashboard
     }))
   }
   selectedStationId.value = overview.selectedStationId ?? selectedStationId.value
-  if (overview.weather) weather.value = normalizeWeather(overview.weather, overview.selectedStationId ?? 1)
-  if (overview.forecasts?.length) forecasts.value = overview.forecasts.slice(0, 3).map(normalizeForecast)
+  if (overview.weather) {
+    weatherError.value = ''
+    weather.value = normalizeWeather(overview.weather, overview.selectedStationId ?? 1)
+  } else if (overview.dataSource === 'PARTIAL') {
+    weatherError.value = '后端天气接口未返回数据'
+    weather.value = unavailableWeather(weatherError.value)
+  }
+  forecasts.value = overview.forecasts?.length ? overview.forecasts.slice(0, 3).map(normalizeForecast) : []
   if (overview.realtime) realtime.value = normalizeRealtime(overview.realtime)
   dashboardResources.value = overview.resources ?? []
   lastUpdate.value = overview.lastUpdate || weather.value.reportTime || realtime.value.collectTime
+}
+
+function unavailableWeather(message = '天气接口暂不可用'): WeatherSnapshot {
+  return {
+    weather: '天气不可用',
+    temperature: 0,
+    humidity: 0,
+    windDirection: '-',
+    windPower: '-',
+    windSpeed: 0,
+    cloud: 0,
+    reportTime: '',
+    source: message,
+    cached: true
+  }
 }
 
 function normalizeWeather(value: Partial<WeatherSnapshot>, stationId: number): WeatherSnapshot {
@@ -318,6 +344,33 @@ function normalizeRealtime(value: Partial<RealtimeSnapshot>): RealtimeSnapshot {
     temperature: Number(value.temperature ?? mockRealtime.temperature),
     humidity: Number(value.humidity ?? mockRealtime.humidity),
     windSpeed: Number(value.windSpeed ?? mockRealtime.windSpeed)
+  }
+}
+
+async function loadLocationWeather() {
+  if (!weatherLocation.value.trim()) {
+    ElMessage.warning('请输入城市或地点名称')
+    return
+  }
+  loading.value = true
+  try {
+    const params = { location: weatherLocation.value.trim() }
+    const [currentResult, forecastResult] = await Promise.all([
+      getLocationCurrentWeather(params),
+      getLocationForecast(params)
+    ])
+    weatherError.value = ''
+    weather.value = normalizeWeather(currentResult, selectedStationId.value ?? 1)
+    forecasts.value = forecastResult.slice(0, 3).map(normalizeForecast)
+    dataSource.value = '地点天气'
+    lastUpdate.value = weather.value.reportTime
+  } catch (error) {
+    weatherError.value = error instanceof Error ? error.message : '地点天气查询失败'
+    weather.value = unavailableWeather(weatherError.value)
+    forecasts.value = []
+    ElMessage.error(weatherError.value)
+  } finally {
+    loading.value = false
   }
 }
 
@@ -406,6 +459,26 @@ function openReport() {
           </div>
         </div>
 
+        <div class="weather-query">
+          <el-input
+            v-model="weatherLocation"
+            placeholder="输入城市或地点，如 成都、上海"
+            clearable
+            @keyup.enter="loadLocationWeather"
+          />
+          <el-button @click="loadLocationWeather">查询地点天气</el-button>
+          <el-button text @click="loadDashboard">返回电站天气</el-button>
+        </div>
+
+        <el-alert
+          v-if="weatherError"
+          class="weather-alert"
+          :title="weatherError"
+          type="warning"
+          show-icon
+          :closable="false"
+        />
+
         <div class="weather-main">
           <strong>{{ weather.temperature }} C</strong>
           <div>
@@ -422,6 +495,11 @@ function openReport() {
         </div>
 
         <div class="forecast-list">
+          <div v-if="!forecasts.length" class="forecast-row empty-forecast">
+            <span>-</span>
+            <strong>暂无预报数据</strong>
+            <em>-</em>
+          </div>
           <div v-for="item in forecasts" :key="item.date" class="forecast-row">
             <span>{{ item.date.slice(5) }}</span>
             <strong>{{ item.dayWeather }} / {{ item.nightWeather }}</strong>
@@ -689,6 +767,21 @@ function openReport() {
   transform: rotate(15deg);
 }
 
+.weather-query {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) auto auto;
+  gap: 10px;
+  margin-top: 22px;
+}
+
+.weather-alert {
+  position: relative;
+  z-index: 1;
+  margin-top: 14px;
+}
+
 .weather-main {
   display: flex;
   align-items: flex-end;
@@ -757,6 +850,10 @@ function openReport() {
 .forecast-row em {
   color: #ffffff;
   font-style: normal;
+}
+
+.empty-forecast {
+  opacity: 0.82;
 }
 
 .resource-list {
@@ -830,6 +927,10 @@ function openReport() {
   .weather-main {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .weather-query {
+    grid-template-columns: 1fr;
   }
 
   .weather-main strong {

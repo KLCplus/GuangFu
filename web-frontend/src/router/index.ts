@@ -28,6 +28,7 @@ const routes: RouteRecordRaw[] = [
       { path: 'dashboard', name: 'Dashboard', component: () => import('../views/Dashboard.vue'), meta: { title: '看板' } },
       { path: 'models/use', name: 'ModelUse', component: () => import('../views/ModelPrediction.vue'), meta: { title: '模型' } },
       { path: 'cloud-forecast', name: 'CloudForecast', component: () => import('../views/CloudForecast.vue'), meta: { title: '云图' } },
+      { path: 'weather', name: 'Weather', component: () => import('../views/Weather.vue'), meta: { title: '天气' } },
       { path: 'marketplace', name: 'Marketplace', component: () => import('../views/Marketplace.vue'), meta: { title: '广场' } },
       { path: 'api', name: 'ApiManage', component: () => import('../views/ApiPlatform.vue'), meta: { title: 'API' } },
       { path: 'reports', name: 'Reports', component: () => import('../views/AnalysisReport.vue'), meta: { title: '报告' } },
