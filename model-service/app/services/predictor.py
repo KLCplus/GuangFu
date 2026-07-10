@@ -23,6 +23,7 @@ MODEL_NAMES = [
     "CNN_LSTM",
     "3DCNN_LSTM",
     "ConvLSTM_LSTM",
+    "SimVP_Cloud",
 ]
 
 

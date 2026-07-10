@@ -4,7 +4,7 @@
 
 ## 1. 当前交付边界
 
-- 当前服务已经接入 `19` 个模型。
+- 当前服务已经接入 `20` 个模型（含云图预测模型）。
 - 对外统一业务输入为 `30` 个 `1` 分钟时间步。
 - 对外统一业务输出为未来 `6` 个 `5` 分钟时间步。
 - 服务端不会依赖任何本地云图库。
@@ -14,6 +14,7 @@
 ## 2. 文档入口
 
 - 对外 API 文档：`docs/api/MODEL_API_USAGE.md`
+- 云图预测 API 文档：`docs/api/CLOUD_API_USAGE.md`
 - 模型效果记录：`docs/reports/model_prediction_record.csv`
 - 模型效果汇总：`docs/reports/model_prediction_summary.csv`
 
@@ -39,6 +40,15 @@
   - 暴露 `POST /model-api/predict`
   - 将 `ValueError` / `FileNotFoundError` 统一转成 `400`
   - 维护对外展示的模型元信息 `_MODEL_META`
+
+### 3.2.1 云图预测路由
+
+- 文件：`cloud_prediction/router.py`
+- 作用：
+  - 暴露 `GET /cloud-api/models`
+  - 暴露 `POST /cloud-api/predict`
+  - 与功率预测路由（`/model-api/*`）独立，互不影响
+  - 云图预测模型也注册在 `_MODEL_META` 中，类型为 `CLOUD_PREDICTION`
 
 ### 3.3 模型路由代理
 
@@ -111,6 +121,22 @@
 - 必须显式传云图
 - 数值分支只依赖 `power`
 
+### 4.4 CLOUD_PREDICTION
+
+包含：
+
+- `SimVP_Cloud`
+
+调用要求：
+
+- 独立于功率预测接口，走 `/cloud-api/predict`
+- 输入 10 张云图（Base64 编码），不要求功率值
+- 输出 10 张预测云图（Base64 PNG），不是功率值
+- 模型为 SimVP (IncepU)，与功率预测中的 `SimVP_gSTA` 不同：
+  - `SimVP_gSTA`：6 帧 64×64 输入 → 6 个功率值
+  - `SimVP_Cloud`：10 帧 128×128 输入 → 10 帧预测云图
+- 不参与服务端 30→6 聚合，直接使用原始图片
+
 ## 5. 为什么服务端仍然做 30->6 聚合
 
 业务侧接口已经固定为 `30` 个 1 分钟点输入，但当前可用 checkpoint 的内部时序长度仍然按较短步长工作，因此服务端在 `model_adapter.py` 中统一做一次聚合。
@@ -177,6 +203,7 @@
 - 修改模型路由策略：`app/services/predictor.py`
 - 修改预处理、聚合、图像装载、模型前向：`app/services/model_adapter.py`
 - 修改对外文档：`docs/api/MODEL_API_USAGE.md`
+- 修改云图预测对外文档：`docs/api/CLOUD_API_USAGE.md`
 - 修改 Java 客户端 DTO：`../backend/src/main/java/com/example/pvplatform/client/dto/ModelPredictRequest.java`
 
 ## 8. 新增模型时的最小步骤

@@ -34,6 +34,8 @@ _MODEL_META = {
     "CNN_LSTM":      ("FUSION", "CNN-LSTM 图像CNN+数值LSTM融合模型"),
     "3DCNN_LSTM":    ("FUSION", "3DCNN-LSTM 三维CNN+LSTM时空融合模型"),
     "ConvLSTM_LSTM": ("FUSION", "ConvLSTM-LSTM 卷积LSTM+数值LSTM融合模型"),
+    # 云图预测模型
+    "SimVP_Cloud":  ("CLOUD_PREDICTION", "SimVP (IncepU) 云图预测模型，输入10张云图预测未来10张云图"),
 }
 
 

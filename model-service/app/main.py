@@ -3,6 +3,7 @@ from typing import Dict
 from fastapi import FastAPI
 
 from app.routers.predict import router as predict_router
+from cloud_prediction.router import router as cloud_router
 
 app = FastAPI(
     title="PV Model Service",
@@ -10,6 +11,7 @@ app = FastAPI(
     version="0.1.0",
 )
 app.include_router(predict_router)
+app.include_router(cloud_router)
 
 
 @app.get("/health", tags=["health"])

@@ -3,6 +3,7 @@
 ## API
 
 - `api/MODEL_API_USAGE.md`: 面向模型广场用户的对外调用文档，说明接口、字段约束、云图传入方式和错误处理。
+- `api/CLOUD_API_USAGE.md`: 面向模型广场用户的云图预测 API 调用文档，说明云图预测专用接口的输入输出格式。
 
 ## Development
 
