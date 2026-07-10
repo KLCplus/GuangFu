@@ -45,29 +45,31 @@ function logout() {
           <span>{{ item.label }}</span>
         </el-menu-item>
       </el-menu>
+      <div class="app-sidebar-footer">
+        <el-button
+          v-if="userStore.hasRole('ADMIN')"
+          text
+          type="primary"
+          class="sidebar-action"
+          @click="router.push('/admin/users-apis')"
+        >
+          管理后台
+        </el-button>
+        <el-dropdown>
+          <span class="sidebar-user">
+            <span class="sidebar-avatar">{{ displayName.charAt(0) }}</span>
+            <span>{{ displayName }}</span>
+          </span>
+          <template #dropdown>
+            <el-dropdown-menu>
+              <el-dropdown-item @click="logout">退出登录</el-dropdown-item>
+            </el-dropdown-menu>
+          </template>
+        </el-dropdown>
+      </div>
     </aside>
 
     <section class="app-main">
-      <header class="app-header">
-        <div>
-          <p class="page-kicker">PC 用户端</p>
-          <h1>{{ route.meta.title || '看板' }}</h1>
-        </div>
-        <div class="header-actions">
-          <el-button v-if="userStore.hasRole('ADMIN')" text type="primary" @click="router.push('/admin/users-apis')">
-            管理后台
-          </el-button>
-          <el-dropdown>
-            <el-button plain>{{ displayName }}</el-button>
-            <template #dropdown>
-              <el-dropdown-menu>
-                <el-dropdown-item @click="router.push('/profile')">我的</el-dropdown-item>
-                <el-dropdown-item divided @click="logout">退出登录</el-dropdown-item>
-              </el-dropdown-menu>
-            </template>
-          </el-dropdown>
-        </div>
-      </header>
       <main class="app-content">
         <router-view />
       </main>

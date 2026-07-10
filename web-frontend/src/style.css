@@ -48,7 +48,7 @@ a {
 
 .app-layout {
   display: grid;
-  grid-template-columns: 216px minmax(0, 1fr);
+  grid-template-columns: 176px minmax(0, 1fr);
   min-height: 100vh;
   background: #f4f8fc;
 }
@@ -57,36 +57,84 @@ a {
   position: sticky;
   top: 0;
   height: 100vh;
-  padding: 18px 12px;
+  padding: 16px 10px;
   border-right: 1px solid var(--color-border);
   background: #ffffff;
+  display: flex;
+  flex-direction: column;
+  overflow-x: hidden;
 }
 
 .app-logo {
   display: flex;
   align-items: center;
-  gap: 10px;
-  height: 48px;
-  padding: 0 10px;
+  gap: 8px;
+  height: 44px;
+  padding: 0 8px;
   color: #10274c;
   font-weight: 700;
+  min-width: 0;
 }
 
 .app-menu {
-  margin-top: 18px;
+  flex: 1;
+  margin-top: 14px;
   border-right: 0;
 }
 
 .app-menu .el-menu-item {
-  height: 42px;
-  margin: 4px 0;
+  height: 40px;
+  margin: 3px 0;
   border-radius: 8px;
   color: #40516b;
+  padding-left: 14px !important;
 }
 
 .app-menu .el-menu-item.is-active {
   background: var(--color-primary-soft);
   color: var(--color-primary);
+  font-weight: 700;
+}
+
+.app-sidebar-footer {
+  display: grid;
+  gap: 6px;
+  padding-top: 12px;
+  border-top: 1px solid var(--color-border);
+}
+
+.sidebar-action {
+  justify-content: flex-start;
+  width: 100%;
+}
+
+.sidebar-user {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 34px;
+  padding: 4px 6px;
+  border-radius: 8px;
+  color: #40516b;
+  cursor: pointer;
+}
+
+.sidebar-user:hover {
+  background: var(--color-primary-soft);
+  color: var(--color-primary);
+}
+
+.sidebar-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  flex: 0 0 28px;
+  border-radius: 50%;
+  background: var(--color-primary);
+  color: #ffffff;
+  font-size: 13px;
   font-weight: 700;
 }
 
@@ -174,12 +222,39 @@ a {
 
 .auth-layout {
   min-height: 100vh;
-  display: grid;
-  grid-template-columns: minmax(280px, 1fr) minmax(320px, 420px);
+  display: flex;
   align-items: center;
-  gap: 48px;
-  padding: 48px min(8vw, 96px);
-  background: #eef6ff;
+  justify-content: center;
+  padding: 48px min(4vw, 64px);
+  background: url('/images/auth-bg.png') center/cover no-repeat;
+}
+
+.auth-card {
+  display: flex;
+  align-items: stretch;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.18);
+}
+
+.auth-card-deco {
+  flex: 0 0 340px;
+  width: 340px;
+  min-height: 520px;
+}
+
+.auth-card-deco img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.auth-card-body {
+  flex: 0 0 460px;
+  width: 460px;
+  background: #ffffff;
+  padding: 36px 32px;
 }
 
 .auth-brand {
@@ -205,11 +280,11 @@ a {
 .auth-panel,
 .result-panel {
   width: 100%;
-  padding: 28px;
-  border: 1px solid var(--color-border);
-  border-radius: 8px;
-  background: #ffffff;
-  box-shadow: var(--shadow-panel);
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
 }
 
 .auth-title {
@@ -300,14 +375,26 @@ a {
     flex: 0 0 auto;
   }
 
-  .app-header {
-    align-items: flex-start;
-    flex-direction: column;
+  .auth-layout {
+    padding: 24px 16px;
   }
 
-  .auth-layout {
-    grid-template-columns: 1fr;
-    gap: 24px;
-    padding: 28px 18px;
+  .auth-card {
+    flex-direction: column;
+    width: 100%;
+    max-width: 460px;
+  }
+
+  .auth-card-deco {
+    flex: 0 0 auto;
+    width: 100%;
+    min-height: 180px;
+    max-height: 240px;
+  }
+
+  .auth-card-body {
+    flex: 1 1 auto;
+    width: 100%;
+    padding: 28px 20px;
   }
 }

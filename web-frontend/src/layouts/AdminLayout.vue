@@ -21,20 +21,6 @@ const activePath = computed(() => {
 
 const displayName = computed(() => userStore.userInfo.nickname || userStore.userInfo.username || '管理员')
 
-const breadcrumbs = computed(() => {
-  const items: { label: string; path?: string }[] = [{ label: '首页', path: '/admin/users-apis' }]
-  const current = menus.find((item) => route.path === item.path || route.path.startsWith(`${item.path}/`))
-  if (current && current.path !== '/admin/users-apis') {
-    items.push({ label: current.label })
-  }
-  return items
-})
-
-const pageTitle = computed(() => {
-  const current = menus.find((item) => route.path === item.path || route.path.startsWith(`${item.path}/`))
-  return current?.label || String(route.meta.title || '')
-})
-
 function logout() {
   userStore.logout()
   router.replace('/login')
@@ -70,40 +56,22 @@ function logout() {
         <el-button text class="back-to-user" @click="router.push('/dashboard')">
           返回用户端
         </el-button>
+        <el-dropdown>
+          <span class="admin-user">
+            <span class="admin-avatar">{{ displayName.charAt(0) }}</span>
+            <span>{{ displayName }}</span>
+          </span>
+          <template #dropdown>
+            <el-dropdown-menu>
+              <el-dropdown-item @click="logout">退出登录</el-dropdown-item>
+            </el-dropdown-menu>
+          </template>
+        </el-dropdown>
       </div>
     </aside>
 
     <!-- 主内容区 -->
     <div class="admin-main">
-      <!-- 顶部栏 -->
-      <header class="admin-topbar">
-        <div class="admin-topbar-left">
-          <el-breadcrumb separator="/">
-            <el-breadcrumb-item v-for="item in breadcrumbs" :key="item.label" :to="item.path ? { path: item.path } : undefined">
-              {{ item.label }}
-            </el-breadcrumb-item>
-          </el-breadcrumb>
-        </div>
-        <div class="admin-topbar-right">
-          <el-dropdown>
-            <span class="admin-user">
-              <span class="admin-avatar">{{ displayName.charAt(0) }}</span>
-              <span>{{ displayName }}</span>
-            </span>
-            <template #dropdown>
-              <el-dropdown-menu>
-                <el-dropdown-item @click="logout">退出登录</el-dropdown-item>
-              </el-dropdown-menu>
-            </template>
-          </el-dropdown>
-        </div>
-      </header>
-
-      <!-- 页面标题 -->
-      <div class="admin-page-header">
-        <h1>{{ pageTitle }}</h1>
-      </div>
-
       <!-- 内容区 -->
       <main class="admin-content">
         <router-view />
@@ -115,7 +83,7 @@ function logout() {
 <style scoped>
 .admin-shell {
   display: grid;
-  grid-template-columns: 220px minmax(0, 1fr);
+  grid-template-columns: 184px minmax(0, 1fr);
   min-height: 100vh;
   background: #f0f2f5;
 }
@@ -129,14 +97,16 @@ function logout() {
   flex-direction: column;
   background: #001529;
   overflow-y: auto;
+  overflow-x: hidden;
 }
 
 .admin-brand {
   display: flex;
   align-items: center;
-  gap: 12px;
-  height: 64px;
-  padding: 0 20px;
+  gap: 10px;
+  height: 58px;
+  padding: 0 14px;
+  min-width: 0;
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
 }
 
@@ -180,11 +150,11 @@ function logout() {
 }
 
 .admin-menu .el-menu-item {
-  margin: 2px 8px;
+  margin: 2px 7px;
   border-radius: 6px;
-  height: 44px;
-  line-height: 44px;
-  padding-left: 20px !important;
+  height: 40px;
+  line-height: 40px;
+  padding-left: 14px !important;
 }
 
 .admin-menu .el-menu-item:hover {
@@ -198,11 +168,14 @@ function logout() {
 
 /* 侧边栏底部 */
 .admin-sidebar-footer {
-  padding: 16px 12px;
+  display: grid;
+  gap: 6px;
+  padding: 14px 10px;
   border-top: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 .back-to-user {
+  justify-content: flex-start;
   width: 100%;
   color: rgba(255, 255, 255, 0.65) !important;
   font-size: 13px;
@@ -245,14 +218,18 @@ function logout() {
 .admin-user {
   display: flex;
   align-items: center;
-  gap: 6px;
-  color: #333;
+  gap: 7px;
+  min-height: 34px;
+  padding: 4px 6px;
+  border-radius: 8px;
+  color: rgba(255, 255, 255, 0.78);
   cursor: pointer;
   font-size: 14px;
 }
 
 .admin-user:hover {
-  color: var(--color-primary);
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.08);
 }
 
 .admin-avatar {

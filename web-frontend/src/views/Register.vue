@@ -147,8 +147,8 @@ async function submitCodeRegister() {
 <template>
   <section class="auth-panel register-panel">
     <div class="auth-title">
-      <p class="page-kicker">创建账号</p>
-      <h2>开始使用平台</h2>
+      <p class="page-kicker"></p>
+      <h2>欢迎来到光伏智云</h2>
     </div>
 
     <el-tabs v-model="activeMode" stretch>
@@ -224,7 +224,7 @@ async function submitCodeRegister() {
 
 <style scoped>
 .register-panel {
-  max-width: 460px;
+  width: 100%;
 }
 
 .auth-code-row {

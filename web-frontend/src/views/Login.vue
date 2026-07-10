@@ -324,8 +324,8 @@ async function loginWithGithub() {
 <template>
   <section class="auth-panel login-panel">
     <div class="auth-title">
-      <p class="page-kicker">账号登录</p>
-      <h2>欢迎回来</h2>
+      <p class="page-kicker"></p>
+      <h2>欢迎回来光伏智云</h2>
     </div>
 
     <el-tabs v-model="activeMode" stretch>
@@ -429,7 +429,7 @@ async function loginWithGithub() {
 
 <style scoped>
 .login-panel {
-  max-width: 460px;
+  width: 100%;
 }
 
 .auth-code-row {
