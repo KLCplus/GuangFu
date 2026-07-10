@@ -7,7 +7,7 @@ const route = useRoute()
 const router = useRouter()
 const userStore = useUserStore()
 
-// 协作提示：本菜单严格对应 docs/光伏预测平台前端页面拆分文档.md 的 PC 用户端 8 页。
+// 协作提示：本菜单对应 docs/hanxxi-pc-user-work-summary.md 的 PC 用户端页面范围。
 // 两位同学开发页面时，页面根节点优先使用 .page-shell / .page-section / .toolbar，避免各写一套间距和标题风格。
 const menus = [
   { path: '/dashboard', label: '看板' },

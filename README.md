@@ -5,10 +5,11 @@
 ## 当前状态
 
 - 后端主要业务接口已经按当前代码整理到 [docs/back_front_api.md](docs/back_front_api.md)。
-- 配置入口已经收敛到 `backend/.env.local` 和 `start-local.ps1`。
+- 配置入口已经收敛到 `backend/.env.local`、`start-local.sh` 和 `start-local.ps1`。
 - 天气模块已接入 QWeather JWT 模式，并提供 `weather-debug.html` 调试页。
 - Redis 已作为可选缓存/分布式状态层接入，本地开发可使用内存降级。
-- 模型预测链路已打通 Spring Boot 到 FastAPI，但模型服务当前仍以项目内模型服务能力为准。
+- PC 用户端已接入看板聚合、模型广场、API 管理、云图预测代理、新闻通知、我的页面等接口；模型服务可按需单独启动。
+- 管理端用户、新闻、电站、模型、API Key 等接口已具备联调条件。
 
 ## 技术栈
 
@@ -34,7 +35,29 @@ pv-power-platform/
 
 ## 本地启动
 
-### 0. 队友一键启动
+### 0. Linux 一键启动
+
+只做前后端联调时，先确认本机 MySQL 已启动且 `pv_platform` 数据库已存在，然后运行：
+
+```bash
+./start-local.sh
+```
+
+首次需要初始化数据库时再使用：
+
+```bash
+./start-local.sh --init-db --force-db-reset
+```
+
+注意：`--init-db` 会导入 `backend/src/main/resources/sql/init.sql`，该脚本包含重建表逻辑，只在确认可以重置数据时使用。
+
+停止：
+
+```bash
+./stop-local.sh
+```
+
+### 1. Windows / PowerShell 一键启动
 
 如果只是做前后端联调，可以先启动本机 MySQL，然后运行根目录脚本。脚本会补齐 `backend/.env.local`，并使用 `LOCAL` 天气，不需要任何第三方私钥。默认只启动后端和前端，避免模型服务/Python 环境影响日常开发：
 
@@ -62,7 +85,7 @@ powershell -ExecutionPolicy Bypass -File .\stop-local.ps1
 
 真实 QWeather、GitHub OAuth、阿里云人脸、邮箱发送等第三方能力只需要改 `backend/.env.local`。QWeather 私钥文件放到 `backend/secrets/ed25519-private.pem`。
 
-### 1. MySQL
+### 2. MySQL
 
 请使用本机 MySQL 8，确认 `3306` 端口已监听，然后按需初始化数据库：
 
@@ -78,14 +101,26 @@ backend/src/main/resources/sql/init.sql
 
 注意：`init.sql` 包含 `DROP TABLE`，只应在确认可以清空数据时人工执行。
 
-### 2. 模型服务
+### 3. 模型服务
+
+模型服务不是启动前后端的必需项。只有模型预测或云图预测需要真实推理时再启动。
+
+Linux：
+
+```bash
+cd model-service
+pip install -r requirements.txt
+uvicorn app.main:app --host 127.0.0.1 --port 9000
+```
+
+PowerShell：
 
 ```powershell
 cd model-service
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
-uvicorn app.main:app --reload --port 9000
+uvicorn app.main:app --host 127.0.0.1 --port 9000
 ```
 
 检查：
@@ -95,7 +130,7 @@ http://localhost:9000/health
 http://localhost:9000/docs
 ```
 
-### 3. 后端
+### 4. 后端
 
 真实本地配置统一放在 `backend/.env.local`。
 
@@ -120,7 +155,7 @@ powershell -ExecutionPolicy Bypass -File .\run-local.ps1 --version
 powershell -ExecutionPolicy Bypass -File .\run-local.ps1 -DskipTests compile
 ```
 
-### 4. Web 前端
+### 5. Web 前端
 
 ```powershell
 cd web-frontend
@@ -136,24 +171,26 @@ http://localhost:5173
 
 ## 主要文档
 
-- 前端接口交付：[docs/back_front_api.md](docs/back_front_api.md)
+- 文档索引：[docs/api.md](docs/api.md)
+- 前后端接口交付：[docs/back_front_api.md](docs/back_front_api.md)
 - 模型服务接口：[docs/module_back_api.md](docs/module_back_api.md)
 - 架构说明：[docs/architecture.md](docs/architecture.md)
-- 后端收束状态：[docs/backend_completion_status.md](docs/backend_completion_status.md)
 - 数据库说明：[docs/database.md](docs/database.md)
+- DeepSeek 分析报告配置：[docs/deepseek_integration.md](docs/deepseek_integration.md)
+- PC 用户端阶段进度：[docs/hanxxi-pc-user-work-summary.md](docs/hanxxi-pc-user-work-summary.md)
 
 ## 联调前置条件
 
 1. MySQL 已启动并初始化基础数据。
 2. 后端通过 `backend/run-local.ps1` 或等价环境变量启动。
 3. `JWT_SECRET`、`MYSQL_PASSWORD` 已配置。
-4. 预测功能需要模型服务 `MODEL_SERVICE_BASE_URL` 可访问。
+4. 预测和云图预测需要模型服务 `MODEL_SERVICE_BASE_URL` 可访问；普通前后端页面可不启动模型服务。
 5. QWeather 需要 `WEATHER_PROVIDER=QWEATHER`、JWT 凭证、私钥路径和电站经纬度。
 6. 管理端接口需要 `ROLE_ADMIN` 账号。
 
 ## 后续重点
 
-- 前端按 [docs/back_front_api.md](docs/back_front_api.md) 联调并补齐页面状态。
+- 使用真实用户和管理员账号跑一轮端到端验收。
+- 模型服务、真实天气、DeepSeek、OAuth、人脸等第三方能力按部署环境单独配置和验证。
 - 部署环境启用 Redis，并根据访问量调整 Tomcat、HikariCP 和 Redis 参数。
 - 不要提交 `backend/.env.local`、私钥、JWT、数据库密码或第三方 Key。
-- 真实模型、真实第三方服务和端到端验收应按部署环境重新验证。

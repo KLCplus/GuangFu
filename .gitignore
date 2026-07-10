@@ -34,3 +34,4 @@ backend/secrets/*
 # Logs
 *.log
 logs/
+.local/

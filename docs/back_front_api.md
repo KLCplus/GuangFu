@@ -829,16 +829,89 @@ GET  /api/analysis/reports/{reportId}
 }
 ```
 
-## 12. 开放平台
+## 12. 用户看板
 
-### 11.1 用户 API Key
+```http
+GET /api/dashboard/overview?stationId=1
+```
+
+`stationId` 不传时，后端选当前用户可访问的第一个电站。接口聚合电站列表、当前天气、天气预报、实时光伏数据和服务资源状态；其中天气或实时数据某一项失败时，接口仍返回可用数据，`dataSource` 为 `PARTIAL`。
+
+响应字段：
+
+```json
+{
+  "stations": [],
+  "selectedStationId": 1,
+  "weather": {},
+  "forecasts": [],
+  "realtime": {},
+  "resources": [
+    {
+      "name": "CPU",
+      "value": 35,
+      "detail": "后端服务负载",
+      "level": "healthy"
+    }
+  ],
+  "dataSource": "REMOTE",
+  "lastUpdate": "2026-07-10 12:00:00"
+}
+```
+
+## 13. 云图预测
+
+```http
+POST /api/cloud-forecast/predict
+```
+
+请求体：
+
+```json
+{
+  "modelName": "SimVP_Cloud",
+  "inputImages": [
+    "data:image/png;base64,..."
+  ]
+}
+```
+
+`inputImages` 必须正好 10 张图片，支持 data URL 或纯 base64 字符串。Spring Boot 会转发到模型服务 `POST /cloud-api/predict`，模型服务不可用时返回 502。
+
+响应：
+
+```json
+{
+  "modelName": "SimVP_Cloud",
+  "predictions": [
+    {
+      "frameIndex": 0,
+      "timeOffset": 5,
+      "image": "data:image/png;base64,...",
+      "confidence": 96.0,
+      "cloudCoverage": null
+    }
+  ],
+  "costTime": 1200
+}
+```
+
+## 14. 开放平台
+
+### 14.1 用户 API Key
 
 ```http
 POST   /api/open/apply-key
 GET    /api/open/keys
 PUT    /api/open/keys/{apiKeyId}/status
 DELETE /api/open/keys/{apiKeyId}
+POST   /api/open/keys/{apiKeyId}/reset
 GET    /api/open/call-logs?pageNum=1&pageSize=10
+POST   /api/open/trials
+GET    /api/open/entitlements
+GET    /api/open/wallet
+GET    /api/open/plans
+GET    /api/open/overview
 ```
 
 申请 Key：
@@ -858,7 +931,60 @@ GET    /api/open/call-logs?pageNum=1&pageSize=10
 }
 ```
 
-### 11.2 开放预测接口
+重置 Key 会重新生成密钥哈希，只在本次响应返回完整 `apiKey`，旧 Key 立即失效。
+
+模型免费试用：
+
+```http
+POST /api/open/trials
+```
+
+```json
+{
+  "modelId": 1
+}
+```
+
+响应：
+
+```json
+{
+  "trialId": 1780000000000,
+  "modelId": 1,
+  "modelName": "iTransformer",
+  "expireTime": "2026-07-17 12:00:00",
+  "quota": 100
+}
+```
+
+权益、钱包、套餐和开放账户总览：
+
+```http
+GET /api/open/entitlements
+GET /api/open/wallet
+GET /api/open/plans
+GET /api/open/overview
+```
+
+`/api/open/overview` 返回：
+
+```json
+{
+  "wallet": {
+    "balance": 0.00,
+    "frozenBalance": 0.00,
+    "monthlyCost": 12.30,
+    "currency": "CNY",
+    "records": []
+  },
+  "apiEntitlements": [],
+  "plans": []
+}
+```
+
+当前版本不新增钱包充值/订单表，钱包月消费和权益已用量基于当前用户 API 调用日志聚合；套餐列表为后端固定配置，用于前端展示和后续购买接口衔接。
+
+### 14.2 开放预测接口
 
 ```http
 POST /openapi/v1/predict
@@ -882,7 +1008,7 @@ X-API-KEY: <api-key>
 
 `input` 必须正好 30 帧。
 
-### 11.3 管理员开放平台
+### 14.3 管理员开放平台
 
 ```http
 GET /api/admin/api-keys
@@ -890,16 +1016,16 @@ PUT /api/admin/api-keys/{apiKeyId}/status
 GET /api/admin/api-call-logs?pageNum=1&pageSize=10
 ```
 
-## 13. 新闻与通知
+## 15. 新闻与通知
 
-### 12.1 新闻
+### 15.1 新闻
 
 ```http
 GET /api/news?pageNum=1&pageSize=10&type=
 GET /api/news/{newsId}
 ```
 
-### 12.2 管理员新闻
+### 15.2 管理员新闻
 
 ```http
 GET    /api/admin/news?pageNum=1&pageSize=10&status=&type=
@@ -923,7 +1049,7 @@ DELETE /api/admin/news/{newsId}
 }
 ```
 
-### 12.3 站内通知
+### 15.3 站内通知
 
 ```http
 GET /api/notifications?pageNum=1&pageSize=10&readStatus=0

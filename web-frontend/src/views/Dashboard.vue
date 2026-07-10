@@ -2,6 +2,8 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
+import { getDashboardOverview } from '../api/dashboard'
+import type { DashboardResource } from '../api/dashboard'
 import { getCurrentWeather, getForecast, getRealtime, getStations } from '../api/station'
 import { mockForecast, mockRealtime, mockStations, mockWeather } from '../data/mock'
 
@@ -60,6 +62,7 @@ const stations = ref<StationOption[]>([])
 const selectedStationId = ref<number>()
 const dataSource = ref('接口优先')
 const lastUpdate = ref('')
+const dashboardResources = ref<DashboardResource[]>([])
 
 const weather = ref<WeatherSnapshot>(normalizeWeather(mockWeather, 1))
 const forecasts = ref<ForecastRow[]>(mockForecast.map(normalizeForecast))
@@ -98,6 +101,14 @@ const summaryCards = computed(() => [
 ])
 
 const serverResources = computed<ServerResource[]>(() => {
+  if (dashboardResources.value.length) {
+    return dashboardResources.value.map((item) => ({
+      name: item.name,
+      value: item.value,
+      detail: item.detail,
+      level: normalizeResourceLevel(item.level)
+    }))
+  }
   const seed = selectedStationId.value ?? 1
   const resources = [
     { name: 'CPU', value: 34 + seed * 4, detail: '推理网关 8 Core' },
@@ -156,8 +167,8 @@ onMounted(async () => {
 async function loadStations() {
   loading.value = true
   try {
-    const result = await getStations({ pageNum: 1, pageSize: 50 })
-    const records = Array.isArray(result.records) && result.records.length ? result.records : mockStations
+    const overview = await getDashboardOverview()
+    const records = Array.isArray(overview.stations) && overview.stations.length ? overview.stations : mockStations
     stations.value = records.map((item) => ({
       stationId: item.stationId,
       stationName: item.stationName,
@@ -166,27 +177,32 @@ async function loadStations() {
       status: item.status,
       address: item.address
     }))
-    dataSource.value = records === mockStations ? '演示数据' : '实时接口'
+    selectedStationId.value = overview.selectedStationId ?? stations.value[0]?.stationId
+    applyDashboardOverview(overview)
+    dataSource.value = overview.dataSource === 'PARTIAL' ? '部分接口' : '实时接口'
   } catch {
-    stations.value = mockStations.map((item) => ({
-      stationId: item.stationId,
-      stationName: item.stationName,
-      city: item.city,
-      capacity: item.capacity,
-      status: item.status,
-      address: item.address
-    }))
-    dataSource.value = '演示数据'
+    await loadStationsFallback()
   }
 
-  selectedStationId.value = stations.value[0]?.stationId
-  await loadDashboard()
+  if (!weather.value || !realtime.value) {
+    await loadDashboard()
+  }
   loading.value = false
 }
 
 async function loadDashboard() {
   if (!selectedStationId.value) return
   loading.value = true
+  try {
+    const overview = await getDashboardOverview({ stationId: selectedStationId.value })
+    applyDashboardOverview(overview)
+    dataSource.value = overview.dataSource === 'PARTIAL' ? '部分接口' : '实时接口'
+    loading.value = false
+    return
+  } catch {
+    // Fall back to the old split-interface flow below.
+  }
+
   const stationId = selectedStationId.value
   const [weatherResult, forecastResult, realtimeResult] = await Promise.allSettled([
     getCurrentWeather(stationId),
@@ -218,6 +234,52 @@ async function loadDashboard() {
   dataSource.value = usingFallback ? '演示数据' : '实时接口'
   lastUpdate.value = weather.value.reportTime || realtime.value.collectTime
   loading.value = false
+}
+
+async function loadStationsFallback() {
+  try {
+    const result = await getStations({ pageNum: 1, pageSize: 50 })
+    const records = Array.isArray(result.records) && result.records.length ? result.records : mockStations
+    stations.value = records.map((item) => ({
+      stationId: item.stationId,
+      stationName: item.stationName,
+      city: item.city,
+      capacity: item.capacity,
+      status: item.status,
+      address: item.address
+    }))
+    dataSource.value = records === mockStations ? '演示数据' : '实时接口'
+  } catch {
+    stations.value = mockStations.map((item) => ({
+      stationId: item.stationId,
+      stationName: item.stationName,
+      city: item.city,
+      capacity: item.capacity,
+      status: item.status,
+      address: item.address
+    }))
+    dataSource.value = '演示数据'
+  }
+  selectedStationId.value = stations.value[0]?.stationId
+}
+
+function applyDashboardOverview(overview: Awaited<ReturnType<typeof getDashboardOverview>>) {
+  if (overview.stations?.length) {
+    stations.value = overview.stations.map((item) => ({
+      stationId: item.stationId,
+      stationName: item.stationName,
+      city: item.city,
+      capacity: item.capacity,
+      status: item.status,
+      address: item.address
+    }))
+  }
+  selectedStationId.value = overview.selectedStationId ?? selectedStationId.value
+  if (overview.weather) weather.value = normalizeWeather(overview.weather, overview.selectedStationId ?? 1)
+  if (overview.forecasts?.length) forecasts.value = overview.forecasts.slice(0, 3).map(normalizeForecast)
+  if (overview.realtime) realtime.value = normalizeRealtime(overview.realtime)
+  dashboardResources.value = overview.resources ?? []
+  lastUpdate.value = overview.lastUpdate || weather.value.reportTime || realtime.value.collectTime
 }
 
 function normalizeWeather(value: Partial<WeatherSnapshot>, stationId: number): WeatherSnapshot {
@@ -279,6 +341,11 @@ function resourceColor(item: ServerResource) {
   if (item.level === 'danger') return '#e35d5d'
   if (item.level === 'warning') return '#d99a2b'
   return '#2c9b6f'
+}
+
+function normalizeResourceLevel(level?: string): ServerResource['level'] {
+  if (level === 'danger' || level === 'warning' || level === 'healthy') return level
+  return 'healthy'
 }
 
 function openReport() {

@@ -30,12 +30,8 @@ public class ApiKeyService {
     }
 
     public ApiKeyVO create(ApiKeyApplyRequest request) {
-        byte[] prefixBytes = new byte[4];
-        byte[] secretBytes = new byte[32];
-        RANDOM.nextBytes(prefixBytes);
-        RANDOM.nextBytes(secretBytes);
-        String prefix = "pv_" + HexFormat.of().formatHex(prefixBytes);
-        String fullKey = prefix + "_" + Base64.getUrlEncoder().withoutPadding().encodeToString(secretBytes);
+        String fullKey = generateRawKey();
+        String prefix = fullKey.substring(0, fullKey.indexOf('_', 3));
         LocalDateTime now = LocalDateTime.now();
         ApiKeyDO row = new ApiKeyDO();
         row.setUserId(SecurityUtils.requireCurrentUserId());
@@ -50,6 +46,32 @@ public class ApiKeyService {
         row.setUpdatedAt(now);
         apiKeyMapper.insert(row);
         return toVO(row, fullKey);
+    }
+
+    public ApiKeyVO resetOwn(Long id) {
+        ApiKeyDO row = apiKeyMapper.selectOne(Wrappers.<ApiKeyDO>lambdaQuery()
+            .eq(ApiKeyDO::getApiKeyId, id)
+            .eq(ApiKeyDO::getUserId, SecurityUtils.requireCurrentUserId()).last("LIMIT 1"));
+        if (row == null) {
+            throw new BusinessException(404, "API Key 不存在");
+        }
+        String fullKey = generateRawKey();
+        String prefix = fullKey.substring(0, fullKey.indexOf('_', 3));
+        row.setApiKeyPrefix(prefix);
+        row.setApiKeyHash(hash(fullKey));
+        row.setStatus("ACTIVE");
+        row.setUpdatedAt(LocalDateTime.now());
+        apiKeyMapper.updateById(row);
+        return toVO(row, fullKey);
+    }
+
+    private String generateRawKey() {
+        byte[] prefixBytes = new byte[4];
+        byte[] secretBytes = new byte[32];
+        RANDOM.nextBytes(prefixBytes);
+        RANDOM.nextBytes(secretBytes);
+        String prefix = "pv_" + HexFormat.of().formatHex(prefixBytes);
+        return prefix + "_" + Base64.getUrlEncoder().withoutPadding().encodeToString(secretBytes);
     }
 
     public List<ApiKeyVO> listOwn() {

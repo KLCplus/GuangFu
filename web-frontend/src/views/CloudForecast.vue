@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { ElMessage } from 'element-plus'
+import { predictCloudForecast } from '../api/cloudForecast'
 
 interface CloudFrame {
   id: string
   name: string
   url: string
-  source: 'upload' | 'demo' | 'mock'
+  source: 'upload' | 'demo' | 'mock' | 'remote'
 }
 
 interface PredictionFrame extends CloudFrame {
@@ -129,33 +130,35 @@ async function runPrediction() {
   progress.value = 8
   progressLabel.value = '校验云图序列'
 
-  const stages = [
-    { value: 28, label: '提取云层纹理特征' },
-    { value: 52, label: '执行时空递归预测' },
-    { value: 78, label: '生成未来云图帧' },
-    { value: 100, label: '预测完成' }
-  ]
-
-  for (const stage of stages) {
-    await wait(260)
-    progress.value = stage.value
-    progressLabel.value = stage.label
-  }
-
-  predictionFrames.value = Array.from({ length: requiredFrameCount }, (_, index) => {
-    const cloudCoverage = 38 + Math.round(Math.sin(index / 1.8) * 12 + index * 1.8)
-    return {
-      id: `forecast-${index + 1}`,
+  try {
+    const inputImages = await Promise.all(uploadedFrames.value.map(frameToInputImage))
+    progress.value = 36
+    progressLabel.value = '提交云图预测接口'
+    const result = await predictCloudForecast({
+      modelName: 'SimVP_Cloud',
+      inputImages
+    })
+    progress.value = 100
+    progressLabel.value = `预测完成，耗时 ${result.costTime ?? 0} ms`
+    predictionFrames.value = result.predictions.map((frame, index) => ({
+      id: `forecast-${frame.frameIndex ?? index}`,
       name: `forecast-cloud-${String(index + 1).padStart(2, '0')}.png`,
-      url: createCloudSvg(index, 'forecast'),
-      source: 'mock',
-      timeOffset: (index + 1) * 5,
-      confidence: Math.max(84, 96 - index * 1.2),
-      cloudCoverage: Math.max(18, Math.min(82, cloudCoverage))
-    }
-  })
-  predicting.value = false
-  ElMessage.success('已生成未来 10 张云图预测结果')
+      url: frame.image,
+      source: 'remote',
+      timeOffset: frame.timeOffset ?? (index + 1) * 5,
+      confidence: frame.confidence ?? Math.max(84, 96 - index * 1.2),
+      cloudCoverage: frame.cloudCoverage ?? estimateCloudCoverage(index)
+    }))
+    ElMessage.success('已调用云图预测接口生成结果')
+  } catch (error) {
+    progress.value = 78
+    progressLabel.value = '接口不可用，使用本地兜底结果'
+    await wait(260)
+    predictionFrames.value = buildMockPredictionFrames()
+    ElMessage.warning(error instanceof Error ? `${error.message}，已展示本地兜底结果` : '云图预测接口不可用，已展示本地兜底结果')
+  } finally {
+    predicting.value = false
+  }
 }
 
 function downloadFrame(frame: CloudFrame) {
@@ -180,6 +183,35 @@ function downloadAll() {
 
 function wait(ms: number) {
   return new Promise((resolve) => window.setTimeout(resolve, ms))
+}
+
+async function frameToInputImage(frame: CloudFrame) {
+  if (frame.url.startsWith('data:image')) return frame.url
+  const response = await fetch(frame.url)
+  const blob = await response.blob()
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(String(reader.result ?? ''))
+    reader.onerror = () => reject(new Error('云图读取失败'))
+    reader.readAsDataURL(blob)
+  })
+}
+
+function buildMockPredictionFrames(): PredictionFrame[] {
+  return Array.from({ length: requiredFrameCount }, (_, index) => ({
+    id: `forecast-${index + 1}`,
+    name: `forecast-cloud-${String(index + 1).padStart(2, '0')}.png`,
+    url: createCloudSvg(index, 'forecast'),
+    source: 'mock',
+    timeOffset: (index + 1) * 5,
+    confidence: Math.max(84, 96 - index * 1.2),
+    cloudCoverage: estimateCloudCoverage(index)
+  }))
+}
+
+function estimateCloudCoverage(index: number) {
+  const cloudCoverage = 38 + Math.round(Math.sin(index / 1.8) * 12 + index * 1.8)
+  return Math.max(18, Math.min(82, cloudCoverage))
 }
 
 function revokeUploadedObjectUrls() {
@@ -232,7 +264,7 @@ function createCloudSvg(index: number, type: 'history' | 'forecast') {
       <div>
         <p class="page-kicker">云图预测界面</p>
         <h2>10 张历史云图输入，输出未来 10 张云图</h2>
-        <p>当前为静态 Mock 流程，接口接入时可复用上传序列、预测状态和结果网格。</p>
+        <p>上传 10 张历史云图后调用后端云图预测接口，接口不可用时保留本地兜底结果。</p>
       </div>
       <div class="stat-strip">
         <div v-for="item in inputStats" :key="item.label">

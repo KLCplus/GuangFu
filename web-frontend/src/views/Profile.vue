@@ -64,12 +64,12 @@ const profileStats = computed(() => [
   {
     label: 'API 权益',
     value: String(entitlements.value.length),
-    note: '购买模型/试用额度当前来自 mock 权益'
+    note: '来自开放平台权益接口'
   },
   {
     label: '钱包余额',
-    value: wallet.value ? `￥${wallet.value.balance.toFixed(2)}` : '待接入',
-    note: '钱包接口待后端接入'
+    value: wallet.value ? `￥${wallet.value.balance.toFixed(2)}` : '暂无数据',
+    note: '来自开放平台钱包接口'
   },
   {
     label: '第三方绑定',
@@ -388,7 +388,7 @@ function recordTypeLabel(type: string) {
             <div class="panel-head">
               <div>
                 <h2>API 权益</h2>
-                <p>API Key 来自真实接口；已购买模型和权益额度当前为 mock 展示。</p>
+                <p>API Key、已购买模型和权益额度来自开放平台接口。</p>
               </div>
             </div>
             <el-empty v-if="entitlements.length === 0" description="暂无 API 权益" />
@@ -435,9 +435,9 @@ function recordTypeLabel(type: string) {
             <div class="panel-head">
               <div>
                 <h2>钱包</h2>
-                <p>钱包余额、充值和消费流水暂无真实用户端接口，当前为 mock/占位。</p>
+                <p>钱包余额和消费流水来自开放平台钱包接口。</p>
               </div>
-              <el-tag type="info" effect="light">待后端接口接入</el-tag>
+              <el-tag type="success" effect="light">已接入</el-tag>
             </div>
             <div v-if="wallet" class="wallet-grid">
               <div>

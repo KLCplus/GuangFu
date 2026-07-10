@@ -74,6 +74,7 @@ mybatis-plus:
 
 model-service:
   base-url: ${MODEL_SERVICE_BASE_URL:http://localhost:9000}
+  response-timeout-seconds: ${MODEL_SERVICE_RESPONSE_TIMEOUT_SECONDS:120}
 
 analysis:
   llm:

@@ -5,9 +5,20 @@ import {
   deleteApiKey,
   getApiKeys,
   getCallLogs,
+  getOpenOverview,
+  requestMarketplaceTrialApi,
+  resetOpenApiKey,
   updateApiKeyStatus
-} from './open'
-import type { ApiCallLog, ApiCallLogQuery, ApiKey, ApiKeyApplyPayload } from './open'
+} from "./open"
+import type {
+  ApiCallLog,
+  ApiCallLogQuery,
+  ApiEntitlement,
+  ApiKey,
+  ApiKeyApplyPayload,
+  Wallet,
+  WalletRecord
+} from "./open"
 import { getNews, getNewsList } from './news'
 import type { News, NewsQuery } from './news'
 import {
@@ -51,11 +62,8 @@ import {
 } from '../data/mock'
 import type {
   MarketplaceModel,
-  MockApiEntitlement,
   MockApiUsagePoint,
   MockApiUsageSummary,
-  MockWallet,
-  MockWalletRecord,
   ModelCategory,
   ModelStatus
 } from '../data/mock'
@@ -102,9 +110,9 @@ export interface NormalizedApiCallLog {
 
 export interface ProfileOverview {
   profile: UserProfile
-  wallet: MockWallet
-  walletRecords: MockWalletRecord[]
-  apiEntitlements: MockApiEntitlement[]
+  wallet: Wallet
+  walletRecords: WalletRecord[]
+  apiEntitlements: ApiEntitlement[]
   oauthAccounts: OAuthAccount[]
   faceStatus?: FaceStatus
   apiKeys: ApiKey[]
@@ -338,14 +346,18 @@ export async function applyMarketplaceApi(
 }
 
 export async function requestMarketplaceTrial(modelId: number): Promise<DataResult<MarketplaceTrialResult>> {
-  const model = mockMarketplaceModels.find((item) => item.modelId === modelId) ?? mockMarketplaceModels[0]
-  return mockResult({
-    trialId: Date.now(),
-    modelId: model.modelId,
-    modelName: model.modelName,
-    expireTime: '2026-07-16 23:59:59',
-    quota: model.category === 'TIME_SERIES' ? 100 : 30
-  })
+  try {
+    return remoteResult(await requestMarketplaceTrialApi({ modelId }))
+  } catch (error) {
+    const model = mockMarketplaceModels.find((item) => item.modelId === modelId) ?? mockMarketplaceModels[0]
+    return mockResult({
+      trialId: Date.now(),
+      modelId: model.modelId,
+      modelName: model.modelName,
+      expireTime: '2026-07-16 23:59:59',
+      quota: model.category === 'TIME_SERIES' ? 100 : 30
+    }, error)
+  }
 }
 
 export async function loadApiKeys(): Promise<DataResult<ApiKey[]>> {
@@ -409,14 +421,17 @@ export async function removeApiKey(apiKeyId: number): Promise<DataResult<void>> 
 }
 
 export async function resetApiKey(apiKeyId: number): Promise<DataResult<ApiKey>> {
-  const matched = mockApiKeys.find((item) => item.apiKeyId === apiKeyId)
-  return mockResult({
-    ...(matched ?? mockApiKeys[0]),
-    apiKey: `pv_mock_reset_${Date.now().toString(16)}_********************************`,
-    apiKeyPrefix: `pv_reset_${apiKeyId}`
-  })
+  try {
+    return remoteResult(normalizeApiKey(await resetOpenApiKey(apiKeyId)))
+  } catch (error) {
+    const matched = mockApiKeys.find((item) => item.apiKeyId === apiKeyId)
+    return mockResult({
+      ...(matched ?? mockApiKeys[0]),
+      apiKey: `pv_mock_reset_${Date.now().toString(16)}_********************************`,
+      apiKeyPrefix: `pv_reset_${apiKeyId}`
+    }, error)
+  }
 }
-
 export async function loadNewsPage(query?: NewsQuery): Promise<DataResult<PageResult<News>>> {
   try {
     return remoteResult(await getNewsList(query))
@@ -500,27 +515,28 @@ export async function bindUserEmail(email: string): Promise<DataResult<UserProfi
 }
 
 export async function loadProfileOverview(): Promise<DataResult<ProfileOverview>> {
-  const [profileResult, oauthResult, faceResult, keyResult] = await Promise.allSettled([
+  const [profileResult, oauthResult, faceResult, keyResult, openOverviewResult] = await Promise.allSettled([
     getProfile(),
     getOAuthAccounts(),
     getFaceStatus(),
-    getApiKeys()
+    getApiKeys(),
+    getOpenOverview()
   ])
 
-  const hasRejected = [profileResult, oauthResult, faceResult, keyResult].some((item) => item.status === 'rejected')
+  const hasRejected = [profileResult, oauthResult, faceResult, keyResult, openOverviewResult].some((item) => item.status === "rejected")
+  const openOverview = openOverviewResult.status === "fulfilled" ? openOverviewResult.value : undefined
   const data: ProfileOverview = {
-    profile: profileResult.status === 'fulfilled' ? profileResult.value : mockUserProfile,
-    wallet: mockWallet,
-    walletRecords: mockWalletRecords,
-    apiEntitlements: mockApiEntitlements,
-    oauthAccounts: oauthResult.status === 'fulfilled' ? oauthResult.value : [],
-    faceStatus: faceResult.status === 'fulfilled' ? faceResult.value : undefined,
-    apiKeys: keyResult.status === 'fulfilled' ? keyResult.value.map(normalizeApiKey) : mockApiKeys.map(normalizeApiKey)
+    profile: profileResult.status === "fulfilled" ? profileResult.value : mockUserProfile,
+    wallet: openOverview?.wallet ?? mockWallet,
+    walletRecords: openOverview?.wallet.records ?? mockWalletRecords,
+    apiEntitlements: openOverview?.apiEntitlements ?? mockApiEntitlements,
+    oauthAccounts: oauthResult.status === "fulfilled" ? oauthResult.value : [],
+    faceStatus: faceResult.status === "fulfilled" ? faceResult.value : undefined,
+    apiKeys: keyResult.status === "fulfilled" ? keyResult.value.map(normalizeApiKey) : mockApiKeys.map(normalizeApiKey)
   }
 
   return hasRejected ? mixedResult(data) : remoteResult(data)
 }
-
 export async function bindOAuthProvider(
   provider: string,
   data: BindOAuthAccountPayload

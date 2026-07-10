@@ -2,7 +2,6 @@
 
 本文描述当前已实现的后端能力。前端接入方式、TypeScript 示例和联调步骤见：
 
-- [前端接入 README](../../../../../../../../../docs/user_management_README.md)
 - [可运行的原生 HTML 示例](../../../../../../../../../docs/login.html)
 - [完整接口文档](../../../../../../../../../docs/back_front_api.md)
 
@@ -212,4 +211,3 @@ mvn -DskipTests compile
 3. 以管理员 Token 查询 `/api/admin/users`。
 4. 测试状态和角色修改的自我保护。
 5. 录入一张正脸，再用另一张同人照片测试人脸登录。
-

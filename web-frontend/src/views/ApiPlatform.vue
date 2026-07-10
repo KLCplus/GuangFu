@@ -10,8 +10,9 @@ import {
   resetApiKey,
   setApiKeyEnabled
 } from '../api/userPages'
+import { getOpenOverview } from "../api/open"
+import type { ApiKey, ApiKeyApplyPayload, OpenAccountOverview } from "../api/open"
 import type { ApiUsageStats, DataSource, NormalizedApiCallLog } from '../api/userPages'
-import type { ApiKey, ApiKeyApplyPayload } from '../api/open'
 
 interface ApiKeyForm {
   keyName: string
@@ -39,6 +40,7 @@ const createDialogVisible = ref(false)
 const resultDialogVisible = ref(false)
 const createdKey = ref<ApiKey | null>(null)
 const createdKeySource = ref<DataSource>('remote')
+const openOverview = ref<OpenAccountOverview | null>(null)
 
 const createForm = reactive<ApiKeyForm>({
   keyName: '',
@@ -61,32 +63,32 @@ const remainingQuota = computed(() => usageStats.value?.summary.remainingQuota ?
 
 const overviewCards = computed(() => [
   {
-    label: 'API Key',
+    label: "API Key",
     value: String(apiKeys.value.length),
     note: `${activeKeys.value.length} 个启用，${disabledKeys.value.length} 个停用`
   },
   {
-    label: '今日调用',
+    label: "今日调用",
     value: formatNumber(usageStats.value?.summary.todayCalls ?? 0),
-    note: '来自调用日志统计'
+    note: "来自调用日志统计"
   },
   {
-    label: '错误率',
+    label: "错误率",
     value: `${usageStats.value?.summary.errorRate ?? 0}%`,
     note: `${usageStats.value?.summary.failedCalls ?? 0} 次失败`
   },
   {
-    label: '平均时延',
+    label: "平均时延",
     value: `${usageStats.value?.summary.avgLatency ?? 0} ms`,
-    note: '开放预测接口响应耗时'
+    note: "开放预测接口响应耗时"
   }
 ])
 
-const placeholderCapabilities: PlaceholderCapability[] = [
-  { title: '余额', value: '待接入', note: 'docs 未定义用户端钱包余额接口' },
-  { title: '套餐', value: '待接入', note: '套餐购买和续费接口暂未确认' },
-  { title: 'Key 重置', value: '模拟', note: '当前仅保留 mock 流程，不调用真实路径' }
-]
+const placeholderCapabilities = computed<PlaceholderCapability[]>(() => [
+  { title: "余额", value: openOverview.value ? `￥${openOverview.value.wallet.balance.toFixed(2)}` : "暂无数据", note: "GET /api/open/wallet" },
+  { title: "套餐", value: openOverview.value ? `${openOverview.value.plans.length} 个` : "暂无数据", note: "GET /api/open/plans" },
+  { title: "Key 重置", value: "已接入", note: "POST /api/open/keys/{apiKeyId}/reset" }
+])
 
 const requestExample = computed(() => ({
   stationId: 1,
@@ -127,19 +129,19 @@ onMounted(() => {
 })
 
 async function fetchPageData() {
-  await Promise.all([fetchKeys(), fetchLogs(), fetchUsageStats()])
+  await Promise.all([fetchKeys(), fetchLogs(), fetchUsageStats(), fetchOpenOverview()])
 }
 
 async function fetchKeys() {
   keysLoading.value = true
-  loadError.value = ''
+  loadError.value = ""
   try {
     const result = await loadApiKeys()
     apiKeys.value = result.data
     keySource.value = result.source
-    showSourceTip(result.source, 'API Key')
+    showSourceTip(result.source, "API Key")
   } catch (error) {
-    loadError.value = error instanceof Error ? error.message : 'API Key 加载失败'
+    loadError.value = error instanceof Error ? error.message : "API Key 加载失败"
   } finally {
     keysLoading.value = false
   }
@@ -157,9 +159,9 @@ async function fetchLogs() {
     callLogs.value = result.data.records
     totalLogs.value = result.data.total
     logSource.value = result.source
-    showSourceTip(result.source, '调用日志')
+    showSourceTip(result.source, "调用日志")
   } catch (error) {
-    ElMessage.error(error instanceof Error ? error.message : '调用日志加载失败')
+    ElMessage.error(error instanceof Error ? error.message : "调用日志加载失败")
   } finally {
     logsLoading.value = false
   }
@@ -171,12 +173,21 @@ async function fetchUsageStats() {
     usageStats.value = result.data
     statsSource.value = result.source
   } catch (error) {
-    ElMessage.error(error instanceof Error ? error.message : '使用统计加载失败')
+    ElMessage.error(error instanceof Error ? error.message : "使用统计加载失败")
+  }
+}
+
+async function fetchOpenOverview() {
+  try {
+    openOverview.value = await getOpenOverview()
+  } catch {
+    openOverview.value = null
   }
 }
 
 async function submitCreateKey() {
   const keyName = createForm.keyName.trim()
+
   if (!keyName) {
     ElMessage.warning('请输入 API Key 名称')
     return
@@ -252,7 +263,7 @@ async function resetKey(row: ApiKey) {
     createdKey.value = result.data
     createdKeySource.value = result.source
     resultDialogVisible.value = true
-    ElMessage.info('重置 Key 暂无真实后端接口，当前展示模拟结果')
+    ElMessage.success(result.source === 'mock' ? '重置接口暂不可用，当前展示模拟结果' : 'API Key 已重置')
   } finally {
     actionLoadingId.value = null
   }
@@ -483,8 +494,8 @@ async function copyText(value: string, successMessage = '已复制') {
         <section class="panel capability-panel">
           <div class="panel-head compact">
             <div>
-              <h2>待接入能力</h2>
-              <p>页面只展示状态，不伪造真实接口。</p>
+              <h2>开放账户</h2>
+              <p>展示开放平台账户接口状态。</p>
             </div>
           </div>
           <div class="capability-list">
@@ -622,7 +633,7 @@ async function copyText(value: string, successMessage = '已复制') {
       <div class="key-result">
         <el-alert
           v-if="createdKeySource === 'mock'"
-          title="当前为模拟 API Key，待后端接口接入或恢复后请重新申请真实 Key。"
+          title="当前为模拟 API Key，真实接口恢复后请重新申请真实 Key。"
           type="info"
           show-icon
           :closable="false"
