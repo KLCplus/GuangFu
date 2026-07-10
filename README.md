@@ -5,7 +5,7 @@
 ## 当前状态
 
 - 后端主要业务接口已经按当前代码整理到 [docs/back_front_api.md](docs/back_front_api.md)。
-- 配置入口已经收敛到根目录 `.env.example`、本机 `.env` 和 `start-local.ps1`。
+- 配置入口已经收敛到 `backend/.env.local` 和 `start-local.ps1`。
 - 天气模块已接入 QWeather JWT 模式，并提供 `weather-debug.html` 调试页。
 - Redis 已作为可选缓存/分布式状态层接入，本地开发可使用内存降级。
 - 模型预测链路已打通 Spring Boot 到 FastAPI，但模型服务当前仍以项目内模型服务能力为准。
@@ -18,7 +18,7 @@
 | 模型服务 | Python、FastAPI、Pydantic、Uvicorn |
 | Web | Vue 3、Vite、TypeScript、Vue Router、Pinia、Axios、Element Plus、ECharts |
 | 小程序 | 微信小程序原生结构 |
-| 基础设施 | MySQL 8、Docker Compose、可选 Nginx |
+| 基础设施 | MySQL 8、可选 Nginx |
 
 ## 目录
 
@@ -29,8 +29,6 @@ pv-power-platform/
 ├─ web-frontend/             # Vue Web
 ├─ miniapp/                  # 微信小程序
 ├─ docs/                     # 项目文档
-├─ docker-compose.yml
-├─ .env.example              # 唯一可提交配置模板
 └─ README.md
 ```
 
@@ -38,23 +36,38 @@ pv-power-platform/
 
 ### 0. 队友一键启动
 
-如果只是做前后端联调，可以直接运行根目录脚本。它会生成本机 `.env`，默认启动 Docker MySQL，并使用 `LOCAL` 天气，不需要任何第三方私钥：
+如果只是做前后端联调，可以先启动本机 MySQL，然后运行根目录脚本。脚本会补齐 `backend/.env.local`，并使用 `LOCAL` 天气，不需要任何第三方私钥。默认只启动后端和前端，避免模型服务/Python 环境影响日常开发：
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\start-local.ps1
 ```
 
-真实 QWeather、GitHub OAuth、阿里云人脸、邮箱发送等第三方能力只需要改根目录 `.env`。QWeather 私钥文件放到 `backend/secrets/ed25519-private.pem`。
+常用参数：
 
-后端脚本仍兼容旧的 `backend/.env.local`，但新同学只需要看根目录 `.env`。
+```powershell
+# 只启动后端
+powershell -ExecutionPolicy Bypass -File .\start-local.ps1 -BackendOnly
+
+# 只启动前端
+powershell -ExecutionPolicy Bypass -File .\start-local.ps1 -FrontendOnly
+
+# 前后端加模型服务一起启动
+powershell -ExecutionPolicy Bypass -File .\start-local.ps1 -WithModel
+
+# 停止上次由 start-local.ps1 启动的本项目进程
+powershell -ExecutionPolicy Bypass -File .\stop-local.ps1
+```
+
+脚本会优先停止上次由本项目脚本启动的后台进程和本地配置端口上的旧进程，然后固定使用 `backend/.env.local` 中的端口启动。默认端口为：后端 `8080`、前端 `5173`、模型服务 `9000`。
+
+真实 QWeather、GitHub OAuth、阿里云人脸、邮箱发送等第三方能力只需要改 `backend/.env.local`。QWeather 私钥文件放到 `backend/secrets/ed25519-private.pem`。
 
 ### 1. MySQL
 
-如果只想单独启动 MySQL：
+请使用本机 MySQL 8，确认 `3306` 端口已监听，然后按需初始化数据库：
 
 ```powershell
-copy .env.example .env
-docker compose up -d mysql
+notepad backend\.env.local
 ```
 
 数据库名默认是 `pv_platform`。初始化脚本位于：
@@ -84,7 +97,7 @@ http://localhost:9000/docs
 
 ### 3. 后端
 
-真实本地配置放在根目录 `.env`，模板见根目录 `.env.example`。
+真实本地配置统一放在 `backend/.env.local`。
 
 一键启动：
 
@@ -112,7 +125,7 @@ powershell -ExecutionPolicy Bypass -File .\run-local.ps1 -DskipTests compile
 ```powershell
 cd web-frontend
 npm install
-npm run dev
+npm run dev -- --host 127.0.0.1 --port 5173 --strictPort
 ```
 
 访问：
@@ -142,5 +155,5 @@ http://localhost:5173
 
 - 前端按 [docs/back_front_api.md](docs/back_front_api.md) 联调并补齐页面状态。
 - 部署环境启用 Redis，并根据访问量调整 Tomcat、HikariCP 和 Redis 参数。
-- 不要提交本机 `.env`、私钥、JWT、数据库密码或第三方 Key。
+- 不要提交 `backend/.env.local`、私钥、JWT、数据库密码或第三方 Key。
 - 真实模型、真实第三方服务和端到端验收应按部署环境重新验证。

@@ -72,9 +72,9 @@ export const useUserStore = defineStore('user', () => {
 
   async function fetchProfile() {
     try {
-      const res = await getProfile()
-      if (res.data) {
-        setUserInfo(res.data)
+      const profile = await getProfile()
+      if (profile) {
+        setUserInfo(profile)
       }
     } catch {
       // 静默失败，不影响正常使用

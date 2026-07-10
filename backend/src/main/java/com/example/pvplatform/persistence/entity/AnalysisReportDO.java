@@ -23,5 +23,15 @@ public class AnalysisReportDO {
     private String suggestion;
     private String reportContent;
     private String reportJson;
+    private Boolean includeWeather;
+    private Boolean includePrediction;
+    private String modelName;
+    private String promptSnapshot;
+    private String contextSnapshot;
+    private String rawResponse;
+    private String riskLevel;
+    private String status;
+    private String errorMessage;
     private LocalDateTime createdAt;
+    private LocalDateTime updatedAt;
 }

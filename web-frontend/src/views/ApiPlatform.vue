@@ -111,9 +111,11 @@ const responseExample = {
   costTime: 126
 }
 
+const openApiPredictUrl = computed(() => `${__PV_BACKEND_URL__.replace(/\/$/, '')}/openapi/v1/predict`)
+
 const curlExample = computed(() =>
   [
-    'curl -X POST "http://localhost:8080/openapi/v1/predict" \\',
+    `curl -X POST "${openApiPredictUrl.value}" \\`,
     '  -H "Content-Type: application/json" \\',
     '  -H "X-API-KEY: <your-api-key>" \\',
     `  -d '${JSON.stringify(requestExample.value, null, 2)}'`

@@ -22,7 +22,10 @@ function Set-AppEnv {
 }
 
 function Import-EnvFile {
-    param([string]$Path)
+    param(
+        [string]$Path,
+        [string[]]$NamePrefixes = @()
+    )
 
     if (-not (Test-Path -LiteralPath $Path)) {
         return
@@ -41,6 +44,19 @@ function Import-EnvFile {
 
         $name = $line.Substring(0, $index).Trim()
         $value = $line.Substring($index + 1).Trim()
+
+        if ($NamePrefixes.Count -gt 0) {
+            $matched = $false
+            foreach ($prefix in $NamePrefixes) {
+                if ($name.StartsWith($prefix)) {
+                    $matched = $true
+                    break
+                }
+            }
+            if (-not $matched) {
+                return
+            }
+        }
 
         if (($value.StartsWith('"') -and $value.EndsWith('"')) -or
             ($value.StartsWith("'") -and $value.EndsWith("'"))) {
@@ -68,13 +84,16 @@ if ($javaHome) {
 $env:Path = "$env:JAVA_HOME\bin;$env:Path"
 
 # Server
+Set-AppEnv "BACKEND_HOST" "127.0.0.1"
 Set-AppEnv "SERVER_PORT" "8080"
 Set-AppEnv "TOMCAT_MAX_THREADS" "200"
 Set-AppEnv "TOMCAT_MIN_SPARE_THREADS" "10"
 Set-AppEnv "TOMCAT_MAX_CONNECTIONS" "8192"
 Set-AppEnv "TOMCAT_ACCEPT_COUNT" "100"
+Set-AppEnv "FRONTEND_HOST" "127.0.0.1"
+Set-AppEnv "FRONTEND_PORT" "5173"
 
-# MySQL. Override real password in project root .env.
+# MySQL. Override real password in backend/.env.local.
 Set-AppEnv "MYSQL_URL" "jdbc:mysql://localhost:3306/pv_platform?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai"
 Set-AppEnv "MYSQL_USERNAME" "root"
 Set-AppEnv "MYSQL_PASSWORD" "change-me"
@@ -87,9 +106,11 @@ Set-AppEnv "JWT_ACCESS_TOKEN_EXPIRATION" "7200"
 Set-AppEnv "JWT_REFRESH_TOKEN_EXPIRATION" "604800"
 
 # Model service
+Set-AppEnv "MODEL_HOST" "127.0.0.1"
+Set-AppEnv "MODEL_PORT" "9000"
 Set-AppEnv "MODEL_SERVICE_BASE_URL" "http://localhost:9000"
 
-# Weather. Use LOCAL by default. Set QWeather credentials in project root .env.
+# Weather. Use LOCAL by default. Set QWeather credentials in backend/.env.local.
 $qweatherPrivateKeyPath = Join-Path -Path $projectRoot -ChildPath "secrets\ed25519-private.pem"
 Set-AppEnv "WEATHER_PROVIDER" "LOCAL"
 Set-AppEnv "WEATHER_AUTH_TYPE" "JWT"
@@ -155,23 +176,17 @@ Set-AppEnv "PV_IMPORT_STORAGE_DIR" "./data/pv-imports"
 Set-AppEnv "PV_IMPORT_MAX_FILE_SIZE" "10485760"
 Set-AppEnv "PV_IMPORT_MAX_ROWS" "100000"
 
-$rootEnvPath = Join-Path -Path (Split-Path -Parent $projectRoot) -ChildPath ".env"
 $localEnvPath = Join-Path -Path $projectRoot -ChildPath ".env.local"
-# Legacy backend/.env.local is loaded first. The project root .env is the current
-# single source of local configuration and must win when both files exist.
 if (Test-Path -LiteralPath $localEnvPath) {
     Import-EnvFile $localEnvPath
 }
-if (Test-Path -LiteralPath $rootEnvPath) {
-    Import-EnvFile $rootEnvPath
-}
-if (-not (Test-Path -LiteralPath $rootEnvPath) -and -not (Test-Path -LiteralPath $localEnvPath)) {
-    Write-Host "Warning: no .env found. Using safe defaults from run-local.ps1."
+if (-not (Test-Path -LiteralPath $localEnvPath)) {
+    Write-Host "Warning: backend/.env.local not found. Using safe defaults from run-local.ps1."
     Write-Host "Run from project root: powershell -ExecutionPolicy Bypass -File .\start-local.ps1"
 }
 
 if (-not $env:JWT_SECRET -or [Text.Encoding]::UTF8.GetByteCount($env:JWT_SECRET) -lt 32) {
-    throw "JWT_SECRET must be at least 32 bytes. Update the project root .env or run start-local.ps1 to generate one."
+    throw "JWT_SECRET must be at least 32 bytes. Update backend/.env.local or run start-local.ps1 to generate one."
 }
 
 $javaExe = Join-Path -Path $env:JAVA_HOME -ChildPath "bin\java.exe"

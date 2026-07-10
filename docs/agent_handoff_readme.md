@@ -1,4 +1,4 @@
-# 光伏预测平台 Agent 交接 README
+﻿# 光伏预测平台 Agent 交接 README
 
 本文档用于把当前项目状态、已完成工作、启动方式、联调账号、已知问题和后续计划交给下一个 Agent 继续开发。
 
@@ -121,15 +121,15 @@ start-local.ps1
 - 后端：`http://localhost:8080`
 - 前端：`http://localhost:5173`
 - 模型服务：`http://localhost:9000`
-- Docker MySQL：如果安装了 Docker 且没有传 `-SkipDocker`
+- 本机 MySQL：启动脚本只检查本机 3306 端口，不再拉起外部服务。
 
-当前机器上检测到 Docker 不可用，所以建议优先使用本地 MySQL，并带 `-SkipDocker` 启动。
+当前机器需要先启动本机 MySQL，再运行启动脚本。
 
 推荐启动命令：
 
 ```powershell
 cd C:\Users\99140\Desktop\chengdu\code\pv-power-platform
-powershell -ExecutionPolicy Bypass -File .\start-local.ps1 -SkipDocker
+powershell -ExecutionPolicy Bypass -File .\start-local.ps1
 ```
 
 脚本日志位置：
@@ -161,13 +161,13 @@ Stop-Process -Id (Get-Content .\logs\model-service.pid) -Force
 
 ## 4. 本地环境配置
 
-当前 `.env` 关键配置：
+当前 `backend/.env.local` 关键配置：
 
 ```env
 SERVER_PORT=8080
 MYSQL_URL=jdbc:mysql://localhost:3306/pv_platform?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
 MYSQL_USERNAME=root
-MYSQL_PASSWORD=123456789
+MYSQL_PASSWORD=<按本机 MySQL 配置填写>
 REDIS_ENABLED=false
 CACHE_TYPE=simple
 MODEL_SERVICE_BASE_URL=http://localhost:9000
@@ -186,7 +186,7 @@ Get-NetTCPConnection -State Listen -ErrorAction SilentlyContinue |
   Select-Object LocalAddress,LocalPort,OwningProcess
 ```
 
-如果 3306 没有监听，后端大概率启动失败。需要先启动本机 MySQL 服务，或安装 Docker 后让脚本拉起 MySQL 容器。
+如果 3306 没有监听，后端大概率启动失败。需要先启动本机 MySQL 服务。
 
 ## 5. 登录注册与测试账号
 
@@ -359,7 +359,7 @@ Get-Content -Tail 160 -Encoding UTF8 .\logs\backend.err.log
 
 - MySQL 是否在 3306
 - 数据库 `pv_platform` 是否存在
-- `.env` 里的 `MYSQL_PASSWORD=123456789`
+- `backend/.env.local` 里的 `MYSQL_PASSWORD=<按本机 MySQL 配置填写>`
 - Java 版本是否兼容。`pom.xml` 配置 Java 21，之前机器上看到 Java 23，也能尝试跑，但如遇兼容问题建议切到 JDK 21。
 - 是否缺表或 migration 没执行
 
@@ -418,7 +418,7 @@ backend 的 auth/user/prediction/model/weather 等无关模块
 2. 执行：
 
    ```powershell
-   powershell -ExecutionPolicy Bypass -File .\start-local.ps1 -SkipDocker
+   powershell -ExecutionPolicy Bypass -File .\start-local.ps1
    ```
 
 3. 确认端口：
@@ -517,7 +517,7 @@ includePrediction: true
 
 ```powershell
 cd C:\Users\99140\Desktop\chengdu\code\pv-power-platform
-powershell -ExecutionPolicy Bypass -File .\start-local.ps1 -SkipDocker
+powershell -ExecutionPolicy Bypass -File .\start-local.ps1
 ```
 
 查看端口：
@@ -569,4 +569,3 @@ cd .\backend
 cd .\model-service
 C:\Users\99140\.conda\envs\d2l\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 9000
 ```
-

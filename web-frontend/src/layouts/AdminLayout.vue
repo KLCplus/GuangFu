@@ -10,6 +10,7 @@ const userStore = useUserStore()
 const menus = [
   { path: '/admin/users-apis', label: '用户/API' },
   { path: '/admin/stations', label: '电站' },
+  { path: '/admin/pvoutput', label: 'PVOutput' },
   { path: '/admin/models', label: '模型' },
   { path: '/admin/news', label: '新闻管理' }
 ]

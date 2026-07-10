@@ -1,4 +1,4 @@
-# hanxxi PC 用户端阶段工作总结
+﻿# hanxxi PC 用户端阶段工作总结
 
 ## 工作范围
 
@@ -272,13 +272,13 @@ mock 兜底策略：
 1. 启动 MySQL。
 
 ```powershell
-docker compose up -d mysql
+确认本机 MySQL 3306 已启动
 ```
 
 2. 首次或清库后导入数据库初始化脚本。
 
 ```powershell
-docker compose cp .\backend\src\main\resources\sql\init.sql mysql:/tmp/init.sql; docker compose exec -T mysql sh -c 'mysql -uroot -p"$MYSQL_ROOT_PASSWORD" --default-character-set=utf8mb4 pv_platform < /tmp/init.sql'
+mysql -uroot -p --default-character-set=utf8mb4 pv_platform < .\backend\src\main\resources\sql\init.sql
 ```
 
 3. 启动后端。

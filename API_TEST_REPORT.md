@@ -1,6 +1,56 @@
-# API_TEST_REPORT
+﻿# API_TEST_REPORT
 
 更新时间：2026-07-10
+
+## 2026-07-10 DeepSeek 报告生成接入
+
+状态：
+
+- `POST /api/analysis/report` 已从规则模板升级为后端 `LlmClient` 链路。
+- `ANALYSIS_LLM_ENABLED=true` 且配置 `DEEPSEEK_API_KEY` 时会调用 DeepSeek `/chat/completions`。
+- `ANALYSIS_LLM_ENABLED=true` 但未配置 Key 时返回 `DeepSeek API Key 未配置`，不会 mock 成功。
+- `ANALYSIS_LLM_ENABLED=false` 时使用 `MockLlmClient` fallback，并在 `modelName` 中标记 `mock-analysis-fallback`。
+
+测试 payload：
+
+```json
+{
+  "stationId": 2,
+  "taskId": 8,
+  "title": "成都联调光伏电站综合分析报告",
+  "userInstruction": "生成包含天气、预测趋势、异常诊断和运维建议的综合分析报告",
+  "includeWeather": true,
+  "includePrediction": true
+}
+```
+
+期望响应摘要：
+
+- `status=SUCCESS`
+- `summary` 为模型生成的一句话摘要
+- `riskLevel` 为 `low | medium | high | unknown`
+- `sections` 包含天气影响、预测趋势、异常诊断、运维建议
+- `markdown` 为完整报告正文
+- `modelName=deepseek-v4-flash` 或环境变量指定模型
+- `rawResponse/promptSnapshot/contextSnapshot` 存在，但不包含 API Key
+
+常见错误：
+
+| 场景 | 返回 |
+|---|---|
+| 未配置 `DEEPSEEK_API_KEY` 且 LLM 开启 | `DeepSeek API Key 未配置` |
+| Key 错误 | `DeepSeek API Key 错误或无效` |
+| 频率/额度限制 | `DeepSeek 额度不足或请求频率受限` |
+| 上游 5xx | `DeepSeek 上游模型服务错误` |
+| 超时 | `DeepSeek 调用超时` |
+| 非 JSON 输出 | `模型返回格式解析失败` |
+
+本地验证记录：
+
+- 前端 `npm run build` 通过。
+- 后端在设置 `JAVA_HOME=C:\Program Files\Java\jdk-23` 后，`mvn -q -DskipTests compile` 通过。
+- 后端在同一 JDK 配置下，`mvn -q test` 通过。
+- 真实 DeepSeek 联调需要用户本地提供 `DEEPSEEK_API_KEY`，本仓库未包含真实 Key。
 
 ## 测试环境
 
@@ -34,7 +84,7 @@
 启动方式：
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\start-local.ps1 -SkipDocker
+powershell -ExecutionPolicy Bypass -File .\start-local.ps1
 ```
 
 验证结果：

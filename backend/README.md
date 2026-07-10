@@ -17,7 +17,7 @@
 ```text
 backend/
 ├─ pom.xml
-├─ run-local.ps1             # 后端启动脚本，读取根目录 .env
+├─ run-local.ps1             # 后端启动脚本，读取 backend/.env.local
 ├─ ARCHITECTURE.md
 └─ src/main/
    ├─ java/com/example/pvplatform/
@@ -38,11 +38,10 @@ backend/
 配置文件职责：
 
 - `src/main/resources/application.yml`：Spring Boot 属性映射，不放真实密钥。
-- 根目录 `.env.example`：唯一可提交配置模板。
-- 根目录 `.env`：本机真实配置，已被 `.gitignore` 忽略。
-- `run-local.ps1`：设置本地默认值后读取根目录 `.env`，并启动 Maven。
+- `backend/.env.local`：本机真实配置，已被 `.gitignore` 忽略。
+- `run-local.ps1`：设置本地默认值后读取 `backend/.env.local`，并启动 Maven。
 
-不要把 `.env` 文件放进 `src/main/java`。
+不要把 env 文件放进 `src/main/java`。
 
 ## 启动
 
@@ -146,6 +145,6 @@ mvn test
 
 提交前确认：
 
-1. 没有提交本机 `.env`、私钥、JWT、数据库密码或第三方 Key。
+1. 没有提交 `backend/.env.local`、私钥、JWT、数据库密码或第三方 Key。
 2. 接口变更已同步到 `docs/back_front_api.md`。
-3. 配置项变更已同步到根目录 `.env.example`。
+3. 配置项变更已同步到 `backend/.env.local` 及相关启动脚本默认值。
