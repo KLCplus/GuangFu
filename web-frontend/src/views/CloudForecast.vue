@@ -22,33 +22,10 @@ const predictionFrames = ref<PredictionFrame[]>([])
 const predicting = ref(false)
 const progress = ref(0)
 const progressLabel = ref('等待上传')
+const draggingFrameIndex = ref<number | null>(null)
+const dragOverFrameIndex = ref<number | null>(null)
 
 const canPredict = computed(() => uploadedFrames.value.length === requiredFrameCount && !predicting.value)
-
-const inputStats = computed(() => [
-  { label: '输入帧数', value: `${uploadedFrames.value.length}/${requiredFrameCount}` },
-  { label: '模型', value: 'SimVP+GSTA' },
-  { label: '输出帧数', value: `${predictionFrames.value.length}/${requiredFrameCount}` }
-])
-
-const outputStats = computed(() => {
-  if (!predictionFrames.value.length) {
-    return [
-      { label: '平均云量', value: '--' },
-      { label: '平均置信度', value: '--' },
-      { label: '时间跨度', value: '--' }
-    ]
-  }
-  const cloudCoverage =
-    predictionFrames.value.reduce((sum, frame) => sum + frame.cloudCoverage, 0) / predictionFrames.value.length
-  const confidence =
-    predictionFrames.value.reduce((sum, frame) => sum + frame.confidence, 0) / predictionFrames.value.length
-  return [
-    { label: '平均云量', value: `${cloudCoverage.toFixed(1)}%` },
-    { label: '平均置信度', value: `${confidence.toFixed(1)}%` },
-    { label: '时间跨度', value: `未来 ${requiredFrameCount * 5} 分钟` }
-  ]
-})
 
 function openFilePicker() {
   fileInput.value?.click()
@@ -108,6 +85,46 @@ function moveFrame(index: number, direction: -1 | 1) {
   frames[nextIndex] = current
   uploadedFrames.value = frames
   predictionFrames.value = []
+}
+
+function handleFrameDragStart(event: DragEvent, index: number) {
+  if (!uploadedFrames.value[index]) return
+  draggingFrameIndex.value = index
+  event.dataTransfer?.setData('text/plain', String(index))
+  if (event.dataTransfer) {
+    event.dataTransfer.effectAllowed = 'move'
+  }
+}
+
+function handleFrameDragOver(event: DragEvent, index: number) {
+  if (draggingFrameIndex.value === null || !uploadedFrames.value[index]) return
+  event.preventDefault()
+  dragOverFrameIndex.value = index
+  if (event.dataTransfer) {
+    event.dataTransfer.dropEffect = 'move'
+  }
+}
+
+function handleFrameDrop(event: DragEvent, index: number) {
+  event.preventDefault()
+  const dataIndex = Number(event.dataTransfer?.getData('text/plain'))
+  const fromIndex = draggingFrameIndex.value ?? dataIndex
+  if (!Number.isInteger(fromIndex) || fromIndex === index || !uploadedFrames.value[fromIndex] || !uploadedFrames.value[index]) {
+    clearFrameDragState()
+    return
+  }
+
+  const frames = [...uploadedFrames.value]
+  const [draggedFrame] = frames.splice(fromIndex, 1)
+  frames.splice(index, 0, draggedFrame)
+  uploadedFrames.value = frames
+  predictionFrames.value = []
+  clearFrameDragState()
+}
+
+function clearFrameDragState() {
+  draggingFrameIndex.value = null
+  dragOverFrameIndex.value = null
 }
 
 function clearFrames() {
@@ -228,25 +245,10 @@ function createCloudSvg(index: number, type: 'history' | 'forecast') {
 
 <template>
   <section class="page-shell cloud-page">
-    <div class="page-section cloud-header">
-      <div>
-        <p class="page-kicker">云图预测界面</p>
-        <h2>10 张历史云图输入，输出未来 10 张云图</h2>
-        <p>当前为静态 Mock 流程，接口接入时可复用上传序列、预测状态和结果网格。</p>
-      </div>
-      <div class="stat-strip">
-        <div v-for="item in inputStats" :key="item.label">
-          <span>{{ item.label }}</span>
-          <strong>{{ item.value }}</strong>
-        </div>
-      </div>
-    </div>
-
     <div class="cloud-layout">
       <section class="page-section upload-panel">
         <div class="panel-head">
           <div>
-            <p class="page-kicker">输入序列</p>
             <h3>历史云图上传墙</h3>
           </div>
           <el-tag :type="uploadedFrames.length === requiredFrameCount ? 'success' : 'warning'">
@@ -276,10 +278,20 @@ function createCloudSvg(index: number, type: 'history' | 'forecast') {
             v-for="slot in requiredFrameCount"
             :key="slot"
             class="frame-card"
-            :class="{ empty: !uploadedFrames[slot - 1] }"
+            :class="{
+              empty: !uploadedFrames[slot - 1],
+              dragging: draggingFrameIndex === slot - 1,
+              'drag-over': dragOverFrameIndex === slot - 1 && draggingFrameIndex !== slot - 1
+            }"
+            :draggable="Boolean(uploadedFrames[slot - 1])"
+            @dragstart="handleFrameDragStart($event, slot - 1)"
+            @dragover="handleFrameDragOver($event, slot - 1)"
+            @drop="handleFrameDrop($event, slot - 1)"
+            @dragend="clearFrameDragState"
+            @dragleave="dragOverFrameIndex = null"
           >
             <template v-if="uploadedFrames[slot - 1]">
-              <img :src="uploadedFrames[slot - 1].url" :alt="uploadedFrames[slot - 1].name" />
+              <img :src="uploadedFrames[slot - 1].url" :alt="uploadedFrames[slot - 1].name" draggable="false" />
               <div class="frame-meta">
                 <strong>第 {{ slot }} 帧</strong>
                 <span>{{ uploadedFrames[slot - 1].name }}</span>
@@ -318,20 +330,12 @@ function createCloudSvg(index: number, type: 'history' | 'forecast') {
       <section class="page-section output-panel">
         <div class="panel-head">
           <div>
-            <p class="page-kicker">输出序列</p>
             <h3>未来 10 张预测云图</h3>
           </div>
           <div class="output-actions">
             <el-button :disabled="!predictionFrames.length" @click="downloadAll">批量下载</el-button>
             <el-button :disabled="!uploadedFrames.length" @click="runPrediction">重新预测</el-button>
           </div>
-        </div>
-
-        <div class="output-stats">
-          <span v-for="item in outputStats" :key="item.label">
-            {{ item.label }}
-            <b>{{ item.value }}</b>
-          </span>
         </div>
 
         <el-empty v-if="!predictionFrames.length" description="完成 10 张云图上传后生成预测结果" />
@@ -353,10 +357,9 @@ function createCloudSvg(index: number, type: 'history' | 'forecast') {
 
 <style scoped>
 .cloud-page {
-  gap: 18px;
+  gap: 20px;
 }
 
-.cloud-header,
 .panel-head,
 .predict-bar {
   display: flex;
@@ -365,49 +368,43 @@ function createCloudSvg(index: number, type: 'history' | 'forecast') {
   gap: 16px;
 }
 
-.cloud-header h2,
 .panel-head h3 {
-  margin: 4px 0 0;
-}
-
-.cloud-header p:not(.page-kicker) {
-  margin: 8px 0 0;
-  color: var(--color-muted);
-}
-
-.stat-strip,
-.output-stats {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
-}
-
-.stat-strip div,
-.output-stats span {
-  min-width: 128px;
-  padding: 12px;
-  border-radius: 8px;
-  background: #f6f9fd;
-}
-
-.stat-strip span,
-.output-stats span {
-  color: var(--color-muted);
-  font-size: 13px;
-}
-
-.stat-strip strong,
-.output-stats b {
-  display: block;
-  margin-top: 8px;
+  margin: 0;
   color: #10274c;
   font-size: 18px;
+  line-height: 1.35;
+}
+
+.upload-panel,
+.output-panel {
+  position: relative;
+  overflow: hidden;
+}
+
+.upload-panel::before,
+.output-panel::before {
+  position: absolute;
+  inset: 0 0 auto;
+  height: 4px;
+  content: '';
+}
+
+.upload-panel::before {
+  background: linear-gradient(90deg, #1d6fdc, #26a8c8, #f5b642);
+}
+
+.output-panel::before {
+  background: linear-gradient(90deg, #26a8c8, #7ec8a5, #1d6fdc);
+}
+
+.panel-head {
+  margin-bottom: 16px;
 }
 
 .cloud-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(420px, 0.78fr);
-  gap: 16px;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 20px;
   align-items: start;
 }
 
@@ -420,12 +417,15 @@ function createCloudSvg(index: number, type: 'history' | 'forecast') {
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
-  margin-bottom: 16px;
+}
+
+.upload-actions {
+  margin-bottom: 18px;
 }
 
 .frame-grid {
   display: grid;
-  gap: 12px;
+  gap: 14px;
 }
 
 .input-grid {
@@ -433,24 +433,56 @@ function createCloudSvg(index: number, type: 'history' | 'forecast') {
 }
 
 .output-grid {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
 }
 
 .frame-card {
   position: relative;
   min-height: 188px;
   overflow: hidden;
-  border: 1px solid #dce7f4;
+  border: 1px solid #d7e7f4;
   border-radius: 8px;
   background: #ffffff;
+  box-shadow: 0 8px 22px rgba(19, 70, 116, 0.06);
+  transition:
+    border-color 0.18s ease,
+    box-shadow 0.18s ease,
+    transform 0.18s ease;
+}
+
+.frame-card:hover {
+  border-color: #9fc7ea;
+  box-shadow: 0 12px 28px rgba(19, 70, 116, 0.1);
+  transform: translateY(-1px);
+}
+
+.frame-card[draggable='true'] {
+  cursor: grab;
+}
+
+.frame-card[draggable='true']:active {
+  cursor: grabbing;
+}
+
+.frame-card.dragging {
+  opacity: 0.46;
+  transform: scale(0.98);
+}
+
+.frame-card.drag-over {
+  border-color: #1d6fdc;
+  box-shadow: 0 0 0 3px rgba(29, 111, 220, 0.14);
 }
 
 .frame-card.empty {
   display: grid;
   place-items: center;
   border-style: dashed;
-  background: #f8fbff;
+  background:
+    linear-gradient(135deg, rgba(29, 111, 220, 0.08), rgba(38, 168, 200, 0.06)),
+    #f8fbff;
   color: var(--color-muted);
+  box-shadow: none;
 }
 
 .slot-index {
@@ -479,7 +511,12 @@ function createCloudSvg(index: number, type: 'history' | 'forecast') {
 .forecast-info {
   display: grid;
   gap: 4px;
-  padding: 10px;
+  padding: 11px 12px;
+}
+
+.frame-meta strong,
+.forecast-info strong {
+  color: #10274c;
 }
 
 .frame-meta span,
@@ -499,9 +536,13 @@ function createCloudSvg(index: number, type: 'history' | 'forecast') {
 }
 
 .predict-bar {
-  margin-top: 18px;
-  padding-top: 16px;
-  border-top: 1px solid var(--color-border);
+  margin-top: 20px;
+  padding: 16px;
+  border: 1px solid #d7e7f4;
+  border-radius: 8px;
+  background:
+    linear-gradient(90deg, rgba(29, 111, 220, 0.08), rgba(38, 168, 200, 0.08)),
+    #fbfdff;
 }
 
 .predict-bar > div {
@@ -512,10 +553,7 @@ function createCloudSvg(index: number, type: 'history' | 'forecast') {
 .predict-bar strong {
   display: block;
   margin-bottom: 8px;
-}
-
-.output-stats {
-  margin-bottom: 16px;
+  color: #10274c;
 }
 
 .forecast-card {
@@ -527,21 +565,19 @@ function createCloudSvg(index: number, type: 'history' | 'forecast') {
 }
 
 @media (max-width: 1180px) {
-  .cloud-layout {
-    grid-template-columns: 1fr;
+  .input-grid,
+  .output-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
 
 @media (max-width: 760px) {
-  .cloud-header,
   .panel-head,
   .predict-bar {
     align-items: stretch;
     flex-direction: column;
   }
 
-  .stat-strip,
-  .output-stats,
   .input-grid,
   .output-grid {
     grid-template-columns: 1fr;

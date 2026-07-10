@@ -525,147 +525,7 @@ GET /api/stations/{stationId}/weather/forecast
 http://localhost:8080/weather-debug.html
 ```
 
-## 8. PVOutput 公开电站
-
-所有 PVOutput 调用都走后端，前端不要保存或传递 PVOutput API Key。后端从环境变量读取：
-
-```text
-PVOUTPUT_API_KEY
-PVOUTPUT_AUTH_SYSTEM_ID
-```
-
-后端会把公开电站和状态数据落库。页面平时读取数据库数据；手动同步、启动同步和定时同步才会请求 PVOutput 官方 API。同步失败时不会清空历史数据，接口仍可读取库内最近一次成功数据。
-
-### 8.1 搜索公开电站
-
-```http
-GET /api/pvoutput/stations/search?keyword=Enphase&countryCode=au&seenDays=7
-```
-
-参数默认值：
-
-| 参数 | 默认值 | 说明 |
-|---|---|---|
-| `keyword` | `Enphase` | 搜索关键词，可为空 |
-| `countryCode` | `au` | 国家代码 |
-| `seenDays` | `7` | 最近输出天数 |
-
-响应：
-
-```json
-[
-  {
-    "systemName": "Demo PV",
-    "systemSizeW": 6500,
-    "postcode": "3000",
-    "orientation": "North",
-    "outputs": 1234,
-    "lastOutputText": "Today",
-    "externalSystemId": 123456,
-    "panel": "Panel",
-    "inverter": "Inverter",
-    "distanceKm": 10.2,
-    "latitude": -37.8136,
-    "longitude": 144.9631
-  }
-]
-```
-
-### 8.2 添加或重新申请公开电站
-
-```http
-POST /api/pvoutput/stations
-```
-
-请求体使用搜索结果中的 `externalSystemId`。如果已存在，会更新基础信息并重新启用，不重复插入：
-
-```json
-{
-  "externalSystemId": 123456,
-  "systemName": "Demo PV",
-  "systemSizeW": 6500,
-  "postcode": "3000",
-  "orientation": "North",
-  "outputs": 1234,
-  "lastOutputText": "Today",
-  "panel": "Panel",
-  "inverter": "Inverter",
-  "distanceKm": 10.2,
-  "latitude": -37.8136,
-  "longitude": 144.9631
-}
-```
-
-### 8.3 查询已添加公开电站
-
-```http
-GET /api/pvoutput/stations?enabled=true&keyword=Demo
-```
-
-`enabled` 和 `keyword` 都可选。返回数据库中的公开电站列表，包含最近同步状态：
-
-```json
-[
-  {
-    "id": 1,
-    "source": "PVOUTPUT",
-    "externalSystemId": 123456,
-    "systemName": "Demo PV",
-    "enabled": true,
-    "lastSyncTime": "2026-07-10 10:00:00",
-    "lastSyncStatus": "SUCCESS",
-    "lastSyncError": null
-  }
-]
-```
-
-### 8.4 启用或禁用公开电站
-
-```http
-PATCH /api/pvoutput/stations/{id}/enabled?enabled=false
-```
-
-禁用后保留历史状态数据，周期同步会跳过该电站。
-
-### 8.5 手动同步
-
-```http
-POST /api/pvoutput/stations/{id}/sync
-POST /api/pvoutput/stations/sync-all
-```
-
-`sync-all` 会串行同步所有启用电站，每个 PVOutput 请求间隔约 1 秒，避免并发请求。返回每个电站的同步结果：
-
-```json
-{
-  "stationId": 1,
-  "externalSystemId": 123456,
-  "systemName": "Demo PV",
-  "status": "SUCCESS",
-  "message": "同步成功",
-  "latestStatus": {
-    "externalSystemId": 123456,
-    "sampleTime": "2026-07-10 09:55:00",
-    "energyGenerationWh": 12000,
-    "powerGenerationW": 2300,
-    "temperatureC": 28.5,
-    "voltageV": 230.1
-  }
-}
-```
-
-PVOutput 返回 `Donation Mode`、`Inaccessible System ID`、`No status found`、超限等错误时，后端会把错误写入 `lastSyncError`，并继续保留历史状态数据。
-
-### 8.6 查询状态数据
-
-```http
-GET /api/pvoutput/stations/{id}/latest-status
-GET /api/pvoutput/stations/{id}/status?startTime=2026-07-01T00:00:00&endTime=2026-07-10T23:59:59
-```
-
-历史状态按 `sampleTime` 升序返回；不传时间默认最近 7 天。前端功率曲线使用 `sampleTime` 作为 x 轴，`powerGenerationW` 作为 y 轴。
-
-## 9. 模型
+## 8. 模型
 
 ```http
 GET /api/models?type=NUMERIC
@@ -706,7 +566,7 @@ PUT /api/admin/models/{modelId}/status
 }
 ```
 
-## 10. 预测
+## 9. 预测
 
 ```http
 POST /api/predictions
@@ -753,43 +613,7 @@ GET  /api/predictions/history?pageNum=1&pageSize=10&stationId=&modelId=&status=
 }
 ```
 
-`GET /api/predictions/{taskId}` 返回任务详情，不包含 `predictions`：
-
-```json
-{
-  "taskId": 1001,
-  "taskNo": "PRED-xxx",
-  "stationId": 1,
-  "stationName": "成都站",
-  "modelId": 3,
-  "modelName": "iTransformer光伏功率预测模型",
-  "modelCode": "iTransformer",
-  "inputMode": "STATION_HISTORY",
-  "status": "SUCCESS",
-  "createdAt": "2026-07-08 11:09:55",
-  "startedAt": "2026-07-08 11:09:55",
-  "finishedAt": "2026-07-08 11:09:55",
-  "costTimeMs": 20,
-  "errorMessage": null
-}
-```
-
-`GET /api/predictions/{taskId}/results` 返回预测结果数组：
-
-```json
-[
-  {
-    "timeOffset": 5,
-    "predictTime": "2026-07-08 11:14:00",
-    "predictPower": 75.85,
-    "actualPowerKw": null,
-    "errorValue": null,
-    "errorRate": null
-  }
-]
-```
-
-## 11. 综合分析
+## 10. 综合分析
 
 ```http
 POST /api/analysis/report
@@ -829,7 +653,7 @@ GET  /api/analysis/reports/{reportId}
 }
 ```
 
-## 12. 开放平台
+## 11. 开放平台
 
 ### 11.1 用户 API Key
 
@@ -890,7 +714,7 @@ PUT /api/admin/api-keys/{apiKeyId}/status
 GET /api/admin/api-call-logs?pageNum=1&pageSize=10
 ```
 
-## 13. 新闻与通知
+## 12. 新闻与通知
 
 ### 12.1 新闻
 
@@ -934,7 +758,7 @@ PUT /api/notifications/read-all
 
 通知按当前用户隔离。
 
-## 14. 联调前置条件
+## 13. 联调前置条件
 
 后端接口已经按当前代码整理完毕，可以进入前端联调。联调前需要确认：
 
