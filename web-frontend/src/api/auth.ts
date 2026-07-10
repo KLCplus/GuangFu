@@ -87,7 +87,7 @@ export const resetPassword = (data: ResetPasswordPayload) => request.post<void>(
 export const sendEmailCode = (data: SendEmailCodePayload) => request.post<void>('/auth/email/code/send', data)
 export const emailCodeLogin = (data: EmailCodeLoginPayload) => request.post<LoginResult>('/auth/email/code/login', data)
 export const emailCodeRegister = (data: EmailCodeRegisterPayload) =>
-  request.post<RegisterResult>('/auth/email/code/register', data)
+  request.post<LoginResult>('/auth/email/code/register', data)
 export const getOAuthAuthorizeUrl = (provider: string, params: OAuthAuthorizeQuery) =>
   request.get<OAuthAuthorizeResult>(`/auth/oauth/${provider}/authorize`, { params })
 export const oauthCallback = (provider: string, data: OAuthCallbackPayload) =>

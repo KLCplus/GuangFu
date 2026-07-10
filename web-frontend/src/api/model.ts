@@ -24,14 +24,21 @@ export interface Model {
   outputSchema?: string
   modelStatus?: ModelStatus
   status?: ModelStatus
+  price?: number
+  quota?: number
+  category?: string
+  tags?: string[]
+  score?: number
+  latency?: number
   description?: string
   createdAt?: DateTimeString
   updatedAt?: DateTimeString
 }
 
-export type ModelPayload = Omit<Model, 'modelId' | 'modelStatus' | 'status' | 'createdAt' | 'updatedAt'> & {
-  modelStatus?: ModelStatus
-}
+export type ModelPayload = Omit<
+  Model,
+  'modelId' | 'modelStatus' | 'status' | 'price' | 'quota' | 'category' | 'tags' | 'score' | 'latency' | 'createdAt' | 'updatedAt'
+>
 
 export interface UpdateModelStatusPayload {
   modelStatus: ModelStatus

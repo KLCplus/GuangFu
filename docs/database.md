@@ -288,9 +288,9 @@ CREATE TABLE weather_data (
 -- =========================================================
 CREATE TABLE model_info (
     model_id BIGINT PRIMARY KEY AUTO_INCREMENT COMMENT '模型ID',
-    model_code VARCHAR(64) NOT NULL COMMENT '模型编码，如DLinear、iTransformer',
+    model_code VARCHAR(64) NOT NULL COMMENT '模型编码，如lstm_v1',
     model_name VARCHAR(128) NOT NULL COMMENT '模型名称',
-    model_type VARCHAR(64) NOT NULL COMMENT '模型类型：NUMERIC数值预测，MULTIMODAL云图时空模型，FUSION图像+数值融合模型，IMAGE_TO_NUMERIC图转数值',
+    model_type VARCHAR(64) NOT NULL COMMENT '模型类型：NUMERIC数值预测，MULTIMODAL多模态，IMAGE_TO_NUMERIC图转数值',
     model_version VARCHAR(64) DEFAULT 'v1.0' COMMENT '模型版本',
 
     input_window_minutes INT NOT NULL DEFAULT 30 COMMENT '输入窗口长度，单位分钟',
@@ -650,10 +650,8 @@ VALUES
 
 
 -- =========================================================
--- 24. 初始化模型信息
--- service_model_name 必须与 model-service /model-api/models 返回值一致。
--- 仅数值模型默认 ONLINE，可直接使用 STATION_HISTORY 30 帧功率数据调用；
--- MULTIMODAL/FUSION 需要显式云图输入，默认 OFFLINE，避免普通预测入口误调用。
+-- 24. 初始化部分模型信息
+-- 真实项目中可以继续补全二十多个模型
 -- =========================================================
 INSERT INTO model_info (
     model_code,
@@ -666,96 +664,24 @@ INSERT INTO model_info (
     output_step_minutes,
     service_model_name,
     api_path,
-    status,
     description
 )
 VALUES
 (
-    'DLinear',
-    'DLinear线性分解时序预测模型',
+    'lstm_v1',
+    'LSTM光伏功率预测模型',
     'NUMERIC',
     'v1.0',
     30,
     60,
     6,
     5,
-    'DLinear',
+    'lstm_v1',
     '/model-api/predict',
-    'ONLINE',
-    'DLinear 线性分解时序预测模型，可直接使用历史功率序列预测未来30分钟功率'
+    '基于历史功率、天气和辐照度数据的短期光伏功率预测模型'
 ),
 (
-    'PatchTST',
-    'PatchTST时序预测模型',
-    'NUMERIC',
-    'v1.0',
-    30,
-    60,
-    6,
-    5,
-    'PatchTST',
-    '/model-api/predict',
-    'ONLINE',
-    'PatchTST 分块 Transformer 时序预测模型'
-),
-(
-    'iTransformer',
-    'iTransformer光伏功率预测模型',
-    'NUMERIC',
-    'v1.0',
-    30,
-    60,
-    6,
-    5,
-    'iTransformer',
-    '/model-api/predict',
-    'ONLINE',
-    'iTransformer 通道独立 Transformer 时序预测模型'
-),
-(
-    'TimeXer',
-    'TimeXer外生变量增强时序预测模型',
-    'NUMERIC',
-    'v1.0',
-    30,
-    60,
-    6,
-    5,
-    'TimeXer',
-    '/model-api/predict',
-    'ONLINE',
-    'TimeXer 外生变量增强时序预测模型'
-),
-(
-    'TimeMixer',
-    'TimeMixer多尺度时序预测模型',
-    'NUMERIC',
-    'v1.0',
-    30,
-    60,
-    6,
-    5,
-    'TimeMixer',
-    '/model-api/predict',
-    'ONLINE',
-    'TimeMixer 多尺度混合时序预测模型'
-),
-(
-    'TSMixer',
-    'TSMixer时序混合MLP预测模型',
-    'NUMERIC',
-    'v1.0',
-    30,
-    60,
-    6,
-    5,
-    'TSMixer',
-    '/model-api/predict',
-    'ONLINE',
-    'TSMixer 时序混合 MLP 预测模型'
-),
-(
-    'Transformer',
+    'transformer_v1',
     'Transformer光伏功率预测模型',
     'NUMERIC',
     'v1.0',
@@ -763,22 +689,33 @@ VALUES
     60,
     6,
     5,
-    'Transformer',
+    'transformer_v1',
     '/model-api/predict',
-    'ONLINE',
-    '标准 Transformer 时序预测模型'
+    '基于Transformer结构的短期光伏功率预测模型'
 ),
 (
-    'CNN_LSTM',
-    'CNN-LSTM融合光伏功率预测模型',
-    'FUSION',
+    'multimodal_v1',
+    '多模态光伏功率预测模型',
+    'MULTIMODAL',
     'v1.0',
     30,
     60,
     6,
     5,
-    'CNN_LSTM',
+    'multimodal_v1',
     '/model-api/predict',
-    'OFFLINE',
-    'CNN-LSTM 图像CNN+数值LSTM融合模型，调用时需要显式云图输入'
+    '融合数值数据、天气信息和图像特征的多模态光伏功率预测模型'
+),
+(
+    'image_to_numeric_v1',
+    '图转数值光伏预测模型',
+    'IMAGE_TO_NUMERIC',
+    'v1.0',
+    30,
+    60,
+    6,
+    5,
+    'image_to_numeric_v1',
+    '/model-api/predict',
+    '将图像或曲线图信息转换为数值序列并进行预测的模型'
 );

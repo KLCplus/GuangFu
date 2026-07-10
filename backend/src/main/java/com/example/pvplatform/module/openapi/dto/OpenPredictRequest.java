@@ -10,6 +10,5 @@ import java.util.List;
 public record OpenPredictRequest(
     Long stationId,
     @NotBlank String modelName,
-    @NotNull @Size(min = 30, max = 30) List<ModelPredictRequest.InputFrame> input,
-    List<ModelPredictRequest.CloudImageFrame> cloudImages
+    @NotNull @Size(min = 30, max = 30) List<ModelPredictRequest.InputFrame> input
 ) {}

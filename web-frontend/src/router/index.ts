@@ -81,16 +81,21 @@ const router = createRouter({
   scrollBehavior: () => ({ top: 0 })
 })
 
-router.beforeEach((to) => {
+router.beforeEach(async (to) => {
   const userStore = useUserStore()
   const isLoggedIn = Boolean(userStore.token)
 
   if (to.meta.guestOnly && isLoggedIn) {
-    return '/dashboard'
+    return userStore.hasRole('ADMIN') ? '/admin' : '/dashboard'
   }
 
   if (to.meta.requiresAuth && !isLoggedIn) {
     return { path: '/login', query: { redirect: to.fullPath } }
+  }
+
+  // 已登录但角色信息为空时，从后端刷新用户信息
+  if (isLoggedIn && !userStore.userInfo.roles?.length) {
+    await userStore.fetchProfile()
   }
 
   const roles = to.meta.roles as string[] | undefined

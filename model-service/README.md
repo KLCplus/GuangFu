@@ -1,6 +1,6 @@
 # Model Service
 
-FastAPI 模型预测服务。当前通过 `checkpoints/` 加载真实模型权重，统一提供未来 5～30 分钟的 6 个功率预测点。
+FastAPI 模型预测服务。当前使用可复现的 mock 算法，以最后一帧功率为基准生成未来 5～30 分钟的 6 个预测点，不加载真实模型。
 
 ## 启动
 
@@ -23,7 +23,7 @@ uvicorn app.main:app --reload --port 9000
 
 ```json
 {
-  "modelName": "iTransformer",
+  "modelName": "lstm_v1",
   "input": [
     {
       "time": "2026-07-06 10:00:00",
@@ -34,5 +34,3 @@ uvicorn app.main:app --reload --port 9000
   ]
 }
 ```
-
-正式请求必须包含 30 个连续 1 分钟时间步。`MULTIMODAL` 和 `FUSION` 模型还需要通过 `input[].cloudImage/cloudImageBase64` 或顶层 `cloudImages` 显式传入云图。

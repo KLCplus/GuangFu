@@ -1,4 +1,5 @@
 param(
+    [switch]$UseDocker,
     [switch]$SkipDocker,
     [switch]$BackendOnly,
     [switch]$FrontendOnly,
@@ -108,8 +109,30 @@ function Merge-EnvTemplate {
 function Test-PortListening {
     param([int]$Port)
 
-    $connection = Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1
-    return $null -ne $connection
+    foreach ($hostName in @("127.0.0.1", "::1")) {
+        $client = New-Object System.Net.Sockets.TcpClient
+        try {
+            $connect = $client.BeginConnect($hostName, $Port, $null, $null)
+            if ($connect.AsyncWaitHandle.WaitOne(500, $false)) {
+                $client.EndConnect($connect)
+                return $true
+            }
+        } catch {
+            # Try the next loopback address.
+        } finally {
+            $client.Close()
+        }
+    }
+    return $false
+}
+
+function Repair-ProcessPathEnvironment {
+    $processEnv = [Environment]::GetEnvironmentVariables("Process")
+    if ($processEnv.Contains("Path") -and $processEnv.Contains("PATH")) {
+        $pathValue = $env:Path
+        [Environment]::SetEnvironmentVariable("PATH", $null, "Process")
+        [Environment]::SetEnvironmentVariable("Path", $pathValue, "Process")
+    }
 }
 
 function Start-LoggedProcess {
@@ -131,6 +154,7 @@ function Start-LoggedProcess {
 
     $escapedDir = $WorkingDirectory.Replace("'", "''")
     $wrappedCommand = "Set-Location -LiteralPath '$escapedDir'; $Command"
+    Repair-ProcessPathEnvironment
     $process = Start-Process `
         -FilePath "powershell.exe" `
         -ArgumentList @("-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", $wrappedCommand) `
@@ -165,28 +189,47 @@ function Wait-Port {
 
 $rootEnv = Join-Path -Path $projectRoot -ChildPath ".env"
 $rootEnvExample = Join-Path -Path $projectRoot -ChildPath ".env.example"
+$startBackend = -not $FrontendOnly -and -not $ModelOnly
+$startModel = -not $BackendOnly -and -not $FrontendOnly
+$startFrontend = -not $BackendOnly -and -not $ModelOnly
+$needsDatabase = $startBackend
+$startDockerMysql = $UseDocker -and -not $SkipDocker -and $needsDatabase
+
 if (-not (Test-Path -LiteralPath $rootEnv)) {
     Copy-Item -LiteralPath $rootEnvExample -Destination $rootEnv
-    $mysqlPassword = "pv-platform-local-" + (New-RandomSecret).Substring(0, 16)
-    Set-EnvValue $rootEnv "MYSQL_ROOT_PASSWORD" $mysqlPassword
-    Set-EnvValue $rootEnv "MYSQL_PASSWORD" $mysqlPassword
+    if ($UseDocker -and -not $SkipDocker) {
+        $mysqlPassword = "pv-platform-local-" + (New-RandomSecret).Substring(0, 16)
+        Set-EnvValue $rootEnv "MYSQL_ROOT_PASSWORD" $mysqlPassword
+        Set-EnvValue $rootEnv "MYSQL_PASSWORD" $mysqlPassword
+        Write-Host "Created project .env for Docker MySQL."
+    } else {
+        Write-Host "Created project .env for local MySQL. Update MYSQL_URL, MYSQL_USERNAME, and MYSQL_PASSWORD if needed."
+    }
     Set-EnvValue $rootEnv "JWT_SECRET" (New-RandomSecret)
     Set-EnvValue $rootEnv "WEATHER_PROVIDER" "LOCAL"
     Set-EnvValue $rootEnv "CACHE_TYPE" "simple"
     Set-EnvValue $rootEnv "REDIS_ENABLED" "false"
-    Write-Host "Created project .env for Docker MySQL."
 } else {
     Merge-EnvTemplate $rootEnvExample $rootEnv
-    $mysqlPassword = Read-EnvValue $rootEnv "MYSQL_ROOT_PASSWORD"
-    if (-not $mysqlPassword -or $mysqlPassword -eq "change-me") {
-        $mysqlPassword = "pv-platform-local-" + (New-RandomSecret).Substring(0, 16)
-        Set-EnvValue $rootEnv "MYSQL_ROOT_PASSWORD" $mysqlPassword
-        Set-EnvValue $rootEnv "MYSQL_PASSWORD" $mysqlPassword
-        Write-Host "Updated project .env MySQL password."
+    if ($UseDocker -and -not $SkipDocker) {
+        $mysqlPassword = Read-EnvValue $rootEnv "MYSQL_ROOT_PASSWORD"
+        if (-not $mysqlPassword -or $mysqlPassword -eq "change-me") {
+            $mysqlPassword = "pv-platform-local-" + (New-RandomSecret).Substring(0, 16)
+            Set-EnvValue $rootEnv "MYSQL_ROOT_PASSWORD" $mysqlPassword
+            Write-Host "Updated project .env Docker MySQL root password."
+        }
+        $backendMysqlPassword = Read-EnvValue $rootEnv "MYSQL_PASSWORD"
+        if (-not $backendMysqlPassword -or $backendMysqlPassword -eq "change-me" -or $backendMysqlPassword -eq "your-mysql-password") {
+            Set-EnvValue $rootEnv "MYSQL_PASSWORD" $mysqlPassword
+        }
     }
-    $backendMysqlPassword = Read-EnvValue $rootEnv "MYSQL_PASSWORD"
-    if (-not $backendMysqlPassword -or $backendMysqlPassword -eq "change-me" -or $backendMysqlPassword -eq "your-mysql-password") {
-        Set-EnvValue $rootEnv "MYSQL_PASSWORD" $mysqlPassword
+    if (-not $UseDocker -and $needsDatabase) {
+        $backendMysqlPassword = Read-EnvValue $rootEnv "MYSQL_PASSWORD"
+        if (-not $backendMysqlPassword -or $backendMysqlPassword -eq "change-me" -or $backendMysqlPassword -eq "your-mysql-password") {
+            Write-Host "Warning: .env MYSQL_PASSWORD is not configured. Set it to your local MySQL password before using database-backed APIs."
+        } elseif ($backendMysqlPassword -like "pv-platform-local-*") {
+            Write-Host "Warning: .env MYSQL_PASSWORD looks like an auto-generated Docker password. Set it to your local MySQL password."
+        }
     }
     $jwtSecret = Read-EnvValue $rootEnv "JWT_SECRET"
     if (-not $jwtSecret -or $jwtSecret -eq "change-me-at-least-32-random-characters" -or [Text.Encoding]::UTF8.GetByteCount($jwtSecret) -lt 32) {
@@ -194,23 +237,29 @@ if (-not (Test-Path -LiteralPath $rootEnv)) {
     }
 }
 
-if (-not $BackendOnly -and -not $SkipDocker) {
+if ($startDockerMysql) {
     $docker = Get-Command docker -ErrorAction SilentlyContinue
     if ($docker) {
         docker compose up -d mysql
     } else {
-        Write-Host "Docker not found. Skipping MySQL container startup."
+        Write-Host "Docker not found. Skipping Docker MySQL startup."
     }
 }
 
 $logsDir = Join-Path -Path $projectRoot -ChildPath "logs"
 New-Item -ItemType Directory -Force -Path $logsDir | Out-Null
 
-if (-not $SkipDocker) {
+if ($startDockerMysql) {
     Wait-Port -Port 3306 -Name "MySQL" -TimeoutSeconds 25 | Out-Null
 }
 if (-not (Test-PortListening 3306)) {
-    Write-Host "Warning: MySQL port 3306 is not listening. Start local MySQL first, or install Docker and rerun without -SkipDocker."
+    if ($UseDocker -and -not $SkipDocker) {
+        Write-Host "Warning: MySQL port 3306 is not listening after Docker startup. Check Docker Desktop and the mysql container logs."
+    } elseif ($needsDatabase) {
+        Write-Host "Warning: local MySQL is not listening on localhost:3306. Start local MySQL, or rerun with -UseDocker to start the Docker MySQL container."
+    }
+} elseif ($needsDatabase -and -not $startDockerMysql) {
+    Write-Host "Using local MySQL on localhost:3306."
 }
 
 $backendDir = Join-Path -Path $projectRoot -ChildPath "backend"
@@ -219,10 +268,6 @@ $weatherProvider = Read-EnvValue $rootEnv "WEATHER_PROVIDER"
 $modelDir = Join-Path -Path $projectRoot -ChildPath "model-service"
 $frontendDir = Join-Path -Path $projectRoot -ChildPath "web-frontend"
 $condaPython = "C:\Users\99140\.conda\envs\d2l\python.exe"
-
-$startBackend = -not $FrontendOnly -and -not $ModelOnly
-$startModel = -not $BackendOnly -and -not $FrontendOnly
-$startFrontend = -not $BackendOnly -and -not $ModelOnly
 
 if ($startModel) {
     if (Test-PortListening 9000) {

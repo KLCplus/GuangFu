@@ -23,7 +23,6 @@ model-service/venv/
 **/__pycache__/
 *.py[cod]
 .pytest_cache/
-**/.git.bak/
 
 # Environment and secrets
 .env

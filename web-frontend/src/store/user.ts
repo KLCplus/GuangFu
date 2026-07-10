@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import { reactive, ref } from 'vue'
+import { getProfile } from '../api/user'
 
 export interface UserInfo {
   userId: number
@@ -36,12 +37,18 @@ function normalizeUserInfo(value: Partial<UserInfo> | null): UserInfo {
 
 export const useUserStore = defineStore('user', () => {
   const token = ref(localStorage.getItem('token') ?? '')
+  const refreshToken = ref(localStorage.getItem('refreshToken') ?? '')
   const storedUser = localStorage.getItem('userInfo')
   const userInfo = reactive<UserInfo>(normalizeUserInfo(storedUser ? JSON.parse(storedUser) : null))
 
   function setToken(value: string) {
     token.value = value
     localStorage.setItem('token', value)
+  }
+
+  function setRefreshToken(value: string) {
+    refreshToken.value = value
+    localStorage.setItem('refreshToken', value)
   }
 
   function setUserInfo(value: Partial<UserInfo>) {
@@ -51,7 +58,9 @@ export const useUserStore = defineStore('user', () => {
 
   function logout() {
     token.value = ''
+    refreshToken.value = ''
     localStorage.removeItem('token')
+    localStorage.removeItem('refreshToken')
     localStorage.removeItem('userInfo')
     Object.assign(userInfo, defaultUser)
   }
@@ -61,5 +70,16 @@ export const useUserStore = defineStore('user', () => {
     return roles.includes(role) || userInfo.role === role
   }
 
-  return { token, userInfo, setToken, setUserInfo, hasRole, logout }
+  async function fetchProfile() {
+    try {
+      const res = await getProfile()
+      if (res.data) {
+        setUserInfo(res.data)
+      }
+    } catch {
+      // 静默失败，不影响正常使用
+    }
+  }
+
+  return { token, refreshToken, userInfo, setToken, setRefreshToken, setUserInfo, hasRole, fetchProfile, logout }
 })
