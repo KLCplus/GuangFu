@@ -107,24 +107,73 @@ web-frontend/src/views/Marketplace.vue
 
 已实现能力：
 
-- 顶部概览卡片：上线模型数、可试用模型数、今日调用量、平均响应时延。
-- 关键词搜索：按模型名称、描述、标签过滤。
-- 分类筛选：全部、时序基线、云图/视觉融合、视频时空递归。
-- 状态筛选：全部、在线、维护中/离线。
-- 权益筛选：全部、免费试用、按量计费、套餐。
-- 模型卡片：展示名称、分类、状态、版本、简介、标签、计费说明、调用量、平均时延、试用状态。
-- 模型详情抽屉：展示输入说明、输出说明、适用场景、计费方式、开放路径、调用示例、请求示例、响应示例。
-- 免费试用：已接入 `POST /api/open/trials`，失败时保留 mock 兜底。
-- 申请 API：优先调用真实 API Key 申请接口，失败时使用 mock 兜底。
-- 复制调用示例、请求 JSON、响应 JSON、API Key。
+- 页面改为面向浏览的多列模型卡片网格，宽屏三列、较窄窗口两列、移动端单列。
+- 页面顶部只保留“展开筛选器/隐藏筛选器”按钮和模型搜索框，删除原概览统计卡片。
+- 点击筛选按钮从左侧打开筛选抽屉；类型选项及数量由当前真实列表中的 `modelType` 动态去重统计生成。
+- 支持多类型组合筛选、清空类型筛选、清空全部搜索/筛选条件。
+- 搜索在前端对真实接口返回结果执行，匹配 `modelName`，并同时支持匹配 `modelCode`、`description`。
+- 搜索关键字和类型筛选可同时生效，并分别处理列表为空、搜索无结果、类型筛选无结果和组合筛选无结果。
+- 模型卡片整块可点击，展示真实接口返回的模型名称、模型编码、模型类型和描述；字段为空时直接隐藏。
+- 删除模型版本、调用量、时延、价格、额度、试用状态、评分、排行以及卡片底部操作按钮。
+- 点击卡片调用真实模型详情接口，抽屉按返回情况展示模型说明、状态、输入窗口、输入间隔、输出步数、输出步长、`inputSchema` 和 `outputSchema`。
+- 详情接口失败时保留列表接口已经返回的真实信息，展示错误和重试入口，不回退到模拟详情。
+- 删除详情中的试用、购买、API 申请、调用示例和其他无真实业务来源操作。
+- 首次加载使用骨架卡片；列表失败、接口空列表、筛选无结果均有独立状态和重试/清空入口。
 
-使用的数据方法：
+本次涉及文件：
 
-- `loadMarketplaceModels`
-- `loadMarketplaceModelDetail`
-- `getMarketplaceModelCategories`
-- `requestMarketplaceTrial`
-- `applyMarketplaceApi`
+```text
+web-frontend/src/views/Marketplace.vue
+web-frontend/src/api/model.ts
+docs/hanxxi-pc-user-work-summary.md
+```
+
+真实接口与复用封装：
+
+```http
+GET /api/models
+GET /api/models/{modelId}
+```
+
+- 列表直接复用 `web-frontend/src/api/model.ts` 中已有的 `getModels()`。
+- 详情直接复用同一文件中的 `getModel(modelId)`。
+- `model.ts` 新增与当前后端 `ModelListItemVO`、`ModelDetailVO` 对齐的 `ModelListItem`、`ModelDetail` 类型，未重复封装接口。
+- 模型广场不再调用 `userPages.ts` 中原有的模型聚合与 mock 兜底方法。
+
+页面实际使用的列表接口字段：
+
+| 字段 | 用途 |
+|---|---|
+| `modelId` | 卡片 key、详情接口路径参数 |
+| `modelName` | 卡片和详情标题、搜索 |
+| `modelCode` | 卡片/详情辅助标识、搜索 |
+| `modelType` | 卡片类型标签、动态类型筛选 |
+| `status` | 详情中的平台状态 |
+| `description` | 卡片简介、详情说明、搜索 |
+
+详情接口额外使用字段：
+
+| 字段 | 用途 |
+|---|---|
+| `inputWindowMinutes` | 输入窗口配置 |
+| `inputFrameIntervalSeconds` | 输入间隔配置 |
+| `outputSteps` | 输出步数配置 |
+| `outputStepMinutes` | 输出步长配置 |
+| `inputSchema` | 输入要求，JSON 字符串格式化展示 |
+| `outputSchema` | 输出说明，JSON 字符串格式化展示 |
+
+数据来源与当前限制：
+
+- 普通用户模型列表由后端 `ModelService.list()` 查询数据库 `model_info`，只返回 `status = ONLINE` 的记录。
+- 模型详情由 `ModelService.detail()` 查询同一张 `model_info` 表并转换为 `ModelDetailVO`。
+- `model_marketplace_metadata_19_models.sql` 已向数据库补充 `short_description`、`tags`、`model_family`、`provider`、`paper_title`、`paper_url`、`source_url`、`capabilities`、`applicable_scenarios`、`advantages`、`limitations`、`supported_input_modes`、`reference_info` 等字段。
+- 但当前后端 `ModelInfoDO`、`ModelListItemVO`、`ModelDetailVO` 和转换逻辑没有映射或返回上述新增字段，所以页面未展示模型标签、家族、来源机构、论文、能力、适用场景、优势和局限，也没有伪造对应内容或筛选项。
+- `model_metric` 当前只有表、DO 和 Mapper，没有面向前端的查询接口；因此页面未展示论文参考指标或平台实测指标。
+- 列表接口只返回在线模型，状态筛选没有实际区分度，因此本次未提供状态筛选。
+- 接口仍返回 `modelVersion`，但按本次页面要求不展示版本信息。
+- 模型广场当前未使用模型业务假数据，也没有接口失败自动回退模型 mock 的行为。
+- 模型广场当前不展示试用、购买、部署、API 申请等操作；远端现已补充真实模型试用接口，但是否恢复试用入口需以后续页面需求为准，模型购买仍需等待真实业务接口。
+- 本次没有修改后端 Controller、DTO、VO、实体类、Service，没有修改数据库表结构、`init.sql`、`model_marketplace_metadata_19_models.sql`，也没有修改其他成员负责的页面。
 
 ## U-05 API 管理
 
@@ -340,7 +389,7 @@ POST /api/auth/login
 - 外部天气新闻、第三方新闻源聚合。
 - 邮箱验证码绑定流程。
 - 人脸录入上传流程。
-- 部分模型展示字段：价格、标签、平均时延、今日调用量等。
+- 数据库已补充的模型标签、家族、来源、论文和能力字段尚未由后端模型接口返回，模型广场当前不展示也不伪造。
 
 mock 兜底策略：
 
@@ -349,6 +398,7 @@ mock 兜底策略：
 - 页面优先请求真实接口。
 - 真实接口失败时，使用 mock 数据并在页面提示“模拟数据”。
 - 真实接口和 mock 都失败时，页面展示错误状态和重试入口。
+- 上述策略仍适用于原有 API、新闻、通知和个人中心聚合逻辑；模型广场是明确例外，现已直接调用 `model.ts` 的真实接口封装，失败时只展示错误和重试，不使用模型 mock。
 
 ## 本地联调顺序
 
@@ -390,5 +440,6 @@ http://127.0.0.1:5173/profile
 
 ## 已验证
 
-- `web-frontend` 执行 `npm run build` 通过。
+- 本次模型广场改造完成后，`web-frontend` 执行 `npm run build` 通过（Vue TypeScript 检查和 Vite 生产构建均成功）。
+- 构建仅出现依赖包 pure annotation 和现有大 chunk 的警告，没有编译错误。
 - 后端编译曾执行 `run-local.ps1 -DskipTests compile` 通过。

@@ -98,7 +98,7 @@ export interface MarketplaceModel extends ModelInfo {
   marketplaceVisible?: boolean
   isFeatured?: boolean
   sortOrder?: number
-  metrics?: Array<Record<string, unknown>>
+  metrics?: unknown[]
 }
 
 export interface MockApiKey {
