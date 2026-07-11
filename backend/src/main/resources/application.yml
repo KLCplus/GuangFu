@@ -125,6 +125,7 @@ pvoutput:
   auth-system-id: ${PVOUTPUT_AUTH_SYSTEM_ID:}
   base-url: ${PVOUTPUT_BASE_URL:https://pvoutput.org/service/r2}
   sync-interval-ms: ${PVOUTPUT_SYNC_INTERVAL_MS:600000}
+  initial-delay-ms: ${PVOUTPUT_INITIAL_DELAY_MS:30000}
 
 security:
   debug-open: ${SECURITY_DEBUG_OPEN:false}
