@@ -82,6 +82,23 @@ export interface MarketplaceModel extends ModelInfo {
   outputStepMinutes: number
   serviceModelName: string
   billingRule: string
+  shortDescription?: string
+  modelFamily?: string
+  provider?: string
+  releaseYear?: number
+  paperTitle?: string
+  paperUrl?: string
+  sourceUrl?: string
+  capabilities?: string[]
+  applicableScenarios?: string[]
+  advantages?: string[]
+  limitations?: string[]
+  supportedInputModes?: string[]
+  referenceInfo?: Record<string, unknown>
+  marketplaceVisible?: boolean
+  isFeatured?: boolean
+  sortOrder?: number
+  metrics?: Array<Record<string, unknown>>
 }
 
 export interface MockApiKey {

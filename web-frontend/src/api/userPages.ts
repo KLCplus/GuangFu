@@ -140,7 +140,10 @@ function pageResult<T>(records: T[], pageNum = 1, pageSize = records.length || 1
 }
 
 function inferCategory(model: Partial<Model>): ModelCategory {
-  const name = `${model.modelCode ?? ''} ${model.modelName ?? ''}`.toLowerCase()
+  if (model.modelFamily === 'TIME_SERIES' || model.modelFamily === 'VISION_FUSION' || model.modelFamily === 'VIDEO_RECURSIVE') {
+    return model.modelFamily
+  }
+  const name = `${model.modelCode ?? ''} ${model.modelName ?? ''} ${model.modelType ?? ''}`.toLowerCase()
   if (['cnn', '3d', 'convlstm_lstm'].some((key) => name.includes(key)) && !name.includes('pred')) {
     return 'VISION_FUSION'
   }
@@ -178,17 +181,35 @@ function enrichMarketplaceModel(model: Model): MarketplaceModel {
     modelVersion: model.modelVersion ?? base.modelVersion,
     modelStatus: status,
     status,
-    description: model.description ?? base.description,
+    description: model.description ?? model.shortDescription ?? base.description,
+    shortDescription: model.shortDescription ?? model.description ?? base.shortDescription,
     category,
     categoryName: categoryName(category),
+    tags: model.tags?.length ? model.tags : base.tags,
+    modelFamily: model.modelFamily ?? category,
+    provider: model.provider ?? base.provider,
+    releaseYear: model.releaseYear ?? base.releaseYear,
+    paperTitle: model.paperTitle ?? base.paperTitle,
+    paperUrl: model.paperUrl ?? base.paperUrl,
+    sourceUrl: model.sourceUrl ?? base.sourceUrl,
+    capabilities: model.capabilities ?? base.capabilities,
+    applicableScenarios: model.applicableScenarios ?? base.applicableScenarios,
+    advantages: model.advantages ?? base.advantages,
+    limitations: model.limitations ?? base.limitations,
+    supportedInputModes: model.supportedInputModes ?? base.supportedInputModes,
+    referenceInfo: model.referenceInfo ?? base.referenceInfo,
+    marketplaceVisible: model.marketplaceVisible ?? base.marketplaceVisible,
+    isFeatured: model.isFeatured ?? base.isFeatured,
+    sortOrder: model.sortOrder ?? base.sortOrder,
+    metrics: model.metrics ?? base.metrics,
     inputWindowMinutes: model.inputWindowMinutes ?? base.inputWindowMinutes,
     inputFrameIntervalSeconds: model.inputFrameIntervalSeconds ?? base.inputFrameIntervalSeconds,
     outputSteps: model.outputSteps ?? base.outputSteps,
     outputStepMinutes: model.outputStepMinutes ?? base.outputStepMinutes,
     serviceModelName: model.serviceModelName ?? model.modelCode ?? base.serviceModelName,
     apiPath: model.apiPath ?? base.apiPath,
-    inputSchema: model.inputSchema ?? base.inputSchema,
-    outputSchema: model.outputSchema ?? base.outputSchema
+    inputSchema: typeof model.inputSchema === 'string' ? model.inputSchema : JSON.stringify(model.inputSchema ?? base.inputSchema),
+    outputSchema: typeof model.outputSchema === 'string' ? model.outputSchema : JSON.stringify(model.outputSchema ?? base.outputSchema)
   }
 }
 

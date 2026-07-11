@@ -13,7 +13,7 @@ import java.util.Set;
 public class ModelValidationService {
 
     private static final Set<String> VALID_STATUSES = Set.of("ONLINE", "OFFLINE", "TESTING");
-    private static final Set<String> VALID_TYPES = Set.of("NUMERIC", "MULTIMODAL", "IMAGE_TO_NUMERIC");
+    private static final Set<String> VALID_TYPES = Set.of("NUMERIC", "MULTIMODAL", "FUSION", "IMAGE_TO_NUMERIC");
     private static final Set<String> ALLOWED_TRANSITIONS = Set.of(
         "OFFLINE->TESTING", "TESTING->ONLINE", "TESTING->OFFLINE",
         "ONLINE->OFFLINE", "OFFLINE->ONLINE"
@@ -37,7 +37,7 @@ public class ModelValidationService {
         }
         // 类型校验
         if (!VALID_TYPES.contains(modelType)) {
-            throw new BusinessException(400, "模型类型无效，允许: NUMERIC/MULTIMODAL/IMAGE_TO_NUMERIC");
+            throw new BusinessException(400, "模型类型无效，允许: NUMERIC/MULTIMODAL/FUSION/IMAGE_TO_NUMERIC");
         }
         // 状态校验
         if (status != null && !VALID_STATUSES.contains(status)) {
@@ -85,7 +85,7 @@ public class ModelValidationService {
                                 Integer inputWindowMinutes, Integer inputFrameIntervalSeconds,
                                 Integer outputSteps, Integer outputStepMinutes) {
         if (modelType != null && !VALID_TYPES.contains(modelType)) {
-            throw new BusinessException(400, "模型类型无效，允许: NUMERIC/MULTIMODAL/IMAGE_TO_NUMERIC");
+            throw new BusinessException(400, "模型类型无效，允许: NUMERIC/MULTIMODAL/FUSION/IMAGE_TO_NUMERIC");
         }
         if (serviceModelName != null && serviceModelName.isBlank()) {
             throw new BusinessException(400, "服务模型名称不能为空");

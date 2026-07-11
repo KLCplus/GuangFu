@@ -70,7 +70,7 @@ set_default MAIL_ENABLED "false"
 set_default OAUTH_GITHUB_ENABLED "false"
 set_default FACE_PROVIDER "local"
 set_default SECURITY_DEBUG_OPEN "true"
-set_default PVOUTPUT_ENABLED "false"
+set_default PVOUTPUT_ENABLED "true"
 
 set_default FACE_STORAGE_DIR "./data/faces"
 set_default AVATAR_STORAGE_DIR "./data/avatars"

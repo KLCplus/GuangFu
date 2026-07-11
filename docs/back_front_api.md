@@ -534,7 +534,19 @@ PVOUTPUT_API_KEY
 PVOUTPUT_AUTH_SYSTEM_ID
 ```
 
-后端会把公开电站和状态数据落库。页面平时读取数据库数据；手动同步、启动同步和定时同步才会请求 PVOutput 官方 API。同步失败时不会清空历史数据，接口仍可读取库内最近一次成功数据。
+后端会把公开电站和状态数据落库。页面平时读取数据库数据；手动同步、启动同步和定时同步才会请求 PVOutput。同步失败时不会清空历史数据，接口仍可读取库内最近一次成功数据。
+
+官方 `getstatus.jsp?sid1=...` 查询其他公共电站状态通常需要 PVOutput Donation mode；普通 API Key 可搜索公开电站，但可能返回 `Inaccessible System ID`。为了演示多电站数据，后端在官方状态 API 全部失败或无可用凭证时，会自动 fallback 到 `https://pvoutput.org/live.jsp` 公开实时页，解析前 30 个公开电站快照并写入 `external_pv_station` / `external_pv_station_status`。这条 fallback 适合展示使用；生产长期稳定接入建议开 Donation mode 或接入自有电站上传数据。
+
+应用启动时如果库内没有 `PVOUTPUT` 来源电站，会自动写入少量公开展示电站：RPM Building 37、Woodrose、Arcare Parkwood 100kw LG neon2、Pro Tech Distributions Unit 1、HISA3。配置凭证后启动同步/定时同步优先尝试 `getstatus.jsp`，失败后使用公开实时页 fallback。
+
+普通用户端展示入口：
+
+```text
+/pvoutput
+```
+
+该页面只读取本平台后端接口，不直接访问 PVOutput，也不会暴露 API Key。
 
 ### 8.1 搜索公开电站
 
@@ -632,9 +644,10 @@ PATCH /api/pvoutput/stations/{id}/enabled?enabled=false
 ```http
 POST /api/pvoutput/stations/{id}/sync
 POST /api/pvoutput/stations/sync-all
+POST /api/pvoutput/stations/sync-live
 ```
 
-`sync-all` 会串行同步所有启用电站，每个 PVOutput 请求间隔约 1 秒，避免并发请求。返回每个电站的同步结果：
+`sync-all` 会串行同步所有启用电站，每个 PVOutput 请求间隔约 1 秒，避免并发请求；如果官方状态 API 没有任何成功结果，会自动 fallback 到公开实时页。`sync-live` 会直接抓取公开实时页前 30 个电站快照。返回每个电站的同步结果：
 
 ```json
 {

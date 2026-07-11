@@ -57,6 +57,8 @@ class ModelServiceTest {
         model.setApiPath("/model-api/predict");
         model.setStatus("OFFLINE");
         model.setDescription("测试");
+        model.setMarketplaceVisible(true);
+        model.setSortOrder(10);
         model.setCreatedAt(java.time.LocalDateTime.now());
         model.setUpdatedAt(java.time.LocalDateTime.now());
         modelInfoMapper.insert(model);
@@ -127,7 +129,7 @@ class ModelServiceTest {
     // ── 列表和详情 ────────────────────────────────────────────
 
     @Test
-    void shouldOnlyListOnlineModels() {
+    void shouldListMarketplaceVisibleModelsRegardlessOfOnlineStatus() {
         // Create an ONLINE model
         ModelInfoDO online = new ModelInfoDO();
         online.setModelCode("online_model");
@@ -142,13 +144,15 @@ class ModelServiceTest {
         online.setApiPath("/model-api/predict");
         online.setStatus("ONLINE");
         online.setDescription("在线");
+        online.setMarketplaceVisible(true);
+        online.setSortOrder(20);
         online.setCreatedAt(java.time.LocalDateTime.now());
         online.setUpdatedAt(java.time.LocalDateTime.now());
         modelInfoMapper.insert(online);
 
         List<ModelListItemVO> list = modelService.list(null);
-        // OFFLINE test_model should NOT be in the list
-        assertTrue(list.stream().noneMatch(m -> "OFFLINE".equals(m.status())));
+        // Marketplace display is controlled by marketplace_visible; OFFLINE only controls callability.
+        assertTrue(list.stream().anyMatch(m -> "test_model".equals(m.modelCode()) && "OFFLINE".equals(m.status())));
         assertTrue(list.stream().anyMatch(m -> "online_model".equals(m.modelCode())));
     }
 

@@ -238,17 +238,23 @@ function latencyOf(model?: MarketplaceModel | null) {
 }
 
 function scenarioOf(model: MarketplaceModel) {
+  if (model.applicableScenarios?.length) return model.applicableScenarios.join('、')
   if (model.category === 'TIME_SERIES') return '分钟级功率预测、历史数据补全、模型效果基线对比。'
   if (model.category === 'VISION_FUSION') return '云图特征融合、天气突变识别、短时功率波动预测。'
   return '连续云图外推、云层运动建模、视觉预测能力演示。'
 }
 
 function inputText(model: MarketplaceModel) {
+  if (model.supportedInputModes?.length) return model.supportedInputModes.join('、')
   return `输入窗口 ${model.inputWindowMinutes} 分钟，采样间隔 ${model.inputFrameIntervalSeconds} 秒。请求体可包含功率、温度、辐照度等序列字段。`
 }
 
 function outputText(model: MarketplaceModel) {
   return `输出未来 ${model.outputSteps} 个预测步长，每步 ${model.outputStepMinutes} 分钟，返回预测功率和时间偏移。`
+}
+
+function canApply(model: MarketplaceModel) {
+  return normalizeStatus(model.modelStatus) === 'ONLINE'
 }
 
 function formatNumber(value: number) {
@@ -359,7 +365,7 @@ function resetFilters() {
             <el-tag :type="statusType(model.modelStatus)" effect="light">{{ statusLabel(model.modelStatus) }}</el-tag>
           </div>
 
-          <p class="model-desc">{{ model.description }}</p>
+          <p class="model-desc">{{ model.shortDescription || model.description }}</p>
 
           <div class="tag-row">
             <el-tag v-for="tag in model.tags" :key="tag" size="small">{{ tag }}</el-tag>
@@ -379,8 +385,8 @@ function resetFilters() {
               <strong>{{ latencyOf(model) }} ms</strong>
             </div>
             <div>
-              <span>试用</span>
-              <strong>{{ model.trialEnabled ? '支持' : '暂不支持' }}</strong>
+              <span>来源</span>
+              <strong>{{ model.provider || '-' }}</strong>
             </div>
           </div>
 
@@ -392,13 +398,13 @@ function resetFilters() {
           <div class="card-actions">
             <el-button plain @click="openDetail(model)">查看详情</el-button>
             <el-button
-              :disabled="!model.trialEnabled"
+              :disabled="!model.trialEnabled || !canApply(model)"
               :loading="trialLoadingId === model.modelId"
               @click="startTrial(model)"
             >
               免费试用
             </el-button>
-            <el-button type="primary" :loading="apiLoadingId === model.modelId" @click="applyApi(model)">
+            <el-button type="primary" :disabled="!canApply(model)" :loading="apiLoadingId === model.modelId" @click="applyApi(model)">
               申请 API
             </el-button>
           </div>
@@ -426,13 +432,38 @@ function resetFilters() {
 
         <p class="detail-desc">{{ selectedModel.description }}</p>
 
+        <div class="tag-row detail-tags">
+          <el-tag v-for="tag in selectedModel.tags" :key="tag" size="small">{{ tag }}</el-tag>
+        </div>
+
         <el-descriptions :column="1" border>
+          <el-descriptions-item label="模型家族">{{ selectedModel.modelFamily || selectedModel.categoryName }}</el-descriptions-item>
+          <el-descriptions-item label="来源机构">{{ selectedModel.provider || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="论文">
+            <a v-if="selectedModel.paperUrl" :href="selectedModel.paperUrl" target="_blank" rel="noreferrer">{{ selectedModel.paperTitle || selectedModel.paperUrl }}</a>
+            <span v-else>{{ selectedModel.paperTitle || '-' }}</span>
+          </el-descriptions-item>
           <el-descriptions-item label="输入说明">{{ inputText(selectedModel) }}</el-descriptions-item>
           <el-descriptions-item label="输出说明">{{ outputText(selectedModel) }}</el-descriptions-item>
           <el-descriptions-item label="适用场景">{{ scenarioOf(selectedModel) }}</el-descriptions-item>
           <el-descriptions-item label="计费方式">{{ priceText(selectedModel) }}</el-descriptions-item>
           <el-descriptions-item label="开放路径">{{ selectedModel.apiPath }}</el-descriptions-item>
+          <el-descriptions-item label="核心能力">{{ selectedModel.capabilities?.join('、') || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="优势">{{ selectedModel.advantages?.join('、') || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="局限">{{ selectedModel.limitations?.join('、') || '-' }}</el-descriptions-item>
         </el-descriptions>
+
+        <div v-if="selectedModel.metrics?.length" class="metric-panel">
+          <h4>参考指标</h4>
+          <el-table :data="selectedModel.metrics" size="small" border>
+            <el-table-column prop="datasetName" label="数据集" min-width="120" />
+            <el-table-column prop="mae" label="MAE" width="90" />
+            <el-table-column prop="rmse" label="RMSE" width="90" />
+            <el-table-column prop="mape" label="MAPE" width="90" />
+            <el-table-column prop="r2Score" label="R2" width="90" />
+          </el-table>
+          <p class="metric-note">{{ String(selectedModel.referenceInfo?.metricSource || '指标为参考资料或离线评估，不代表当前平台实时实测。') }}</p>
+        </div>
 
         <div class="code-block">
           <div class="code-title">
@@ -477,7 +508,7 @@ function resetFilters() {
 
         <div class="drawer-actions">
           <el-button
-            :disabled="!selectedModel.trialEnabled"
+            :disabled="!selectedModel.trialEnabled || !canApply(selectedModel)"
             :loading="trialLoadingId === selectedModel.modelId"
             @click="startTrial(selectedModel)"
           >
@@ -485,6 +516,7 @@ function resetFilters() {
           </el-button>
           <el-button
             type="primary"
+            :disabled="!canApply(selectedModel)"
             :loading="apiLoadingId === selectedModel.modelId"
             @click="applyApi(selectedModel)"
           >

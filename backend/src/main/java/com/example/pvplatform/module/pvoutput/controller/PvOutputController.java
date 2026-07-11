@@ -53,6 +53,11 @@ public class PvOutputController {
         return Result.success(syncService.syncAllEnabled());
     }
 
+    @PostMapping("/sync-live")
+    public Result<?> syncLive() {
+        return Result.success(syncService.syncLiveOutputs());
+    }
+
     @GetMapping("/{id}/latest-status")
     public Result<?> latestStatus(@PathVariable Long id) {
         return Result.success(stationService.latestStatus(id));

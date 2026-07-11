@@ -29,6 +29,9 @@ public class PvOutputScheduler implements ApplicationRunner {
             log.info("PVOutput sync skipped on startup because it is disabled");
             return;
         }
+        if (!properties.hasCredentials()) {
+            log.info("PVOutput API credentials are not configured, syncing public live.jsp snapshots instead");
+        }
         try {
             int count = syncService.syncAllEnabled().size();
             if (count == 0) {

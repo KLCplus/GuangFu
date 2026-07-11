@@ -28,19 +28,22 @@ public class PvOutputSyncService {
     private final PvOutputStationService stationService;
     private final ExternalPvStationMapper stationMapper;
     private final ExternalPvStationStatusMapper statusMapper;
+    private final PvOutputLivePageSyncService livePageSyncService;
 
     public PvOutputSyncService(PvOutputProperties properties,
                                PvOutputClient client,
                                PvOutputCsvParser csvParser,
                                PvOutputStationService stationService,
                                ExternalPvStationMapper stationMapper,
-                               ExternalPvStationStatusMapper statusMapper) {
+                               ExternalPvStationStatusMapper statusMapper,
+                               PvOutputLivePageSyncService livePageSyncService) {
         this.properties = properties;
         this.client = client;
         this.csvParser = csvParser;
         this.stationService = stationService;
         this.stationMapper = stationMapper;
         this.statusMapper = statusMapper;
+        this.livePageSyncService = livePageSyncService;
     }
 
     public PvOutputSyncResultDTO syncOne(Long stationId) {
@@ -51,6 +54,9 @@ public class PvOutputSyncService {
     public List<PvOutputSyncResultDTO> syncAllEnabled() {
         if (!properties.isEnabled()) {
             return List.of();
+        }
+        if (!properties.hasCredentials()) {
+            return syncLiveOutputs();
         }
         List<ExternalPvStationDO> stations = stationMapper.selectList(Wrappers.<ExternalPvStationDO>lambdaQuery()
             .eq(ExternalPvStationDO::getEnabled, true)
@@ -65,7 +71,16 @@ public class PvOutputSyncService {
                 sleepQuietly();
             }
         }
+        long success = results.stream().filter(result -> "SUCCESS".equals(result.status())).count();
+        if (success == 0) {
+            log.info("PVOutput API sync did not return successful station status, falling back to live.jsp");
+            return syncLiveOutputs();
+        }
         return results;
+    }
+
+    public List<PvOutputSyncResultDTO> syncLiveOutputs() {
+        return livePageSyncService.syncLiveOutputs(30);
     }
 
     private PvOutputSyncResultDTO syncStation(ExternalPvStationDO station) {

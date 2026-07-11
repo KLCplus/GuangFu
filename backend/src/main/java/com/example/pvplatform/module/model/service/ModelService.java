@@ -7,29 +7,44 @@ import com.example.pvplatform.module.model.dto.CreateModelRequest;
 import com.example.pvplatform.module.model.dto.UpdateModelRequest;
 import com.example.pvplatform.module.model.vo.ModelDetailVO;
 import com.example.pvplatform.module.model.vo.ModelListItemVO;
+import com.example.pvplatform.module.model.vo.ModelMetricVO;
 import com.example.pvplatform.persistence.entity.ModelInfoDO;
+import com.example.pvplatform.persistence.entity.ModelMetricDO;
 import com.example.pvplatform.persistence.mapper.ModelInfoMapper;
+import com.example.pvplatform.persistence.mapper.ModelMetricMapper;
 import com.example.pvplatform.security.SecurityUtils;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 @Service
 public class ModelService {
 
     private final ModelInfoMapper modelInfoMapper;
+    private final ModelMetricMapper modelMetricMapper;
     private final ModelValidationService validationService;
     private final ModelServiceHealthClient healthClient;
+    private final ObjectMapper objectMapper;
 
     public ModelService(ModelInfoMapper modelInfoMapper,
+                        ModelMetricMapper modelMetricMapper,
                         ModelValidationService validationService,
-                        ModelServiceHealthClient healthClient) {
+                        ModelServiceHealthClient healthClient,
+                        ObjectMapper objectMapper) {
         this.modelInfoMapper = modelInfoMapper;
+        this.modelMetricMapper = modelMetricMapper;
         this.validationService = validationService;
         this.healthClient = healthClient;
+        this.objectMapper = objectMapper;
     }
 
     // ── 用户接口 ──────────────────────────────────────────────
@@ -37,7 +52,9 @@ public class ModelService {
     @Cacheable(cacheNames = "model:list", key = "#type == null ? 'all' : #type")
     public List<ModelListItemVO> list(String type) {
         var query = Wrappers.<ModelInfoDO>lambdaQuery()
-                .eq(ModelInfoDO::getStatus, "ONLINE")
+                .eq(ModelInfoDO::getMarketplaceVisible, true)
+                .orderByDesc(ModelInfoDO::getIsFeatured)
+                .orderByAsc(ModelInfoDO::getSortOrder)
                 .orderByAsc(ModelInfoDO::getModelId);
         if (type != null && !type.isBlank()) {
             query.eq(ModelInfoDO::getModelType, type);
@@ -50,6 +67,7 @@ public class ModelService {
     @Cacheable(cacheNames = "model:admin-list", key = "'all'")
     public List<ModelListItemVO> adminList() {
         return modelInfoMapper.selectList(Wrappers.<ModelInfoDO>lambdaQuery()
+                        .orderByAsc(ModelInfoDO::getSortOrder)
                         .orderByAsc(ModelInfoDO::getModelId))
                 .stream()
                 .map(this::toAdminListItemVO)
@@ -176,20 +194,83 @@ public class ModelService {
 
     private ModelListItemVO toListItemVO(ModelInfoDO m) {
         return new ModelListItemVO(m.getModelId(), m.getModelName(), m.getModelCode(),
-            m.getModelType(), m.getModelVersion(), m.getStatus(), m.getDescription());
+            m.getModelType(), m.getModelVersion(), m.getStatus(), m.getDescription(),
+            firstText(m.getShortDescription(), m.getDescription()), parseStringList(m.getTags()),
+            m.getModelFamily(), m.getProvider(), m.getReleaseYear(), visible(m),
+            Boolean.TRUE.equals(m.getIsFeatured()), sortOrder(m));
     }
 
     private ModelListItemVO toAdminListItemVO(ModelInfoDO m) {
-        return new ModelListItemVO(m.getModelId(), m.getModelName(), m.getModelCode(),
-            m.getModelType(), m.getModelVersion(), m.getStatus(), m.getDescription());
+        return toListItemVO(m);
     }
 
     private ModelDetailVO toDetailVO(ModelInfoDO m) {
         return new ModelDetailVO(m.getModelId(), m.getModelCode(), m.getModelName(),
             m.getModelType(), m.getModelVersion(), m.getInputWindowMinutes(),
             m.getInputFrameIntervalSeconds(), m.getOutputSteps(), m.getOutputStepMinutes(),
-            m.getServiceModelName(), m.getApiPath(), m.getInputSchema(), m.getOutputSchema(),
-            m.getStatus(), m.getDescription(), m.getCreatedAt(), m.getUpdatedAt());
+            m.getServiceModelName(), m.getApiPath(), parseObject(m.getInputSchema()), parseObject(m.getOutputSchema()),
+            m.getStatus(), m.getDescription(), firstText(m.getShortDescription(), m.getDescription()),
+            parseStringList(m.getTags()), m.getModelFamily(), m.getProvider(), m.getReleaseYear(),
+            m.getPaperTitle(), m.getPaperUrl(), m.getSourceUrl(), parseStringList(m.getCapabilities()),
+            parseStringList(m.getApplicableScenarios()), parseStringList(m.getAdvantages()),
+            parseStringList(m.getLimitations()), parseStringList(m.getSupportedInputModes()),
+            parseObject(m.getReferenceInfo()), visible(m), Boolean.TRUE.equals(m.getIsFeatured()),
+            sortOrder(m), metrics(m.getModelId()), m.getCreatedAt(), m.getUpdatedAt());
+    }
+
+    private List<ModelMetricVO> metrics(Long modelId) {
+        return modelMetricMapper.selectList(Wrappers.<ModelMetricDO>lambdaQuery()
+                .eq(ModelMetricDO::getModelId, modelId)
+                .orderByDesc(ModelMetricDO::getEvaluatedAt)
+                .orderByDesc(ModelMetricDO::getMetricId))
+            .stream()
+            .map(metric -> new ModelMetricVO(metric.getMetricId(), metric.getDatasetName(), metric.getMae(),
+                metric.getRmse(), metric.getMape(), metric.getR2Score(), parseObject(metric.getMetricJson()),
+                metric.getEvaluatedAt(), metric.getCreatedAt()))
+            .toList();
+    }
+
+    private Boolean visible(ModelInfoDO m) {
+        return m.getMarketplaceVisible() == null || Boolean.TRUE.equals(m.getMarketplaceVisible());
+    }
+
+    private Integer sortOrder(ModelInfoDO m) {
+        return m.getSortOrder() == null ? Math.toIntExact(m.getModelId() == null ? 0 : m.getModelId()) : m.getSortOrder();
+    }
+
+    private String firstText(String primary, String fallback) {
+        return primary == null || primary.isBlank() ? fallback : primary;
+    }
+
+    private List<String> parseStringList(String value) {
+        if (value == null || value.isBlank()) {
+            return List.of();
+        }
+        try {
+            if (value.trim().startsWith("[")) {
+                return objectMapper.readValue(value, new TypeReference<List<String>>() {});
+            }
+        } catch (Exception ignored) {
+            // Fall through to comma-separated parsing for legacy rows.
+        }
+        List<String> values = new ArrayList<>();
+        for (String item : value.split(",")) {
+            if (!item.isBlank()) {
+                values.add(item.trim());
+            }
+        }
+        return values;
+    }
+
+    private Map<String, Object> parseObject(String value) {
+        if (value == null || value.isBlank()) {
+            return Collections.emptyMap();
+        }
+        try {
+            return objectMapper.readValue(value, new TypeReference<LinkedHashMap<String, Object>>() {});
+        } catch (Exception ignored) {
+            return Map.of("raw", value);
+        }
     }
 
     private <T> T nullToDefault(T value, T defaultValue) {

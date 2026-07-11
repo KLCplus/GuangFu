@@ -99,7 +99,7 @@ ENV
   upsert_env_value FACE_PROVIDER "local"
   upsert_env_value OAUTH_GITHUB_ENABLED "false"
   upsert_env_value MAIL_ENABLED "false"
-  upsert_env_value PVOUTPUT_ENABLED "false"
+  upsert_env_value PVOUTPUT_ENABLED "true"
   upsert_env_value SECURITY_DEBUG_OPEN "true"
   upsert_env_value REDIS_HOST "127.0.0.1"
   upsert_env_value REDIS_PORT "6379"

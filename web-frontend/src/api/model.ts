@@ -28,6 +28,23 @@ export interface Model {
   quota?: number
   category?: string
   tags?: string[]
+  shortDescription?: string
+  modelFamily?: string
+  provider?: string
+  releaseYear?: number
+  paperTitle?: string
+  paperUrl?: string
+  sourceUrl?: string
+  capabilities?: string[]
+  applicableScenarios?: string[]
+  advantages?: string[]
+  limitations?: string[]
+  supportedInputModes?: string[]
+  referenceInfo?: Record<string, unknown>
+  marketplaceVisible?: boolean
+  isFeatured?: boolean
+  sortOrder?: number
+  metrics?: Array<Record<string, unknown>>
   score?: number
   latency?: number
   description?: string

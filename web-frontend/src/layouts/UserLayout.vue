@@ -14,6 +14,7 @@ const menus = [
   { path: '/models/use', label: '模型' },
   { path: '/cloud-forecast', label: '云图' },
   { path: '/weather', label: '天气' },
+  { path: '/pvoutput', label: '公开电站' },
   { path: '/marketplace', label: '广场' },
   { path: '/api', label: 'API' },
   { path: '/reports', label: '报告' },
