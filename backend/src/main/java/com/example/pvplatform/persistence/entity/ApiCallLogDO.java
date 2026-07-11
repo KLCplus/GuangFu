@@ -26,4 +26,7 @@ public class ApiCallLogDO {
     private String errorMessage;
     private String requestSummary;
     private String responseSummary;
+    private Long inputTokens;
+    private Long outputTokens;
+    private Long totalTokens;
 }

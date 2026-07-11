@@ -1,4 +1,5 @@
 import request from './request'
+import type { CurrentWeather, WeatherForecastItem } from './weather'
 
 export interface PvOutputStation {
   id?: number
@@ -78,4 +79,12 @@ export function loadPvOutputLatestStatus(id: number) {
 
 export function loadPvOutputHistory(id: number, params?: { startTime?: string; endTime?: string }) {
   return request.get<PvOutputStatus[]>(`/pvoutput/stations/${id}/status`, { params })
+}
+
+export function getPvOutputCurrentWeather(id: number) {
+  return request.get<CurrentWeather>(`/pvoutput/stations/${id}/weather/current`)
+}
+
+export function getPvOutputForecast(id: number) {
+  return request.get<WeatherForecastItem[]>(`/pvoutput/stations/${id}/weather/forecast`)
 }

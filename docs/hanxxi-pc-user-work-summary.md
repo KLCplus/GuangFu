@@ -191,23 +191,183 @@ web-frontend/src/views/ApiPlatform.vue
 
 已实现能力：
 
-- API Key 总览：Key 数量、今日调用、错误率、平均时延。
-- API Key 列表：名称、前缀、状态、限流、日额度、到期时间、最后调用时间。
-- API Key 申请弹窗：提交 `keyName` 和 `expireDays`。
-- API Key 启用、停用、删除。
-- API 调用日志：按 Key、状态筛选，支持分页。
-- 开放预测接口示例：展示 curl、请求 JSON、响应 JSON，并支持复制。
-- 余额、套餐展示、Key 重置已接入真实开放平台接口；购买/续费流程仍保留后续接口衔接。
+- 页面重构为上下两个主要区域：上半部分管理 API Key，下半部分展示使用统计与调用记录。
+- API Key 区域增加安全说明，强调完整 Key 只在创建或重新生成时展示一次。
+- API Key 列表展示名称、脱敏 Key、创建时间、最近使用时间和状态；列表只使用后端返回的 `apiKeyPrefix` 生成脱敏文本，不保存或重新暴露完整 Key。
+- 创建 API Key 使用真实接口，提交 `keyName`、`expireDays`；成功后在一次性弹窗显示响应中的 `apiKey`，弹窗关闭后从页面状态清除完整 Key。
+- API Key 启用、停用、重新生成、删除均使用真实接口；停用、重新生成、删除前均增加二次确认。
+- Key 名称编辑按钮为禁用占位，并明确提示当前缺少后端修改名称接口。
+- 使用统计从真实调用日志读取原始数据。前端按后端单页最大 100 条分批请求，最多读取最近 1000 条，并明确显示“全量”或“最近 1000 条”的统计覆盖范围。
+- 支持时间范围、API Key、模型、成功/失败状态组合筛选；筛选基于已读取的真实日志在前端完成。
+- 前端根据调用日志聚合总调用次数、成功次数、失败次数、成功率、平均响应时间、按日期调用趋势、模型调用占比和 API Key 调用次数。
+- 使用项目现有 ECharts 绘制调用趋势折线图、模型占比环形图和 API Key 调用横向柱状图，没有引入新依赖。
+- 调用记录表基于已读取日志进行前端分页，展示请求时间、Key、模型、接口、状态、HTTP 状态、耗时和错误信息。
+- Token 使用量没有后端字段，页面显示“暂未接通”，不生成 mock Token 数值。
+- 统计导出没有后端接口，按钮保持禁用占位并说明原因。
+- API Key、日志或筛选结果为空时使用正常空状态；真实接口失败时展示错误和重试，不自动回退 mock。
 
-使用的数据方法：
+本次 API 管理页面直接复用的前端 API 封装：
 
-- `loadApiKeys`
-- `createApiKey`
-- `loadApiCallLogs`
-- `loadApiUsageStats`
-- `setApiKeyEnabled`
-- `removeApiKey`
-- `resetApiKey`
+- `getApiKeys`
+- `applyApiKey`
+- `updateApiKeyStatus`
+- `deleteApiKey`
+- `resetOpenApiKey`
+- `getCallLogs`
+- `getModels`，仅用于把调用日志中的 `modelId` 映射为接口真实返回的模型名称。
+
+真实接口与页面功能对应关系：
+
+| 接口 | 页面功能 |
+|---|---|
+| `GET /api/open/keys` | API Key 列表、Key 筛选选项、名称与最近使用时间 |
+| `POST /api/open/apply-key` | 创建 Key，并接收一次性完整 `apiKey` |
+| `PUT /api/open/keys/{apiKeyId}/status` | 启用或停用 Key |
+| `DELETE /api/open/keys/{apiKeyId}` | 永久删除 Key |
+| `POST /api/open/keys/{apiKeyId}/reset` | 重新生成 Key，并接收一次性完整 `apiKey` |
+| `GET /api/open/call-logs` | 调用记录和全部前端临时统计 |
+| `GET /api/models` | 将日志 `modelId` 映射为模型名称；未返回的模型显示为 `模型 #ID` |
+
+API 管理页面当前没有业务 mock 数据。以下内容只是明确标记的页面占位：
+
+- 修改 API Key 名称：禁用按钮。
+- Token 使用量：显示 `—` 和“暂未接通”。
+- 统计数据导出：禁用按钮。
+
+### API 管理需要后端补充的内容
+
+#### 1. 修改 API Key 名称
+
+前端用途：允许用户修改 Key 的显示名称，不改变密钥本身。
+
+建议接口：
+
+```http
+PUT /api/open/keys/{apiKeyId}/name
+```
+
+建议请求：
+
+```json
+{ "keyName": "生产环境预测服务" }
+```
+
+建议返回：更新后的 `ApiKeyVO`。需要校验当前登录用户是 Key 所有者；不需要分页。
+
+当前处理：编辑按钮禁用占位。
+
+#### 2. API 使用统计汇总
+
+前端用途：准确展示总调用次数、成功次数、失败次数、成功率、平均响应时间和 Token 使用量，避免前端最多读取 1000 条日志后自行聚合。
+
+建议接口：
+
+```http
+GET /api/open/usage/summary
+```
+
+建议参数：`startTime`、`endTime`、`apiKeyId`、`modelId`，均可选。
+
+建议返回：
+
+```json
+{
+  "totalCalls": 0,
+  "successCalls": 0,
+  "failedCalls": 0,
+  "successRate": 0,
+  "avgCostTimeMs": 0,
+  "inputTokens": 0,
+  "outputTokens": 0,
+  "totalTokens": 0
+}
+```
+
+当前处理：除 Token 外，前端对最多最近 1000 条真实调用日志临时聚合；Token 仅占位。
+
+#### 3. Token 统计字段
+
+前端用途：显示总 Token、输入 Token、输出 Token，并支持按日期、Key、模型统计。
+
+当前缺失原因：`api_call_log`、`ApiCallLogDO`、`ApiCallLogVO` 和模型调用日志均没有 Token 字段。
+
+建议字段：`input_tokens`、`output_tokens`、`total_tokens`；应由实际模型响应或计费模块写入，不能由前端估算。
+
+当前处理：页面明确显示暂未接通，没有 mock。
+
+#### 4. 按日期调用趋势
+
+前端用途：绘制调用次数、成功/失败、平均时延和 Token 趋势。
+
+建议接口：
+
+```http
+GET /api/open/usage/trend
+```
+
+建议参数：`startTime`、`endTime`、`apiKeyId`、`modelId`、`granularity=DAY|HOUR`。
+
+建议返回记录字段：`timeBucket`、`totalCalls`、`successCalls`、`failedCalls`、`avgCostTimeMs`、`totalTokens`。不需要普通分页，按时间桶数组返回。
+
+当前处理：前端对已读取真实日志按日期临时聚合。
+
+#### 5. 按模型统计
+
+前端用途：展示不同模型的调用次数、成功率、平均响应时间和 Token 使用量。
+
+建议接口：
+
+```http
+GET /api/open/usage/by-model
+```
+
+建议参数：`startTime`、`endTime`、`apiKeyId`。
+
+建议返回记录字段：`modelId`、`modelName`、`totalCalls`、`successCalls`、`failedCalls`、`avgCostTimeMs`、`totalTokens`。数据量较少时无需分页。
+
+当前处理：前端按日志 `modelId` 聚合调用次数；日志没有 `modelName`，另外请求模型列表做名称映射。
+
+#### 6. 按 API Key 统计
+
+前端用途：比较各 Key 的调用量、成功率、时延和 Token 使用情况。
+
+建议接口：
+
+```http
+GET /api/open/usage/by-key
+```
+
+建议参数：`startTime`、`endTime`、`modelId`。
+
+建议返回记录字段：`apiKeyId`、`keyName`、`apiKeyPrefix`、`totalCalls`、`successCalls`、`failedCalls`、`avgCostTimeMs`、`totalTokens`。Key 较多时建议分页。
+
+当前处理：前端按日志 `apiKeyId` 聚合调用次数，并使用真实 Key 列表映射名称。
+
+#### 7. 调用日志多条件查询
+
+前端用途：服务端准确执行时间和模型筛选，并允许查看超过前端 1000 条上限的完整数据。
+
+现有接口已经支持：`pageNum`、`pageSize`、`apiKeyId`、`status`。
+
+建议在现有接口增加：`startTime`、`endTime`、`modelId`；建议日志 VO 同时返回只读 `modelName`。继续使用分页。
+
+当前处理：前端批量读取最近最多 1000 条日志，再对时间和模型做客户端筛选。
+
+#### 8. 统计或日志导出
+
+前端用途：导出当前筛选范围的 CSV/XLSX，避免前端自行下载不完整日志。
+
+建议接口：
+
+```http
+GET /api/open/call-logs/export
+```
+
+建议参数：与日志筛选保持一致，包括 `startTime`、`endTime`、`apiKeyId`、`modelId`、`status`、`format=csv|xlsx`。导出接口不使用普通分页，但后端应设置条数上限或异步任务。
+
+当前处理：导出按钮禁用占位。
+
+已确认不属于后端缺失：创建 Key 时返回一次性完整 Key、Key 列表、脱敏前缀、最近使用时间、启停、删除和重新生成接口均已存在。
 
 ## 云图预测
 
@@ -398,7 +558,7 @@ mock 兜底策略：
 - 页面优先请求真实接口。
 - 真实接口失败时，使用 mock 数据并在页面提示“模拟数据”。
 - 真实接口和 mock 都失败时，页面展示错误状态和重试入口。
-- 上述策略仍适用于原有 API、新闻、通知和个人中心聚合逻辑；模型广场是明确例外，现已直接调用 `model.ts` 的真实接口封装，失败时只展示错误和重试，不使用模型 mock。
+- 上述策略仍适用于新闻、通知和个人中心等原有聚合逻辑；模型广场和 API 管理页是明确例外，已直接调用各自真实 API 封装，失败时只展示错误和重试，不使用业务 mock。
 
 ## 本地联调顺序
 
@@ -441,5 +601,6 @@ http://127.0.0.1:5173/profile
 ## 已验证
 
 - 本次模型广场改造完成后，`web-frontend` 执行 `npm run build` 通过（Vue TypeScript 检查和 Vite 生产构建均成功）。
+- 本次 API 管理页面重构完成后再次执行 `npm run build`，Vue TypeScript 检查、ECharts 页面编译和 Vite 生产构建均成功。
 - 构建仅出现依赖包 pure annotation 和现有大 chunk 的警告，没有编译错误。
 - 后端编译曾执行 `run-local.ps1 -DskipTests compile` 通过。
