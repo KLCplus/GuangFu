@@ -192,3 +192,9 @@ springdoc:
     path: /swagger-ui.html
   api-docs:
     path: /v3/api-docs
+
+database:
+  migration:
+    api-usage:
+      # Only adds missing api_call_log Token columns and statistics indexes.
+      enabled: ${API_USAGE_SCHEMA_MIGRATION_ENABLED:true}

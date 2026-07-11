@@ -135,7 +135,8 @@ public class ApiCallLogService {
 
     public ApiUsageSummaryVO getUsageSummary(Long userId, LocalDateTime startTime, LocalDateTime endTime,
                                               Long apiKeyId, Long modelId) {
-        return logMapper.selectUsageSummary(userId, startTime, endTime, apiKeyId, modelId);
+        ApiUsageSummaryVO summary = logMapper.selectUsageSummary(userId, startTime, endTime, apiKeyId, modelId);
+        return summary == null ? new ApiUsageSummaryVO(0, 0, 0, 0, 0, 0, 0, 0) : summary;
     }
 
     public List<ApiUsageTrendVO> getUsageTrend(Long userId, LocalDateTime startTime, LocalDateTime endTime,

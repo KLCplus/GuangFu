@@ -14,6 +14,7 @@ import {
   getUsageByModel,
   getUsageSummary,
   getUsageTrend,
+  getOpenWallet,
   resetOpenApiKey,
   updateApiKeyName,
   updateApiKeyStatus
@@ -25,7 +26,8 @@ import type {
   ApiUsageByKeyItem,
   ApiUsageByModelItem,
   ApiUsageSummary,
-  ApiUsageTrendItem
+  ApiUsageTrendItem,
+  Wallet
 } from '../api/open'
 
 interface ApiKeyForm {
@@ -51,6 +53,12 @@ const editLoading = ref(false)
 const keyError = ref('')
 const statsError = ref('')
 const logsError = ref('')
+const summaryError = ref('')
+const trendError = ref('')
+const modelStatsError = ref('')
+const keyStatsError = ref('')
+const walletError = ref('')
+const walletLoading = ref(false)
 
 const apiKeys = ref<ApiKey[]>([])
 const models = ref<ModelListItem[]>([])
@@ -60,6 +68,7 @@ const summaryData = ref<ApiUsageSummary | null>(null)
 const trendApiData = ref<ApiUsageTrendItem[]>([])
 const modelApiData = ref<ApiUsageByModelItem[]>([])
 const keyApiData = ref<ApiUsageByKeyItem[]>([])
+const wallet = ref<Wallet | null>(null)
 
 // server-side paginated call logs
 const callLogRecords = ref<ApiCallLog[]>([])
@@ -144,7 +153,7 @@ const summaryCards = computed(() => {
   const s = summaryData.value
   if (!s) {
     return [
-      { label: '总调用次数', value: '—', note: '正在加载统计数据…', tone: 'blue' },
+      { label: '总调用次数', value: '—', note: summaryError.value || '正在加载统计数据…', tone: 'blue' },
       { label: '成功调用', value: '—', note: '', tone: 'green' },
       { label: '失败调用', value: '—', note: '', tone: 'red' },
       { label: '平均响应时间', value: '—', note: '', tone: 'purple' }
@@ -180,13 +189,14 @@ const summaryCards = computed(() => {
 
 const tokenSummary = computed(() => {
   const s = summaryData.value
-  if (!s) return { input: '—', output: '—', total: '—', hasData: false }
+  if (!s) return { input: '—', output: '—', total: '—', hasData: false, note: summaryError.value || '等待统计汇总数据' }
   const hasData = s.inputTokens > 0 || s.outputTokens > 0 || s.totalTokens > 0
   return {
     input: formatNumber(s.inputTokens),
     output: formatNumber(s.outputTokens),
     total: formatNumber(s.totalTokens),
-    hasData
+    hasData,
+    note: hasData ? '后端聚合统计' : '调用链暂未写入 Token 数据'
   }
 })
 
@@ -218,6 +228,13 @@ const statsCoverageText = computed(() => {
   const total = summaryData.value?.totalCalls ?? 0
   return `统计数据由后端聚合，当前筛选范围内共 ${formatNumber(total)} 条调用记录。`
 })
+
+const walletAmount = computed(() => wallet.value?.balance ?? null)
+const walletMonthlyCost = computed(() => wallet.value?.monthlyCost ?? null)
+const hasTrendData = computed(() => trendApiData.value.length > 0)
+const hasModelStats = computed(() => modelApiData.value.length > 0)
+const hasKeyStats = computed(() => keyApiData.value.length > 0)
+const hasAnyChartData = computed(() => hasTrendData.value || hasModelStats.value || hasKeyStats.value)
 
 // ---- lifecycle ----
 
@@ -254,11 +271,23 @@ watch([trendApiData, modelApiData, keyApiData], () => {
 
 async function loadPage() {
   refreshing.value = true
-  await Promise.all([loadKeys(), loadModels()])
-  await loadStats()
-  await loadCallLogs()
+  await Promise.all([loadKeys(), loadModels(), loadWallet()])
+  await Promise.all([loadStats(), loadCallLogs()])
   refreshing.value = false
   void nextTick(renderCharts)
+}
+
+async function loadWallet() {
+  walletLoading.value = true
+  walletError.value = ''
+  try {
+    wallet.value = await getOpenWallet()
+  } catch (error) {
+    wallet.value = null
+    walletError.value = errorMessage(error, '余额信息加载失败')
+  } finally {
+    walletLoading.value = false
+  }
 }
 
 async function loadKeys() {
@@ -285,27 +314,46 @@ async function loadModels() {
 async function loadStats() {
   statsLoading.value = true
   statsError.value = ''
-  try {
-    const params = filterParams()
-    const [summaryResult, trendResult, modelResult, keyResult] = await Promise.all([
-      getUsageSummary(params),
-      getUsageTrend(params),
-      getUsageByModel(params),
-      getUsageByKey(params)
-    ])
-    summaryData.value = summaryResult
-    trendApiData.value = trendResult
-    modelApiData.value = modelResult
-    keyApiData.value = keyResult
-  } catch (error) {
+  summaryError.value = ''
+  trendError.value = ''
+  modelStatsError.value = ''
+  keyStatsError.value = ''
+  const params = filterParams()
+  const [summaryResult, trendResult, modelResult, keyResult] = await Promise.allSettled([
+    getUsageSummary(params),
+    getUsageTrend(params),
+    getUsageByModel(params),
+    getUsageByKey(params)
+  ])
+
+  if (summaryResult.status === 'fulfilled') summaryData.value = summaryResult.value
+  else {
     summaryData.value = null
-    trendApiData.value = []
-    modelApiData.value = []
-    keyApiData.value = []
-    statsError.value = errorMessage(error, '统计数据加载失败')
-  } finally {
-    statsLoading.value = false
+    summaryError.value = errorMessage(summaryResult.reason, '汇总数据加载失败')
   }
+  if (trendResult.status === 'fulfilled') trendApiData.value = trendResult.value
+  else {
+    trendApiData.value = []
+    trendError.value = errorMessage(trendResult.reason, '调用趋势加载失败')
+  }
+  if (modelResult.status === 'fulfilled') modelApiData.value = modelResult.value
+  else {
+    modelApiData.value = []
+    modelStatsError.value = errorMessage(modelResult.reason, '模型统计加载失败')
+  }
+  if (keyResult.status === 'fulfilled') keyApiData.value = keyResult.value
+  else {
+    keyApiData.value = []
+    keyStatsError.value = errorMessage(keyResult.reason, 'API Key 统计加载失败')
+  }
+
+  const failures = [summaryError.value, trendError.value, modelStatsError.value, keyStatsError.value]
+    .filter(Boolean).length
+  statsError.value = failures ? `${failures} 项统计数据加载失败，其余数据仍可正常使用。` : ''
+  statsLoading.value = false
+  await nextTick()
+  renderCharts()
+  resizeCharts()
 }
 
 async function loadCallLogs() {
@@ -774,6 +822,35 @@ async function copyText(value: string) {
       </div>
     </section>
 
+    <section v-loading="walletLoading" class="wallet-section">
+      <div class="wallet-heading">
+        <div>
+          <p class="section-kicker">Account balance</p>
+          <h2>余额与消费</h2>
+          <p>当前为开放平台账户视图，仅展示人民币。充值能力尚未开放。</p>
+        </div>
+        <el-button type="primary" disabled>去充值（暂未开放）</el-button>
+      </div>
+      <el-alert v-if="walletError" :title="walletError" type="error" show-icon :closable="false">
+        <template #default>
+          <el-button text type="primary" @click="loadWallet">重新加载</el-button>
+        </template>
+      </el-alert>
+      <div class="wallet-grid">
+        <article>
+          <span>可用余额</span>
+          <strong>{{ walletAmount == null ? '—' : `¥${walletAmount.toFixed(2)}` }}</strong>
+          <small>来自 GET /api/open/wallet</small>
+        </article>
+        <article>
+          <span>本月消费金额</span>
+          <strong>{{ walletMonthlyCost == null ? '—' : `¥${walletMonthlyCost.toFixed(2)}` }}</strong>
+          <small>当前由后端按本月调用日志临时计算</small>
+        </article>
+      </div>
+      <p class="wallet-disclaimer">当前后端未建立真实钱包、充值订单和支付流水；余额固定为 0，本月消费不代表正式账单。</p>
+    </section>
+
     <section class="usage-section">
       <div class="section-heading usage-heading">
         <div>
@@ -828,11 +905,11 @@ async function copyText(value: string) {
         </article>
       </div>
 
-      <div v-if="!statsLoading && !statsError && !logsLoading && callLogTotal === 0" class="usage-empty">
+      <div v-if="!statsLoading && !statsError && !hasAnyChartData && summaryData?.totalCalls === 0" class="usage-empty">
         <el-empty description="当前筛选条件下暂无调用数据" :image-size="86" />
       </div>
 
-      <div v-show="callLogTotal > 0" class="chart-layout">
+      <div class="chart-layout">
         <section class="chart-card trend-card">
           <div class="chart-heading">
             <div>
@@ -840,7 +917,9 @@ async function copyText(value: string) {
               <p>按调用日期聚合成功与失败次数</p>
             </div>
           </div>
-          <div ref="trendChartRef" class="chart-canvas"></div>
+          <el-alert v-if="trendError" :title="trendError" type="error" :closable="false" show-icon />
+          <div v-else-if="hasTrendData" ref="trendChartRef" class="chart-canvas"></div>
+          <el-empty v-else description="暂无趋势数据" :image-size="64" />
         </section>
 
         <section class="chart-card">
@@ -850,7 +929,9 @@ async function copyText(value: string) {
               <p>根据调用日志中的 modelId 聚合</p>
             </div>
           </div>
-          <div ref="modelChartRef" class="chart-canvas compact-chart"></div>
+          <el-alert v-if="modelStatsError" :title="modelStatsError" type="error" :closable="false" show-icon />
+          <div v-else-if="hasModelStats" ref="modelChartRef" class="chart-canvas compact-chart"></div>
+          <el-empty v-else description="暂无模型调用数据" :image-size="64" />
         </section>
 
         <section class="chart-card">
@@ -860,7 +941,9 @@ async function copyText(value: string) {
               <p>最多展示当前筛选结果中的前 8 个 Key</p>
             </div>
           </div>
-          <div ref="keyChartRef" class="chart-canvas compact-chart"></div>
+          <el-alert v-if="keyStatsError" :title="keyStatsError" type="error" :closable="false" show-icon />
+          <div v-else-if="hasKeyStats" ref="keyChartRef" class="chart-canvas compact-chart"></div>
+          <el-empty v-else description="暂无 API Key 调用数据" :image-size="64" />
         </section>
       </div>
 
@@ -1079,6 +1162,64 @@ async function copyText(value: string) {
   border-radius: 12px;
   background: #ffffff;
   box-shadow: 0 8px 24px rgba(20, 65, 120, 0.05);
+}
+
+.wallet-section {
+  display: grid;
+  gap: 16px;
+  padding: 22px;
+  border: 1px solid #dce6f1;
+  border-radius: 14px;
+  background: linear-gradient(135deg, #fff 0%, #f6f9fd 100%);
+  box-shadow: 0 8px 24px rgba(20, 65, 120, 0.05);
+}
+
+.wallet-heading {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.wallet-heading h2 {
+  margin: 0;
+  color: #10274c;
+  font-size: 24px;
+}
+
+.wallet-heading p:not(.section-kicker),
+.wallet-disclaimer {
+  margin: 6px 0 0;
+  color: var(--color-muted);
+  font-size: 12px;
+  line-height: 1.65;
+}
+
+.wallet-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.wallet-grid article {
+  padding: 18px 20px;
+  border: 1px solid #e1e8f1;
+  border-radius: 12px;
+  background: #fff;
+}
+
+.wallet-grid span,
+.wallet-grid small {
+  display: block;
+  color: #728198;
+  font-size: 12px;
+}
+
+.wallet-grid strong {
+  display: block;
+  margin: 10px 0 8px;
+  color: #10274c;
+  font-size: 28px;
 }
 
 .key-table :deep(.el-table__header th) {
@@ -1339,8 +1480,14 @@ async function copyText(value: string) {
 
 @media (max-width: 680px) {
   .summary-grid,
-  .chart-layout {
+  .chart-layout,
+  .wallet-grid {
     grid-template-columns: 1fr;
+  }
+
+  .wallet-heading {
+    align-items: stretch;
+    flex-direction: column;
   }
 
   .filter-control {
