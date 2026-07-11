@@ -220,14 +220,14 @@ web-frontend/src/views/ApiPlatform.vue
 - API Key 列表展示名称、脱敏 Key、创建时间、最近使用时间和状态；列表只使用后端返回的 `apiKeyPrefix` 生成脱敏文本，不保存或重新暴露完整 Key。
 - 创建 API Key 使用真实接口，提交 `keyName`、`expireDays`；成功后在一次性弹窗显示响应中的 `apiKey`，弹窗关闭后从页面状态清除完整 Key。
 - API Key 启用、停用、重新生成、删除均使用真实接口；停用、重新生成、删除前均增加二次确认。
-- Key 名称编辑按钮为禁用占位，并明确提示当前缺少后端修改名称接口。
-- 使用统计从真实调用日志读取原始数据。前端按后端单页最大 100 条分批请求，最多读取最近 1000 条，并明确显示“全量”或“最近 1000 条”的统计覆盖范围。
-- 支持时间范围、API Key、模型、成功/失败状态组合筛选；筛选基于已读取的真实日志在前端完成。
-- 前端根据调用日志聚合总调用次数、成功次数、失败次数、成功率、平均响应时间、按日期调用趋势、模型调用占比和 API Key 调用次数。
+- Key 名称编辑已接入真实后端 `PUT /api/open/keys/{apiKeyId}/name`，保存后刷新 Key 列表。
+- 使用统计已改为真实后端聚合接口，不再由前端读取最近 1000 条日志后自行汇总。
+- 支持时间范围、API Key、模型、成功/失败状态组合筛选；筛选条件传给后端统计和日志接口执行。
+- 后端聚合并返回总调用次数、成功次数、失败次数、成功率、平均响应时间、按日期调用趋势、模型调用占比和 API Key 调用次数。
 - 使用项目现有 ECharts 绘制调用趋势折线图、模型占比环形图和 API Key 调用横向柱状图，没有引入新依赖。
-- 调用记录表基于已读取日志进行前端分页，展示请求时间、Key、模型、接口、状态、HTTP 状态、耗时和错误信息。
-- Token 使用量没有后端字段，页面显示“暂未接通”，不生成 mock Token 数值。
-- 统计导出没有后端接口，按钮保持禁用占位并说明原因。
+- 调用记录表使用后端分页，展示请求时间、Key、模型、接口、状态、HTTP 状态、耗时和错误信息。
+- Token 兼容字段已完成数据库字段、DO、VO、聚合 SQL 和空数据返回；当前模型调用结果没有可靠 input/output Token 字段，开放预测日志保持 `NULL`，不估算或伪造 Token。
+- 统计导出已接入 `GET /api/open/call-logs/export`，前端基于后端返回的最多 10000 条筛选结果生成 CSV。
 - API Key、日志或筛选结果为空时使用正常空状态；真实接口失败时展示错误和重试，不自动回退 mock。
 
 本次 API 管理页面直接复用的前端 API 封装：
@@ -238,7 +238,13 @@ web-frontend/src/views/ApiPlatform.vue
 - `deleteApiKey`
 - `resetOpenApiKey`
 - `getCallLogs`
-- `getModels`，仅用于把调用日志中的 `modelId` 映射为接口真实返回的模型名称。
+- `updateApiKeyName`
+- `getUsageSummary`
+- `getUsageTrend`
+- `getUsageByModel`
+- `getUsageByKey`
+- `exportCallLogs`
+- `getModels`，用于模型筛选选项的兜底来源；日志接口已返回 `modelName`。
 
 真实接口与页面功能对应关系：
 
@@ -249,50 +255,51 @@ web-frontend/src/views/ApiPlatform.vue
 | `PUT /api/open/keys/{apiKeyId}/status` | 启用或停用 Key |
 | `DELETE /api/open/keys/{apiKeyId}` | 永久删除 Key |
 | `POST /api/open/keys/{apiKeyId}/reset` | 重新生成 Key，并接收一次性完整 `apiKey` |
-| `GET /api/open/call-logs` | 调用记录和全部前端临时统计 |
+| `GET /api/open/call-logs` | 调用记录分页 |
+| `GET /api/open/usage/summary` | 使用统计汇总 |
+| `GET /api/open/usage/trend` | 按日期调用趋势 |
+| `GET /api/open/usage/by-model` | 按模型统计 |
+| `GET /api/open/usage/by-key` | 按 API Key 统计 |
+| `GET /api/open/call-logs/export` | 调用日志导出数据 |
 | `GET /api/models` | 将日志 `modelId` 映射为模型名称；未返回的模型显示为 `模型 #ID` |
 
-API 管理页面当前没有业务 mock 数据。以下内容只是明确标记的页面占位：
+API 管理页面当前没有业务 mock 数据。以下内容只是明确标记的页面占位或临时能力：
 
-- 修改 API Key 名称：禁用按钮。
-- Token 使用量：显示 `—` 和“暂未接通”。
-- 统计数据导出：禁用按钮。
+- 去充值：禁用按钮。当前没有钱包持久化表、充值订单、支付发起/查询/回调和幂等入账流程。
+- 余额：接入真实接口 `/api/open/wallet`，但为临时占位账务能力，余额和冻结余额固定 0，本月消费按调用日志数量乘以 0.01 元临时计算，流水由调用日志临时映射；不伪造余额、充值订单或充值结果。
+- Token：兼容字段已完成数据库字段、DO、VO、聚合 SQL 和空数据返回；当前模型调用结果没有可靠的 input/output Token 字段，开放预测日志保持 `NULL`，页面显示“暂未接通”，不使用 mock 或估算值。
 
-### API 管理需要后端补充的内容
+补充说明：当前页面展示“可用余额”“本月消费金额”“充值入口”和后端能力说明，只用于把现阶段能力边界暴露给用户。充值入口必须保持禁用；Token 卡片在真实写入链路闭合前只能展示 `—` 和“暂未接通”。
+
+### API 管理已补齐的后端内容
 
 #### 1. 修改 API Key 名称
 
-前端用途：允许用户修改 Key 的显示名称，不改变密钥本身。
-
-建议接口：
+用途：允许用户修改 Key 的显示名称，不改变密钥本身。
 
 ```http
 PUT /api/open/keys/{apiKeyId}/name
 ```
 
-建议请求：
+请求：
 
 ```json
 { "keyName": "生产环境预测服务" }
 ```
 
-建议返回：更新后的 `ApiKeyVO`。需要校验当前登录用户是 Key 所有者；不需要分页。
-
-当前处理：编辑按钮禁用占位。
+返回更新后的 `ApiKeyVO`。后端按当前登录用户校验 Key 所有权。
 
 #### 2. API 使用统计汇总
 
-前端用途：准确展示总调用次数、成功次数、失败次数、成功率、平均响应时间和 Token 使用量，避免前端最多读取 1000 条日志后自行聚合。
-
-建议接口：
+用途：准确展示总调用次数、成功次数、失败次数、成功率和平均响应时间；Token 字段随聚合结果返回，但当前保持 0。
 
 ```http
 GET /api/open/usage/summary
 ```
 
-建议参数：`startTime`、`endTime`、`apiKeyId`、`modelId`，均可选。
+参数：`startTime`、`endTime`、`apiKeyId`、`modelId`，均可选。
 
-建议返回：
+返回：
 
 ```json
 {
@@ -307,89 +314,73 @@ GET /api/open/usage/summary
 }
 ```
 
-当前处理：除 Token 外，前端对最多最近 1000 条真实调用日志临时聚合；Token 仅占位。
+当前处理：前端直接展示后端聚合结果。
 
-#### 3. Token 统计字段
+#### 3. Token 兼容字段
 
-前端用途：显示总 Token、输入 Token、输出 Token，并支持按日期、Key、模型统计。
+用途：为后续真实模型 Token 或计费单位接入预留日志与统计字段。
 
-当前缺失原因：`api_call_log`、`ApiCallLogDO`、`ApiCallLogVO` 和模型调用日志均没有 Token 字段。
+已补齐：`api_call_log`、`ApiCallLogDO`、`ApiCallLogVO`、统计 SQL 和空数据返回。
 
-建议字段：`input_tokens`、`output_tokens`、`total_tokens`；应由实际模型响应或计费模块写入，不能由前端估算。
+字段：`input_tokens`、`output_tokens`、`total_tokens`。
 
-当前处理：页面明确显示暂未接通，没有 mock。
+当前限制：模型调用结果没有可靠的 input/output Token 字段；`OpenApiService` 仍调用不带 Token 参数的日志保存重载，新日志字段保持 `NULL`。本次不估算、不伪造 Token。
 
 #### 4. 按日期调用趋势
 
-前端用途：绘制调用次数、成功/失败、平均时延和 Token 趋势。
-
-建议接口：
+用途：绘制调用次数、成功/失败和平均时延趋势；Token 字段保留在响应中。
 
 ```http
 GET /api/open/usage/trend
 ```
 
-建议参数：`startTime`、`endTime`、`apiKeyId`、`modelId`、`granularity=DAY|HOUR`。
+参数：`startTime`、`endTime`、`apiKeyId`、`modelId`、`granularity=DAY|HOUR`。
 
-建议返回记录字段：`timeBucket`、`totalCalls`、`successCalls`、`failedCalls`、`avgCostTimeMs`、`totalTokens`。不需要普通分页，按时间桶数组返回。
-
-当前处理：前端对已读取真实日志按日期临时聚合。
+返回记录字段：`timeBucket`、`totalCalls`、`successCalls`、`failedCalls`、`avgCostTimeMs`、`totalTokens`。不使用普通分页，按时间桶数组返回。
 
 #### 5. 按模型统计
 
-前端用途：展示不同模型的调用次数、成功率、平均响应时间和 Token 使用量。
-
-建议接口：
+用途：展示不同模型的调用次数、成功率和平均响应时间；Token 字段保留在响应中。
 
 ```http
 GET /api/open/usage/by-model
 ```
 
-建议参数：`startTime`、`endTime`、`apiKeyId`。
+参数：`startTime`、`endTime`、`apiKeyId`。
 
-建议返回记录字段：`modelId`、`modelName`、`totalCalls`、`successCalls`、`failedCalls`、`avgCostTimeMs`、`totalTokens`。数据量较少时无需分页。
-
-当前处理：前端按日志 `modelId` 聚合调用次数；日志没有 `modelName`，另外请求模型列表做名称映射。
+返回记录字段：`modelId`、`modelName`、`totalCalls`、`successCalls`、`failedCalls`、`avgCostTimeMs`、`totalTokens`。数据量较少时无需分页。
 
 #### 6. 按 API Key 统计
 
-前端用途：比较各 Key 的调用量、成功率、时延和 Token 使用情况。
-
-建议接口：
+用途：比较各 Key 的调用量、成功率和时延；Token 字段保留在响应中。
 
 ```http
 GET /api/open/usage/by-key
 ```
 
-建议参数：`startTime`、`endTime`、`modelId`。
+参数：`startTime`、`endTime`、`modelId`。
 
-建议返回记录字段：`apiKeyId`、`keyName`、`apiKeyPrefix`、`totalCalls`、`successCalls`、`failedCalls`、`avgCostTimeMs`、`totalTokens`。Key 较多时建议分页。
-
-当前处理：前端按日志 `apiKeyId` 聚合调用次数，并使用真实 Key 列表映射名称。
+返回记录字段：`apiKeyId`、`keyName`、`apiKeyPrefix`、`totalCalls`、`successCalls`、`failedCalls`、`avgCostTimeMs`、`totalTokens`。当前直接返回数组。
 
 #### 7. 调用日志多条件查询
 
-前端用途：服务端准确执行时间和模型筛选，并允许查看超过前端 1000 条上限的完整数据。
+用途：服务端准确执行时间、Key、模型、状态筛选，并允许分页查看完整数据。
 
-现有接口已经支持：`pageNum`、`pageSize`、`apiKeyId`、`status`。
+现有接口支持：`pageNum`、`pageSize`、`apiKeyId`、`status`、`startTime`、`endTime`、`modelId`。日志 VO 同时返回只读 `modelName`。
 
-建议在现有接口增加：`startTime`、`endTime`、`modelId`；建议日志 VO 同时返回只读 `modelName`。继续使用分页。
-
-当前处理：前端批量读取最近最多 1000 条日志，再对时间和模型做客户端筛选。
+当前处理：前端使用服务端筛选和分页，不再批量读取最近 1000 条日志做客户端筛选。
 
 #### 8. 统计或日志导出
 
-前端用途：导出当前筛选范围的 CSV/XLSX，避免前端自行下载不完整日志。
-
-建议接口：
+用途：导出当前筛选范围的调用日志，避免前端自行下载不完整日志。
 
 ```http
 GET /api/open/call-logs/export
 ```
 
-建议参数：与日志筛选保持一致，包括 `startTime`、`endTime`、`apiKeyId`、`modelId`、`status`、`format=csv|xlsx`。导出接口不使用普通分页，但后端应设置条数上限或异步任务。
+参数：与日志筛选保持一致，包括 `startTime`、`endTime`、`apiKeyId`、`modelId`、`status`。导出接口不使用普通分页，后端最多返回 10000 条记录。
 
-当前处理：导出按钮禁用占位。
+当前处理：前端调用导出接口，并在浏览器侧生成 CSV 文件。
 
 已确认不属于后端缺失：创建 Key 时返回一次性完整 Key、Key 列表、脱敏前缀、最近使用时间、启停、删除和重新生成接口均已存在。
 
@@ -665,12 +656,12 @@ http://127.0.0.1:5173/profile
 
 - `/api/open/wallet` 是真实后端接口，但当前不是完整钱包系统：`balance` 和 `frozenBalance` 固定返回 0，本月消费按本月 API 调用日志数量乘以 0.01 元临时计算，流水由调用日志临时映射。
 - 页面明确说明上述限制；“去充值”保持禁用并标记“暂未开放”。目前没有钱包持久化表、充值订单、支付接口或支付回调。
-- 用量字段、DO、VO、统计 SQL 和写入链路已经闭合。`OpenApiService` 将真实请求输入帧数和预测输出点数写入现有 `inputTokens`、`outputTokens`、`totalTokens` 字段；这些字段表示本项目模型调用用量，不冒充大语言模型 tokenizer Token。
-- API 管理当前未使用 API Key、统计、余额或 Token 业务假数据。
+- Token 字段、DO、VO、统计 SQL 和空数据返回已经闭合，但当前模型调用结果没有可靠的 input/output Token 字段；`OpenApiService` 调用不带 Token 参数的日志保存重载，新字段保持 `NULL`。
+- API 管理当前未使用 API Key、统计、余额、充值或 Token 业务假数据。
 
 ### 后续仍需补齐
 
-- 若未来接入按模型服务原生计量的计费单位，需要另行明确字段语义和计费规则，不能把输入帧/输出点直接解释为大语言模型 Token。
+- 若未来接入模型服务原生 Token 或其他计费单位，需要另行明确字段语义和计费规则，不能用输入帧/输出点估算替代。
 - 正式充值需要钱包账户表、余额流水表、充值订单、支付发起/查询/回调和幂等入账流程；完成前前端充值入口不能启用。
 
 ### 验证结果

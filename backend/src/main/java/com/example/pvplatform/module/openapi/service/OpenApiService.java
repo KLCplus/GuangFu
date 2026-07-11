@@ -55,8 +55,6 @@ public class OpenApiService {
         PredictionTaskDO task = null;
         int status = 200;
         String error = null;
-        Long inputUnits = estimateInputUnits(request);
-        Long outputUnits = null;
         try {
             model = modelMapper.selectOne(Wrappers.<ModelInfoDO>lambdaQuery()
                 .and(q -> q.eq(ModelInfoDO::getServiceModelName, request.modelName())
@@ -74,7 +72,6 @@ public class OpenApiService {
                 request.stationId(), model.getModelId(), "OPEN_API", start, end, frames);
             persistenceService.markRunning(task.getTaskId());
             ModelPredictResponse.Data data = executionService.execute(model, frames, request.inputImages());
-            outputUnits = data.predictions() == null ? 0L : (long) data.predictions().size();
             persistenceService.saveResultsAndMarkSuccess(task.getTaskId(), data,
                 executionService.getLastInputTime(frames));
             return new OpenPredictVO(task.getTaskId(), task.getTaskNo(), "SUCCESS",
@@ -100,27 +97,11 @@ public class OpenApiService {
                 "{\"modelName\":\"" + safe(request.modelName()) + "\",\"frameCount\":"
                     + (request.input() == null ? 0 : request.input().size()) + ",\"imageCount\":"
                     + (request.inputImages() == null ? 0 : request.inputImages().size()) + "}",
-                task == null ? null : "{\"taskId\":" + task.getTaskId() + "}",
-                inputUnits, outputUnits, totalUnits(inputUnits, outputUnits));
+                task == null ? null : "{\"taskId\":" + task.getTaskId() + "}");
             httpRequest.setAttribute("OPEN_API_AUDITED", Boolean.TRUE);
         }
     }
 
-    private Long estimateInputUnits(OpenPredictRequest request) {
-        if (request == null) {
-            return null;
-        }
-        long inputFrames = request.input() == null ? 0L : request.input().size();
-        long imageFrames = request.inputImages() == null ? 0L : request.inputImages().size();
-        return inputFrames + imageFrames;
-    }
-
-    private Long totalUnits(Long inputUnits, Long outputUnits) {
-        if (inputUnits == null && outputUnits == null) {
-            return null;
-        }
-        return (inputUnits == null ? 0L : inputUnits) + (outputUnits == null ? 0L : outputUnits);
-    }
 
     private List<ModelInputFrame> convertAndValidate(List<ModelPredictRequest.InputFrame> input,
                                                       ModelInfoDO model) {

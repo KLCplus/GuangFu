@@ -192,11 +192,11 @@ const tokenSummary = computed(() => {
   if (!s) return { input: '—', output: '—', total: '—', hasData: false, note: summaryError.value || '等待统计汇总数据' }
   const hasData = s.inputTokens > 0 || s.outputTokens > 0 || s.totalTokens > 0
   return {
-    input: formatNumber(s.inputTokens),
-    output: formatNumber(s.outputTokens),
-    total: formatNumber(s.totalTokens),
+    input: hasData ? formatNumber(s.inputTokens) : '—',
+    output: hasData ? formatNumber(s.outputTokens) : '—',
+    total: hasData ? formatNumber(s.totalTokens) : '—',
     hasData,
-    note: hasData ? '后端聚合统计' : '调用链暂未写入 Token 数据'
+    note: hasData ? '后端聚合统计' : 'Token 统计暂未接通'
   }
 })
 
@@ -526,7 +526,7 @@ async function handleExport() {
       ElMessage.warning('当前筛选条件下无数据可导出')
       return
     }
-    const headers = ['时间', 'API Key ID', '模型', '接口', '方法', '状态', 'HTTP', '耗时(ms)', '错误信息', '输入帧数', '输出点数', '总用量']
+    const headers = ['时间', 'API Key ID', '模型', '接口', '方法', '状态', 'HTTP', '耗时(ms)', '错误信息', '输入 Token', '输出 Token', '总 Token']
     const rows = logs.map((log) => [
       formatDate(log.requestTime ?? log.createdAt),
       log.apiKeyId ?? '',
@@ -537,9 +537,9 @@ async function handleExport() {
       log.statusCode ?? log.httpStatus ?? '',
       log.costTimeMs ?? log.costTime ?? 0,
       (log.errorMessage ?? '').replace(/,/g, ' '),
-      log.inputTokens ?? 0,
-      log.outputTokens ?? 0,
-      log.totalTokens ?? 0
+      log.inputTokens ?? '',
+      log.outputTokens ?? '',
+      log.totalTokens ?? ''
     ])
     const csvContent = [headers.join(','), ...rows.map((r) => r.join(','))].join('\n')
     const BOM = '﻿'
@@ -893,15 +893,15 @@ async function copyText(value: string) {
           <small>{{ card.note }}</small>
         </article>
         <article class="summary-card token-card" :class="tokenSummary.hasData ? 'tone-blue' : 'unavailable-card'">
-          <span>模型调用用量</span>
+          <span>Token 使用量</span>
           <div class="token-values">
-            <div class="token-row"><em>输入帧</em><strong>{{ tokenSummary.input }}</strong></div>
-            <div class="token-row"><em>输出点</em><strong>{{ tokenSummary.output }}</strong></div>
+            <div class="token-row"><em>输入</em><strong>{{ tokenSummary.input }}</strong></div>
+            <div class="token-row"><em>输出</em><strong>{{ tokenSummary.output }}</strong></div>
             <div class="token-row"><em>总计</em><strong>{{ tokenSummary.total }}</strong></div>
           </div>
-          <small v-if="tokenSummary.hasData">后端按输入帧和输出点聚合</small>
-          <small v-else>当前筛选范围暂无用量数据</small>
-          <el-tag v-if="!tokenSummary.hasData" size="small" type="info" effect="plain">暂无数据</el-tag>
+          <small v-if="tokenSummary.hasData">后端聚合统计</small>
+          <small v-else>当前模型调用链暂未写入 Token 数据</small>
+          <el-tag v-if="!tokenSummary.hasData" size="small" type="info" effect="plain">暂未接通</el-tag>
         </article>
       </div>
 

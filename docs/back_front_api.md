@@ -1073,14 +1073,14 @@ GET /api/open/call-logs?pageNum=1&pageSize=10&apiKeyId=&status=&startTime=&endTi
   "errorMessage": null,
   "requestSummary": null,
   "responseSummary": null,
-  "inputTokens": 100,
-  "outputTokens": 200,
-  "totalTokens": 300,
+  "inputTokens": null,
+  "outputTokens": null,
+  "totalTokens": null,
   "createdAt": "2026-07-10 12:00:00"
 }
 ```
 
-`modelName` 通过关联 `model_info` 表获取；`inputTokens`、`outputTokens`、`totalTokens` 由实际模型调用写入，旧记录可能为 null。
+`modelName` 通过关联 `model_info` 表获取；`inputTokens`、`outputTokens`、`totalTokens` 是兼容字段名，数据库、DO、VO 和聚合 SQL 已就绪。当前模型调用结果没有可靠的 input/output Token 字段，开放预测日志仍写入 null，不做估算或伪造。
 
 ### 14.3 调用日志导出
 
@@ -1107,9 +1107,9 @@ GET /api/open/usage/summary?startTime=&endTime=&apiKeyId=&modelId=
   "failedCalls": 70,
   "successRate": 94.4,
   "avgCostTimeMs": 234,
-  "inputTokens": 50000,
-  "outputTokens": 120000,
-  "totalTokens": 170000
+  "inputTokens": 0,
+  "outputTokens": 0,
+  "totalTokens": 0
 }
 ```
 
@@ -1129,7 +1129,7 @@ GET /api/open/usage/trend?startTime=&endTime=&apiKeyId=&modelId=&granularity=DAY
 | `modelId` | 否 | 按模型筛选 |
 | `granularity` | 否 | `DAY`（默认）或 `HOUR` |
 
-响应记录字段：`timeBucket`、`totalCalls`、`successCalls`、`failedCalls`、`avgCostTimeMs`、`totalTokens`。按 `timeBucket` 升序返回数组。
+响应记录字段：`timeBucket`、`totalCalls`、`successCalls`、`failedCalls`、`avgCostTimeMs`、`totalTokens`。当前未写入可靠 Token 时，`totalTokens` 聚合值为 0。按 `timeBucket` 升序返回数组。
 
 ### 14.6 按模型统计
 
@@ -1137,7 +1137,7 @@ GET /api/open/usage/trend?startTime=&endTime=&apiKeyId=&modelId=&granularity=DAY
 GET /api/open/usage/by-model?startTime=&endTime=&apiKeyId=
 ```
 
-响应记录字段：`modelId`、`modelName`、`totalCalls`、`successCalls`、`failedCalls`、`avgCostTimeMs`、`totalTokens`。按 `totalCalls` 降序返回。
+响应记录字段：`modelId`、`modelName`、`totalCalls`、`successCalls`、`failedCalls`、`avgCostTimeMs`、`totalTokens`。当前未写入可靠 Token 时，`totalTokens` 聚合值为 0。按 `totalCalls` 降序返回。
 
 ### 14.7 按 API Key 统计
 
@@ -1145,7 +1145,7 @@ GET /api/open/usage/by-model?startTime=&endTime=&apiKeyId=
 GET /api/open/usage/by-key?startTime=&endTime=&modelId=
 ```
 
-响应记录字段：`apiKeyId`、`keyName`、`apiKeyPrefix`、`totalCalls`、`successCalls`、`failedCalls`、`avgCostTimeMs`、`totalTokens`。按 `totalCalls` 降序返回。
+响应记录字段：`apiKeyId`、`keyName`、`apiKeyPrefix`、`totalCalls`、`successCalls`、`failedCalls`、`avgCostTimeMs`、`totalTokens`。当前未写入可靠 Token 时，`totalTokens` 聚合值为 0。按 `totalCalls` 降序返回。
 
 ### 14.8 开放预测接口
 
