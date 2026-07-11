@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128" fill="none">
+  <defs>
+    <linearGradient id="bg" x1="10" y1="8" x2="118" y2="120" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#F6F7FE"/>
+      <stop offset="1" stop-color="#EEF2FF"/>
+    </linearGradient>
+    <linearGradient id="accentFade" x1="18" y1="18" x2="110" y2="110" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#6D28D9" stop-opacity="0.18"/>
+      <stop offset="1" stop-color="#6D28D9" stop-opacity="0.04"/>
+    </linearGradient>
+    <filter id="shadow" x="0" y="0" width="128" height="128" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="4" stdDeviation="6" flood-color="#0F172A" flood-opacity="0.08"/>
+    </filter>
+    <style>
+      .label { font: 700 14px Inter, Arial, sans-serif; fill: #6D28D9; letter-spacing: .4px; }
+      .meta { font: 700 11px Inter, Arial, sans-serif; fill: #6D28D9; opacity: .9; letter-spacing: .6px; }
+      .ink { stroke: #23314A; }
+      .accent { stroke: #6D28D9; }
+      .fill-accent { fill: #6D28D9; }
+      .fill-soft { fill: #E9D5FF; }
+      .fill-ink { fill: #23314A; }
+      .stroke-soft { stroke: #E9D5FF; }
+    </style>
+  </defs>
+  <g filter="url(#shadow)">
+    <rect x="8" y="8" width="112" height="112" rx="26" fill="url(#bg)" stroke="#C7D2FE" stroke-width="1.5"/>
+    <rect x="16" y="16" width="96" height="14" rx="7" fill="url(#accentFade)"/>
+    <text x="22" y="26" class="meta">VIDEO • CONV</text>
+    
+    <g>
+      <rect x="22" y="28" width="30" height="22" rx="6" fill="#FFFFFF" stroke="#C7D2FE" stroke-width="1.5"/>
+      <rect x="29" y="35" width="30" height="22" rx="6" fill="#F5F3FF" stroke="#C7D2FE" stroke-width="1.5"/>
+      <rect x="36" y="42" width="30" height="22" rx="6" fill="#FFFFFF" stroke="#C7D2FE" stroke-width="1.5"/>
+      <path d="M82 68 a18 18 0 1 1 0 -28" stroke="#6D28D9" stroke-width="3" stroke-linecap="round" fill="none" opacity=".9"/>
+      <path d="M76 37 l8 1 -4 7" stroke="#6D28D9" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+      <path d="M88 71 l-8 -1 4 -7" stroke="#8B5CF6" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+      <path d="M39 68 C42 61, 49 58, 55 61 C58 56, 65 55, 70 59 C74 57, 79 58, 82 63" fill="#EDE9FE" stroke="#A78BFA" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+      
+      <rect x="29" y="41" width="24" height="18" rx="4" fill="#FFFFFF" stroke="#6D28D9" stroke-width="2"/>
+      <path d="M34 46 H48 M34 52 H48 M38 42 V58 M44 42 V58" stroke="#6D28D9" stroke-width="1.6" stroke-linecap="round"/>
+      <path d="M75 48 a10 10 0 1 1 0 16" stroke="#6D28D9" stroke-width="3" stroke-linecap="round" fill="none"/>
+      <path d="M74 64 l3 -6 l6 4" stroke="#6D28D9" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+      
+    </g>
+    <rect x="22" y="92" width="84" height="18" rx="9" fill="#FFFFFF" stroke="#C7D2FE"/>
+    <text x="64" y="105" text-anchor="middle" class="label">CL</text>
+  </g>
+</svg>

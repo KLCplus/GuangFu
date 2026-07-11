@@ -109,22 +109,34 @@ web-frontend/src/views/Marketplace.vue
 
 - 页面改为面向浏览的多列模型卡片网格，宽屏三列、较窄窗口两列、移动端单列。
 - 页面顶部只保留“展开筛选器/隐藏筛选器”按钮和模型搜索框，删除原概览统计卡片。
-- 点击筛选按钮从左侧打开筛选抽屉；类型选项及数量由当前真实列表中的 `modelType` 动态去重统计生成。
-- 支持多类型组合筛选、清空类型筛选、清空全部搜索/筛选条件。
-- 搜索在前端对真实接口返回结果执行，匹配 `modelName`，并同时支持匹配 `modelCode`、`description`。
-- 搜索关键字和类型筛选可同时生效，并分别处理列表为空、搜索无结果、类型筛选无结果和组合筛选无结果。
-- 模型卡片整块可点击，展示真实接口返回的模型名称、模型编码、模型类型和描述；字段为空时直接隐藏。
+- 筛选器已从覆盖页面并带遮罩的全局 Drawer 改为模型广场内容区内部的可折叠侧栏，不覆盖系统主导航，也不影响其他页面。
+- 桌面端展开筛选栏时，模型列表在右侧自动缩小；收起后列表铺满。窄屏下筛选栏退化为模型列表上方的页面内面板，不使用全屏遮罩。
+- 模型类型、规范化架构体系、规范化能力标签为主筛选；来源机构、可用状态和发布年份放入默认折叠的“更多筛选”。
+- 同一筛选组内支持多选，不同筛选组组合生效；支持清空单组、清空全部筛选和清空搜索/筛选条件。
+- 每组筛选项显示由当前接口模型列表动态统计的模型数量；数量为 0 的选项不生成。模型类型默认全部展示，其他模块按频率排序并支持独立“更多/收起”。
+- 已选搜索与筛选条件在模型列表上方汇总为可关闭标签，支持单项移除和“清空全部”；筛选按钮显示当前已选筛选条件数量。
+- 搜索在前端对真实接口返回结果执行，匹配 `modelName`、`modelCode`、`description`、`shortDescription`、`modelFamily`、`provider` 和 `tags`。
+- 搜索关键字和六组筛选条件可以同时生效，并分别处理列表为空、搜索无结果、筛选无结果和组合筛选无结果。
+- 模型卡片整块可点击，卡片只展示 SVG 模型头像、`modelName`、`shortDescription`（为空时使用 `description`）和真实 `tags`；字段为空时直接隐藏。
+- 卡片头像来自 `web-frontend/src/assets/model-icons/svg`，包含 19 个模型专用 SVG 和 3 个按模型类型使用的兜底 SVG，通过 `modelCode` 优先匹配。
 - 删除模型版本、调用量、时延、价格、额度、试用状态、评分、排行以及卡片底部操作按钮。
-- 点击卡片调用真实模型详情接口，抽屉按返回情况展示模型说明、状态、输入窗口、输入间隔、输出步数、输出步长、`inputSchema` 和 `outputSchema`。
+- 点击卡片调用真实模型详情接口，抽屉按返回情况展示模型说明、状态、标签、家族、来源、论文/项目链接、能力、场景、优缺点、参考指标、输入输出配置和 Schema。
 - 详情接口失败时保留列表接口已经返回的真实信息，展示错误和重试入口，不回退到模拟详情。
 - 删除详情中的试用、购买、API 申请、调用示例和其他无真实业务来源操作。
 - 首次加载使用骨架卡片；列表失败、接口空列表、筛选无结果均有独立状态和重试/清空入口。
+- 筛选侧栏默认宽度为 320px，可通过纵向分隔线实时拖动到 260–520px，并限制不超过内容区的 45%。分隔线也支持键盘左右键微调。
+- 侧栏最终宽度写入 `localStorage` 的 `marketplace-filter-sidebar-width`，下次进入页面时恢复；拖动结束和组件卸载时移除全局 Pointer 监听与拖动态样式。
+- 侧栏使用 sticky 定位并保留独立纵向滚动；筛选按钮采用响应式 Grid，模型类型固定两列，其余组使用 `auto-fill + minmax`，长文本省略并由 Tooltip 展示完整值。
+- 模型卡片网格改为 `repeat(auto-fill, minmax(300px, 1fr))`，可随侧栏拖动宽度自动改变列数。
 
 本次涉及文件：
 
 ```text
 web-frontend/src/views/Marketplace.vue
 web-frontend/src/api/model.ts
+web-frontend/src/data/modelFilterTaxonomy.ts
+web-frontend/src/assets/model-icons/svg/*.svg
+web-frontend/src/assets/model-icons/svg/index.ts
 docs/hanxxi-pc-user-work-summary.md
 ```
 
@@ -146,10 +158,14 @@ GET /api/models/{modelId}
 |---|---|
 | `modelId` | 卡片 key、详情接口路径参数 |
 | `modelName` | 卡片和详情标题、搜索 |
-| `modelCode` | 卡片/详情辅助标识、搜索 |
-| `modelType` | 卡片类型标签、动态类型筛选 |
-| `status` | 详情中的平台状态 |
-| `description` | 卡片简介、详情说明、搜索 |
+| `modelCode` | SVG 头像映射、详情辅助标识、搜索 |
+| `modelType` | 动态模型类型筛选、SVG 兜底映射、规范化分类依据 |
+| `status` | 可用状态筛选、详情中的平台状态 |
+| `description`、`shortDescription` | 卡片简述、详情说明、搜索 |
+| `tags` | 卡片/详情保留全部真实标签、搜索、规范化能力分类依据 |
+| `modelFamily` | 搜索、规范化架构体系分类依据 |
+| `provider` | “更多筛选”中的动态来源机构、搜索 |
+| `releaseYear` | “更多筛选”中的动态年份 |
 
 详情接口额外使用字段：
 
@@ -161,15 +177,23 @@ GET /api/models/{modelId}
 | `outputStepMinutes` | 输出步长配置 |
 | `inputSchema` | 输入要求，JSON 字符串格式化展示 |
 | `outputSchema` | 输出说明，JSON 字符串格式化展示 |
+| `paperTitle`、`paperUrl`、`sourceUrl` | 论文与项目来源 |
+| `capabilities`、`applicableScenarios` | 核心能力与适用场景 |
+| `advantages`、`limitations` | 优势与局限 |
+| `metrics` | 论文或离线参考指标 |
 
 数据来源与当前限制：
 
-- 普通用户模型列表由后端 `ModelService.list()` 查询数据库 `model_info`，只返回 `status = ONLINE` 的记录。
+- 普通用户模型列表由后端 `ModelService.list()` 查询数据库 `model_info`，按 `marketplaceVisible = true` 返回可展示模型，并按推荐、`sortOrder` 和 `modelId` 排序；模型是否可调用继续由 `status` 区分。
 - 模型详情由 `ModelService.detail()` 查询同一张 `model_info` 表并转换为 `ModelDetailVO`。
 - `model_marketplace_metadata_19_models.sql` 已向数据库补充 `short_description`、`tags`、`model_family`、`provider`、`paper_title`、`paper_url`、`source_url`、`capabilities`、`applicable_scenarios`、`advantages`、`limitations`、`supported_input_modes`、`reference_info` 等字段。
-- 但当前后端 `ModelInfoDO`、`ModelListItemVO`、`ModelDetailVO` 和转换逻辑没有映射或返回上述新增字段，所以页面未展示模型标签、家族、来源机构、论文、能力、适用场景、优势和局限，也没有伪造对应内容或筛选项。
-- `model_metric` 当前只有表、DO 和 Mapper，没有面向前端的查询接口；因此页面未展示论文参考指标或平台实测指标。
-- 列表接口只返回在线模型，状态筛选没有实际区分度，因此本次未提供状态筛选。
+- 后端 `ModelInfoDO`、`ModelListItemVO`、`ModelDetailVO` 和转换逻辑现已映射并返回上述模型广场字段；前端列表、筛选和详情均已接入。
+- `ModelDetailVO.metrics` 已返回 `model_metric` 数据；页面明确将其标注为论文或离线参考指标，不表现成平台实时实测。
+- 列表接口同时返回 ONLINE 与 OFFLINE 的可展示模型，页面提供真实状态筛选，但卡片按产品要求不显示状态底栏。
+- 主筛选不再直接列举全部原始 `tags` 和 `modelFamily`。低频或仅对应单个模型的专有标签仍完整显示在卡片和详情中，并参与搜索，但不会拉长主筛选列表。
+- `web-frontend/src/data/modelFilterTaxonomy.ts` 集中维护当前 19 个真实 `modelCode` 的架构体系与能力分类；映射依据 SQL 中已有的 `model_family`、`tags`、`capabilities`，不根据模型显示名称猜测，也不生成模型业务数据。
+- 架构体系归一为：线性/分解、Transformer、MLP/Mixer、CNN、CNN+LSTM、ConvLSTM、时空递归网络、视频预测网络；能力归一为数值预测、多步预测、外生变量、多尺度建模、图像数值融合、天空图像、时空建模、注意力机制。
+- 主筛选只保留至少匹配 2 个真实模型的规范化选项；例如当前只匹配单个模型的低频能力会自动不进入主筛选，但原始元数据不受影响。
 - 接口仍返回 `modelVersion`，但按本次页面要求不展示版本信息。
 - 模型广场当前未使用模型业务假数据，也没有接口失败自动回退模型 mock 的行为。
 - 模型广场当前不展示试用、购买、部署、API 申请等操作；远端现已补充真实模型试用接口，但是否恢复试用入口需以后续页面需求为准，模型购买仍需等待真实业务接口。
@@ -600,6 +624,9 @@ http://127.0.0.1:5173/profile
 
 ## 已验证
 
+- 2026-07-11 完成页面内筛选侧栏、规范化筛选、拖拽持久化和响应式网格后，`web-frontend` 执行 `npm run build` 通过（2347 个模块完成转换）。
+- 2026-07-11 接入 19 个模型 SVG、六组真实字段筛选并精简模型卡片后，`web-frontend` 再次执行 `npm run build` 通过。
+- 2026-07-11 对后端新增模型广场 DO/VO/Service/指标映射执行 `run-local.ps1 -DskipTests compile`，Maven `BUILD SUCCESS`。
 - 本次模型广场改造完成后，`web-frontend` 执行 `npm run build` 通过（Vue TypeScript 检查和 Vite 生产构建均成功）。
 - 本次 API 管理页面重构完成后再次执行 `npm run build`，Vue TypeScript 检查、ECharts 页面编译和 Vite 生产构建均成功。
 - 构建仅出现依赖包 pure annotation 和现有大 chunk 的警告，没有编译错误。

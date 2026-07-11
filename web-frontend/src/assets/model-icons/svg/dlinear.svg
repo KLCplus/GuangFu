@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128" fill="none">
+  <defs>
+    <linearGradient id="bg" x1="10" y1="8" x2="118" y2="120" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#F5F7FF"/>
+      <stop offset="1" stop-color="#EEF2FF"/>
+    </linearGradient>
+    <linearGradient id="accentFade" x1="18" y1="18" x2="110" y2="110" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#4F46E5" stop-opacity="0.18"/>
+      <stop offset="1" stop-color="#4F46E5" stop-opacity="0.04"/>
+    </linearGradient>
+    <filter id="shadow" x="0" y="0" width="128" height="128" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="4" stdDeviation="6" flood-color="#0F172A" flood-opacity="0.08"/>
+    </filter>
+    <style>
+      .label { font: 700 14px Inter, Arial, sans-serif; fill: #4F46E5; letter-spacing: .4px; }
+      .meta { font: 700 11px Inter, Arial, sans-serif; fill: #4F46E5; opacity: .9; letter-spacing: .6px; }
+      .ink { stroke: #24324B; }
+      .accent { stroke: #4F46E5; }
+      .fill-accent { fill: #4F46E5; }
+      .fill-soft { fill: #E0E7FF; }
+      .fill-ink { fill: #24324B; }
+      .stroke-soft { stroke: #E0E7FF; }
+    </style>
+  </defs>
+  <g filter="url(#shadow)">
+    <rect x="8" y="8" width="112" height="112" rx="26" fill="url(#bg)" stroke="#C7D2FE" stroke-width="1.5"/>
+    <rect x="16" y="16" width="96" height="14" rx="7" fill="url(#accentFade)"/>
+    <text x="22" y="26" class="meta">TS • LINEAR</text>
+    
+    <g>
+      <path d="M24 76 H100" stroke="#A5B4FC" stroke-width="2" stroke-linecap="round"/>
+      <rect x="26" y="72" width="9" height="8" rx="2.5" fill="#E0E7FF" stroke="#A5B4FC"/>
+      <rect x="40" y="69" width="9" height="11" rx="2.5" fill="#E0E7FF" stroke="#A5B4FC"/>
+      <rect x="54" y="71" width="9" height="9" rx="2.5" fill="#E0E7FF" stroke="#A5B4FC"/>
+      <rect x="68" y="68" width="9" height="12" rx="2.5" fill="#E0E7FF" stroke="#A5B4FC"/>
+      <rect x="82" y="70" width="9" height="10" rx="2.5" fill="#E0E7FF" stroke="#A5B4FC"/>
+      
+      <path d="M28 57 L43 50 L58 54 L74 46 L93 49" stroke="#4F46E5" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M28 68 L43 64 L58 66 L74 62 L93 60" stroke="#94A3FF" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+      <circle cx="74" cy="54" r="4" fill="#4F46E5"/>
+      
+    </g>
+    <rect x="22" y="92" width="84" height="18" rx="9" fill="#FFFFFF" stroke="#C7D2FE"/>
+    <text x="64" y="105" text-anchor="middle" class="label">DL</text>
+  </g>
+</svg>
