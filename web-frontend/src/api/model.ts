@@ -8,6 +8,31 @@ export interface ModelQuery {
   type?: ModelType
 }
 
+/** GET /api/models 当前真实返回字段。 */
+export interface ModelListItem {
+  modelId: number
+  modelName: string
+  modelCode: string
+  modelType: ModelType
+  modelVersion?: string
+  status: ModelStatus
+  description?: string
+}
+
+/** GET /api/models/{modelId} 当前真实返回字段。 */
+export interface ModelDetail extends ModelListItem {
+  inputWindowMinutes?: number
+  inputFrameIntervalSeconds?: number
+  outputSteps?: number
+  outputStepMinutes?: number
+  serviceModelName?: string
+  apiPath?: string
+  inputSchema?: string
+  outputSchema?: string
+  createdAt?: DateTimeString
+  updatedAt?: DateTimeString
+}
+
 export interface Model {
   modelId: number
   modelCode?: string
@@ -44,8 +69,8 @@ export interface UpdateModelStatusPayload {
   modelStatus: ModelStatus
 }
 
-export const getModels = (params?: ModelQuery) => request.get<Model[]>('/models', { params })
-export const getModel = (modelId: number) => request.get<Model>(`/models/${modelId}`)
+export const getModels = (params?: ModelQuery) => request.get<ModelListItem[]>('/models', { params })
+export const getModel = (modelId: number) => request.get<ModelDetail>(`/models/${modelId}`)
 export const getAdminModels = () => request.get<Model[]>('/admin/models')
 export const createModel = (data: ModelPayload) => request.post<Model>('/admin/models', data)
 export const updateModel = (modelId: number, data: ModelPayload) => request.put<Model>(`/admin/models/${modelId}`, data)
