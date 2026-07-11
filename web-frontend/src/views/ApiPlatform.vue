@@ -1,193 +1,280 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+import * as echarts from 'echarts'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { getModels } from '../api/model'
+import type { ModelListItem } from '../api/model'
 import {
-  createApiKey,
-  loadApiCallLogs,
-  loadApiKeys,
-  loadApiUsageStats,
-  removeApiKey,
-  resetApiKey,
-  setApiKeyEnabled
-} from '../api/userPages'
-import { getOpenOverview } from "../api/open"
-import type { ApiKey, ApiKeyApplyPayload, OpenAccountOverview } from "../api/open"
-import type { ApiUsageStats, DataSource, NormalizedApiCallLog } from '../api/userPages'
+  applyApiKey,
+  deleteApiKey,
+  getApiKeys,
+  getCallLogs,
+  resetOpenApiKey,
+  updateApiKeyStatus
+} from '../api/open'
+import type { ApiCallLog, ApiKey, ApiKeyApplyPayload } from '../api/open'
 
 interface ApiKeyForm {
   keyName: string
   expireDays: number
 }
 
-interface PlaceholderCapability {
-  title: string
-  value: string
-  note: string
+interface NormalizedCallLog {
+  logId: number
+  apiKeyId?: number
+  modelId?: number
+  path: string
+  method: string
+  requestTime: string
+  status: string
+  statusCode?: number
+  costTime: number
+  errorMessage?: string
 }
 
+interface DistributionItem {
+  name: string
+  value: number
+}
+
+const MAX_STATS_LOGS = 1000
+const STATS_PAGE_SIZE = 100
+
 const keysLoading = ref(false)
-const logsLoading = ref(false)
+const statsLoading = ref(false)
+const refreshing = ref(false)
 const actionLoadingId = ref<number | null>(null)
 const createLoading = ref(false)
-const loadError = ref('')
+const keyError = ref('')
+const statsError = ref('')
+
 const apiKeys = ref<ApiKey[]>([])
-const callLogs = ref<NormalizedApiCallLog[]>([])
-const usageStats = ref<ApiUsageStats | null>(null)
-const keySource = ref<DataSource>('remote')
-const logSource = ref<DataSource>('remote')
-const statsSource = ref<DataSource>('remote')
+const models = ref<ModelListItem[]>([])
+const statsLogs = ref<NormalizedCallLog[]>([])
+const statsSourceTotal = ref(0)
+const statsTruncated = ref(false)
+
 const createDialogVisible = ref(false)
 const resultDialogVisible = ref(false)
 const createdKey = ref<ApiKey | null>(null)
-const createdKeySource = ref<DataSource>('remote')
-const openOverview = ref<OpenAccountOverview | null>(null)
 
 const createForm = reactive<ApiKeyForm>({
   keyName: '',
   expireDays: 90
 })
 
-const logQuery = reactive({
-  pageNum: 1,
-  pageSize: 10,
+const filters = reactive({
+  days: 30,
   apiKeyId: undefined as number | undefined,
+  modelId: undefined as number | undefined,
   status: ''
 })
 
-const totalLogs = ref(0)
+const logPage = reactive({
+  pageNum: 1,
+  pageSize: 10
+})
 
-const activeKeys = computed(() => apiKeys.value.filter((item) => normalizeKeyStatus(item.status) === 'ACTIVE'))
-const disabledKeys = computed(() => apiKeys.value.filter((item) => normalizeKeyStatus(item.status) !== 'ACTIVE'))
-const totalQuota = computed(() => apiKeys.value.reduce((sum, item) => sum + (item.dailyQuota ?? 0), 0))
-const remainingQuota = computed(() => usageStats.value?.summary.remainingQuota ?? Math.max(totalQuota.value, 0))
+const trendChartRef = ref<HTMLDivElement | null>(null)
+const modelChartRef = ref<HTMLDivElement | null>(null)
+const keyChartRef = ref<HTMLDivElement | null>(null)
+let trendChart: echarts.ECharts | null = null
+let modelChart: echarts.ECharts | null = null
+let keyChart: echarts.ECharts | null = null
 
-const overviewCards = computed(() => [
+const timeOptions = [
+  { label: '近 7 天', value: 7 },
+  { label: '近 30 天', value: 30 },
+  { label: '近 90 天', value: 90 },
+  { label: '已读取全部', value: 0 }
+]
+
+const modelNameMap = computed(() => new Map(models.value.map((model) => [model.modelId, model.modelName])))
+const keyNameMap = computed(() => new Map(apiKeys.value.map((key) => [key.apiKeyId, key.keyName])))
+
+const modelOptions = computed(() => {
+  const ids = new Set(statsLogs.value.map((log) => log.modelId).filter((id): id is number => id != null))
+  return Array.from(ids).map((modelId) => ({
+    value: modelId,
+    label: modelName(modelId)
+  }))
+})
+
+const filteredLogs = computed(() => {
+  const cutoff = filters.days ? startOfDaysAgo(filters.days - 1) : null
+  return statsLogs.value.filter((log) => {
+    if (filters.apiKeyId != null && log.apiKeyId !== filters.apiKeyId) return false
+    if (filters.modelId != null && log.modelId !== filters.modelId) return false
+    if (filters.status && normalizeLogStatus(log) !== filters.status) return false
+    if (cutoff) {
+      const requestTime = parseDate(log.requestTime)
+      if (!requestTime || requestTime < cutoff) return false
+    }
+    return true
+  })
+})
+
+const summary = computed(() => {
+  const logs = filteredLogs.value
+  const successCalls = logs.filter(isSuccessfulLog).length
+  const failedCalls = logs.length - successCalls
+  const totalLatency = logs.reduce((sum, log) => sum + log.costTime, 0)
+  return {
+    totalCalls: logs.length,
+    successCalls,
+    failedCalls,
+    successRate: logs.length ? Number(((successCalls / logs.length) * 100).toFixed(1)) : 0,
+    avgLatency: logs.length ? Math.round(totalLatency / logs.length) : 0
+  }
+})
+
+const summaryCards = computed(() => [
   {
-    label: "API Key",
-    value: String(apiKeys.value.length),
-    note: `${activeKeys.value.length} 个启用，${disabledKeys.value.length} 个停用`
+    label: '总调用次数',
+    value: formatNumber(summary.value.totalCalls),
+    note: '基于当前已读取日志与筛选条件',
+    tone: 'blue'
   },
   {
-    label: "今日调用",
-    value: formatNumber(usageStats.value?.summary.todayCalls ?? 0),
-    note: "来自调用日志统计"
+    label: '成功调用',
+    value: formatNumber(summary.value.successCalls),
+    note: `成功率 ${summary.value.successRate}%`,
+    tone: 'green'
   },
   {
-    label: "错误率",
-    value: `${usageStats.value?.summary.errorRate ?? 0}%`,
-    note: `${usageStats.value?.summary.failedCalls ?? 0} 次失败`
+    label: '失败调用',
+    value: formatNumber(summary.value.failedCalls),
+    note: 'HTTP 或业务状态判定失败',
+    tone: 'red'
   },
   {
-    label: "平均时延",
-    value: `${usageStats.value?.summary.avgLatency ?? 0} ms`,
-    note: "开放预测接口响应耗时"
+    label: '平均响应时间',
+    value: `${formatNumber(summary.value.avgLatency)} ms`,
+    note: '调用日志 costTimeMs 平均值',
+    tone: 'purple'
   }
 ])
 
-const placeholderCapabilities = computed<PlaceholderCapability[]>(() => [
-  { title: "余额", value: openOverview.value ? `￥${openOverview.value.wallet.balance.toFixed(2)}` : "暂无数据", note: "GET /api/open/wallet" },
-  { title: "套餐", value: openOverview.value ? `${openOverview.value.plans.length} 个` : "暂无数据", note: "GET /api/open/plans" },
-  { title: "Key 重置", value: "已接入", note: "POST /api/open/keys/{apiKeyId}/reset" }
-])
-
-const requestExample = computed(() => ({
-  stationId: 1,
-  modelName: 'iTransformer',
-  input: Array.from({ length: 30 }, (_, index) => ({
-    time: `2026-07-09 10:${String(index).padStart(2, '0')}:00`,
-    power: Number((52.8 + index * 0.42).toFixed(2)),
-    temperature: Number((31.2 + index * 0.03).toFixed(2)),
-    irradiance: Number((820 + index * 3.5).toFixed(1))
-  }))
-}))
-
-const responseExample = {
-  taskId: 1001,
-  taskNo: 'OPEN-20260709-001',
-  status: 'SUCCESS',
-  predictions: [
-    { timeOffset: 5, predictPower: 75.85 },
-    { timeOffset: 10, predictPower: 78.12 },
-    { timeOffset: 15, predictPower: 80.06 }
-  ],
-  costTime: 126
-}
-
-const openApiPredictUrl = computed(() => `${__PV_BACKEND_URL__.replace(/\/$/, '')}/openapi/v1/predict`)
-
-const curlExample = computed(() =>
-  [
-    `curl -X POST "${openApiPredictUrl.value}" \\`,
-    '  -H "Content-Type: application/json" \\',
-    '  -H "X-API-KEY: <your-api-key>" \\',
-    `  -d '${JSON.stringify(requestExample.value, null, 2)}'`
-  ].join('\n')
-)
-
-onMounted(() => {
-  void fetchPageData()
+const trendData = computed(() => {
+  const grouped = new Map<string, { success: number; failed: number }>()
+  filteredLogs.value.forEach((log) => {
+    const day = log.requestTime.slice(0, 10)
+    if (!day) return
+    const item = grouped.get(day) ?? { success: 0, failed: 0 }
+    if (isSuccessfulLog(log)) item.success += 1
+    else item.failed += 1
+    grouped.set(day, item)
+  })
+  return Array.from(grouped.entries())
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([date, value]) => ({ date, ...value }))
 })
 
-async function fetchPageData() {
-  await Promise.all([fetchKeys(), fetchLogs(), fetchUsageStats(), fetchOpenOverview()])
+const modelDistribution = computed<DistributionItem[]>(() => groupDistribution(
+  filteredLogs.value,
+  (log) => log.modelId == null ? '未记录模型' : modelName(log.modelId)
+))
+
+const keyDistribution = computed<DistributionItem[]>(() => groupDistribution(
+  filteredLogs.value,
+  (log) => log.apiKeyId == null ? '未记录 Key' : keyName(log.apiKeyId)
+))
+
+const visibleLogs = computed(() => {
+  const start = (logPage.pageNum - 1) * logPage.pageSize
+  return filteredLogs.value.slice(start, start + logPage.pageSize)
+})
+
+const statsCoverageText = computed(() => {
+  if (statsLoading.value) return '正在读取调用日志…'
+  if (statsError.value) return '调用日志读取失败，当前无法生成统计。'
+  if (statsTruncated.value) {
+    return `后端共有 ${formatNumber(statsSourceTotal.value)} 条日志，当前读取最近 ${formatNumber(statsLogs.value.length)} 条进行前端聚合。`
+  }
+  return `已读取后端返回的全部 ${formatNumber(statsLogs.value.length)} 条调用日志。`
+})
+
+onMounted(() => {
+  window.addEventListener('resize', resizeCharts)
+  void loadPage()
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('resize', resizeCharts)
+  trendChart?.dispose()
+  modelChart?.dispose()
+  keyChart?.dispose()
+})
+
+watch(
+  () => [filters.days, filters.apiKeyId, filters.modelId, filters.status],
+  () => {
+    logPage.pageNum = 1
+  }
+)
+
+watch(filteredLogs, () => {
+  void nextTick(renderCharts)
+})
+
+async function loadPage() {
+  refreshing.value = true
+  await Promise.all([loadKeys(), loadStatsLogs(), loadModels()])
+  refreshing.value = false
+  await nextTick(renderCharts)
 }
 
-async function fetchKeys() {
+async function loadKeys() {
   keysLoading.value = true
-  loadError.value = ""
+  keyError.value = ''
   try {
-    const result = await loadApiKeys()
-    apiKeys.value = result.data
-    keySource.value = result.source
-    showSourceTip(result.source, "API Key")
+    apiKeys.value = await getApiKeys()
   } catch (error) {
-    loadError.value = error instanceof Error ? error.message : "API Key 加载失败"
+    apiKeys.value = []
+    keyError.value = errorMessage(error, 'API Key 加载失败')
   } finally {
     keysLoading.value = false
   }
 }
 
-async function fetchLogs() {
-  logsLoading.value = true
+async function loadModels() {
   try {
-    const result = await loadApiCallLogs({
-      pageNum: logQuery.pageNum,
-      pageSize: logQuery.pageSize,
-      apiKeyId: logQuery.apiKeyId,
-      status: logQuery.status || undefined
-    })
-    callLogs.value = result.data.records
-    totalLogs.value = result.data.total
-    logSource.value = result.source
-    showSourceTip(result.source, "调用日志")
-  } catch (error) {
-    ElMessage.error(error instanceof Error ? error.message : "调用日志加载失败")
-  } finally {
-    logsLoading.value = false
-  }
-}
-
-async function fetchUsageStats() {
-  try {
-    const result = await loadApiUsageStats()
-    usageStats.value = result.data
-    statsSource.value = result.source
-  } catch (error) {
-    ElMessage.error(error instanceof Error ? error.message : "使用统计加载失败")
-  }
-}
-
-async function fetchOpenOverview() {
-  try {
-    openOverview.value = await getOpenOverview()
+    models.value = await getModels()
   } catch {
-    openOverview.value = null
+    models.value = []
+  }
+}
+
+async function loadStatsLogs() {
+  statsLoading.value = true
+  statsError.value = ''
+  try {
+    const firstPage = await getCallLogs({ pageNum: 1, pageSize: STATS_PAGE_SIZE })
+    const targetCount = Math.min(firstPage.total, MAX_STATS_LOGS)
+    const pageCount = Math.ceil(targetCount / STATS_PAGE_SIZE)
+    const remainingPages = pageCount > 1
+      ? await Promise.all(
+          Array.from({ length: pageCount - 1 }, (_, index) =>
+            getCallLogs({ pageNum: index + 2, pageSize: STATS_PAGE_SIZE })
+          )
+        )
+      : []
+    const records = [firstPage, ...remainingPages].flatMap((page) => page.records).slice(0, targetCount)
+    statsLogs.value = records.map(normalizeCallLog)
+    statsSourceTotal.value = firstPage.total
+    statsTruncated.value = firstPage.total > statsLogs.value.length
+  } catch (error) {
+    statsLogs.value = []
+    statsSourceTotal.value = 0
+    statsTruncated.value = false
+    statsError.value = errorMessage(error, '调用日志加载失败')
+  } finally {
+    statsLoading.value = false
   }
 }
 
 async function submitCreateKey() {
   const keyName = createForm.keyName.trim()
-
   if (!keyName) {
     ElMessage.warning('请输入 API Key 名称')
     return
@@ -195,39 +282,72 @@ async function submitCreateKey() {
 
   createLoading.value = true
   try {
-    const payload: ApiKeyApplyPayload = {
-      keyName,
-      expireDays: createForm.expireDays
-    }
-    const result = await createApiKey(payload)
-    createdKey.value = result.data
-    createdKeySource.value = result.source
-    resultDialogVisible.value = true
+    const payload: ApiKeyApplyPayload = { keyName, expireDays: createForm.expireDays }
+    createdKey.value = await applyApiKey(payload)
     createDialogVisible.value = false
-    resetCreateForm()
-    ElMessage.success(result.source === 'mock' ? '当前为模拟 API Key' : 'API Key 创建成功')
-    await Promise.all([fetchKeys(), fetchUsageStats()])
+    resultDialogVisible.value = true
+    ElMessage.success('API Key 创建成功')
+    await loadKeys()
   } catch (error) {
-    ElMessage.error(error instanceof Error ? error.message : 'API Key 创建失败')
+    ElMessage.error(errorMessage(error, 'API Key 创建失败'))
   } finally {
     createLoading.value = false
   }
 }
 
 async function toggleKeyStatus(row: ApiKey) {
-  const apiKeyId = row.apiKeyId
   const willEnable = normalizeKeyStatus(row.status) !== 'ACTIVE'
-  actionLoadingId.value = apiKeyId
   try {
-    const result = await setApiKeyEnabled(apiKeyId, willEnable)
-    if (result.source === 'mock') {
-      ElMessage.info('状态操作当前使用模拟兜底')
-    } else {
-      ElMessage.success(willEnable ? 'API Key 已启用' : 'API Key 已停用')
-    }
-    await fetchKeys()
+    await ElMessageBox.confirm(
+      willEnable
+        ? `确认启用「${row.keyName}」吗？启用后该 Key 可继续调用开放接口。`
+        : `确认停用「${row.keyName}」吗？停用后使用该 Key 的请求将被拒绝。`,
+      willEnable ? '启用 API Key' : '停用 API Key',
+      {
+        type: willEnable ? 'info' : 'warning',
+        confirmButtonText: willEnable ? '确认启用' : '确认停用',
+        cancelButtonText: '取消'
+      }
+    )
+  } catch {
+    return
+  }
+
+  actionLoadingId.value = row.apiKeyId
+  try {
+    await updateApiKeyStatus(row.apiKeyId, { status: willEnable ? 'ACTIVE' : 'DISABLED' })
+    ElMessage.success(willEnable ? 'API Key 已启用' : 'API Key 已停用')
+    await loadKeys()
   } catch (error) {
-    ElMessage.error(error instanceof Error ? error.message : '状态更新失败')
+    ElMessage.error(errorMessage(error, '状态更新失败'))
+  } finally {
+    actionLoadingId.value = null
+  }
+}
+
+async function resetKey(row: ApiKey) {
+  try {
+    await ElMessageBox.confirm(
+      `确认重新生成「${row.keyName}」吗？旧 Key 将立即失效，新 Key 只在本次响应中完整展示。`,
+      '重新生成 API Key',
+      {
+        type: 'warning',
+        confirmButtonText: '重新生成',
+        cancelButtonText: '取消'
+      }
+    )
+  } catch {
+    return
+  }
+
+  actionLoadingId.value = row.apiKeyId
+  try {
+    createdKey.value = await resetOpenApiKey(row.apiKeyId)
+    resultDialogVisible.value = true
+    ElMessage.success('API Key 已重新生成')
+    await loadKeys()
+  } catch (error) {
+    ElMessage.error(errorMessage(error, 'API Key 重新生成失败'))
   } finally {
     actionLoadingId.value = null
   }
@@ -235,35 +355,26 @@ async function toggleKeyStatus(row: ApiKey) {
 
 async function deleteKey(row: ApiKey) {
   try {
-    await ElMessageBox.confirm(`确认删除「${row.keyName}」吗？删除后不可恢复。`, '删除 API Key', {
-      type: 'warning',
-      confirmButtonText: '删除',
-      cancelButtonText: '取消'
-    })
+    await ElMessageBox.confirm(
+      `确认永久删除「${row.keyName}」吗？删除后不可恢复。`,
+      '删除 API Key',
+      {
+        type: 'error',
+        confirmButtonText: '永久删除',
+        cancelButtonText: '取消'
+      }
+    )
   } catch {
     return
   }
 
   actionLoadingId.value = row.apiKeyId
   try {
-    const result = await removeApiKey(row.apiKeyId)
-    ElMessage.success(result.source === 'mock' ? '当前为模拟删除' : 'API Key 已删除')
-    await fetchKeys()
+    await deleteApiKey(row.apiKeyId)
+    ElMessage.success('API Key 已删除')
+    await Promise.all([loadKeys(), loadStatsLogs()])
   } catch (error) {
-    ElMessage.error(error instanceof Error ? error.message : 'API Key 删除失败')
-  } finally {
-    actionLoadingId.value = null
-  }
-}
-
-async function resetKey(row: ApiKey) {
-  actionLoadingId.value = row.apiKeyId
-  try {
-    const result = await resetApiKey(row.apiKeyId)
-    createdKey.value = result.data
-    createdKeySource.value = result.source
-    resultDialogVisible.value = true
-    ElMessage.success(result.source === 'mock' ? '重置接口暂不可用，当前展示模拟结果' : 'API Key 已重置')
+    ElMessage.error(errorMessage(error, 'API Key 删除失败'))
   } finally {
     actionLoadingId.value = null
   }
@@ -274,67 +385,191 @@ function resetCreateForm() {
   createForm.expireDays = 90
 }
 
-function handleLogPageChange(pageNum: number) {
-  logQuery.pageNum = pageNum
-  void fetchLogs()
+function clearOneTimeKey() {
+  createdKey.value = null
 }
 
-function handleLogSizeChange(pageSize: number) {
-  logQuery.pageSize = pageSize
-  logQuery.pageNum = 1
-  void fetchLogs()
+function normalizeCallLog(log: ApiCallLog): NormalizedCallLog {
+  return {
+    logId: log.logId,
+    apiKeyId: log.apiKeyId,
+    modelId: log.modelId,
+    path: log.path ?? log.requestPath ?? '',
+    method: log.method ?? log.requestMethod ?? '',
+    requestTime: log.requestTime ?? log.createdAt ?? '',
+    status: (log.status ?? log.bizStatus ?? '').toUpperCase(),
+    statusCode: log.statusCode ?? log.httpStatus,
+    costTime: log.costTimeMs ?? log.costTime ?? 0,
+    errorMessage: log.errorMessage
+  }
 }
 
-function clearLogFilters() {
-  logQuery.apiKeyId = undefined
-  logQuery.status = ''
-  logQuery.pageNum = 1
-  void fetchLogs()
+function groupDistribution(logs: NormalizedCallLog[], getName: (log: NormalizedCallLog) => string) {
+  const grouped = new Map<string, number>()
+  logs.forEach((log) => {
+    const name = getName(log)
+    grouped.set(name, (grouped.get(name) ?? 0) + 1)
+  })
+  return Array.from(grouped.entries())
+    .map(([name, value]) => ({ name, value }))
+    .sort((left, right) => right.value - left.value)
+}
+
+function renderCharts() {
+  renderTrendChart()
+  renderModelChart()
+  renderKeyChart()
+}
+
+function renderTrendChart() {
+  if (!trendChartRef.value) return
+  trendChart = trendChart ?? echarts.init(trendChartRef.value)
+  trendChart.setOption({
+    animationDuration: 350,
+    color: ['#1d6fdc', '#e05a67'],
+    tooltip: { trigger: 'axis' },
+    legend: { top: 0, right: 0, data: ['成功', '失败'] },
+    grid: { left: 42, right: 18, top: 42, bottom: 30 },
+    xAxis: {
+      type: 'category',
+      data: trendData.value.map((item) => item.date.slice(5)),
+      axisLine: { lineStyle: { color: '#d9e3ef' } },
+      axisTick: { show: false }
+    },
+    yAxis: {
+      type: 'value',
+      minInterval: 1,
+      splitLine: { lineStyle: { color: '#edf2f7' } }
+    },
+    series: [
+      {
+        name: '成功',
+        type: 'line',
+        smooth: 0.3,
+        symbol: 'circle',
+        symbolSize: 7,
+        areaStyle: { color: 'rgba(29, 111, 220, 0.08)' },
+        data: trendData.value.map((item) => item.success)
+      },
+      {
+        name: '失败',
+        type: 'line',
+        smooth: 0.3,
+        symbol: 'circle',
+        symbolSize: 7,
+        data: trendData.value.map((item) => item.failed)
+      }
+    ]
+  }, true)
+}
+
+function renderModelChart() {
+  if (!modelChartRef.value) return
+  modelChart = modelChart ?? echarts.init(modelChartRef.value)
+  modelChart.setOption({
+    animationDuration: 350,
+    color: ['#1d6fdc', '#4ba3f2', '#58b89b', '#8069dd', '#e6a23c', '#e05a67'],
+    tooltip: { trigger: 'item', formatter: '{b}<br/>{c} 次（{d}%）' },
+    legend: { type: 'scroll', bottom: 0, left: 'center' },
+    series: [{
+      type: 'pie',
+      radius: ['46%', '70%'],
+      center: ['50%', '44%'],
+      avoidLabelOverlap: true,
+      label: { show: false },
+      emphasis: { label: { show: true, fontWeight: 700 } },
+      data: modelDistribution.value
+    }]
+  }, true)
+}
+
+function renderKeyChart() {
+  if (!keyChartRef.value) return
+  keyChart = keyChart ?? echarts.init(keyChartRef.value)
+  const data = keyDistribution.value.slice(0, 8).reverse()
+  keyChart.setOption({
+    animationDuration: 350,
+    color: ['#1d6fdc'],
+    tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
+    grid: { left: 20, right: 18, top: 10, bottom: 20, containLabel: true },
+    xAxis: {
+      type: 'value',
+      minInterval: 1,
+      splitLine: { lineStyle: { color: '#edf2f7' } }
+    },
+    yAxis: {
+      type: 'category',
+      data: data.map((item) => item.name),
+      axisLine: { show: false },
+      axisTick: { show: false },
+      axisLabel: { width: 110, overflow: 'truncate' }
+    },
+    series: [{
+      type: 'bar',
+      barMaxWidth: 18,
+      itemStyle: { borderRadius: [0, 5, 5, 0] },
+      data: data.map((item) => item.value)
+    }]
+  }, true)
+}
+
+function resizeCharts() {
+  trendChart?.resize()
+  modelChart?.resize()
+  keyChart?.resize()
 }
 
 function normalizeKeyStatus(status?: string) {
-  return status === 'ACTIVE' ? 'ACTIVE' : 'DISABLED'
+  return status === 'ACTIVE' ? 'ACTIVE' : status === 'EXPIRED' ? 'EXPIRED' : 'DISABLED'
 }
 
 function keyStatusLabel(status?: string) {
-  return normalizeKeyStatus(status) === 'ACTIVE' ? '启用' : status === 'EXPIRED' ? '过期' : '停用'
+  const normalized = normalizeKeyStatus(status)
+  if (normalized === 'ACTIVE') return '启用'
+  if (normalized === 'EXPIRED') return '已过期'
+  return '已停用'
 }
 
 function keyStatusType(status?: string) {
-  if (normalizeKeyStatus(status) === 'ACTIVE') return 'success'
-  if (status === 'EXPIRED') return 'warning'
+  const normalized = normalizeKeyStatus(status)
+  if (normalized === 'ACTIVE') return 'success'
+  if (normalized === 'EXPIRED') return 'warning'
   return 'info'
 }
 
-function logStatusLabel(row: NormalizedApiCallLog) {
-  return row.status === 'FAILED' || (row.statusCode ?? 200) >= 400 ? '失败' : '成功'
+function normalizeLogStatus(log: NormalizedCallLog) {
+  if (log.status === 'SUCCESS') return 'SUCCESS'
+  if (log.status === 'FAILED') return 'FAILED'
+  return (log.statusCode ?? 200) < 400 ? 'SUCCESS' : 'FAILED'
 }
 
-function logStatusType(row: NormalizedApiCallLog) {
-  return row.status === 'FAILED' || (row.statusCode ?? 200) >= 400 ? 'danger' : 'success'
+function isSuccessfulLog(log: NormalizedCallLog) {
+  return normalizeLogStatus(log) === 'SUCCESS'
 }
 
-function keyText(key: ApiKey | null) {
-  if (!key) return ''
-  return key.apiKey || key.apiKeyPrefix || ''
+function logStatusLabel(log: NormalizedCallLog) {
+  return isSuccessfulLog(log) ? '成功' : '失败'
 }
 
-function sourceLabel(source: DataSource) {
-  if (source === 'remote') return '真实接口'
-  if (source === 'mixed') return '混合数据'
-  return '模拟数据'
+function logStatusType(log: NormalizedCallLog) {
+  return isSuccessfulLog(log) ? 'success' : 'danger'
 }
 
-function sourceType(source: DataSource) {
-  if (source === 'remote') return 'success'
-  if (source === 'mixed') return 'warning'
-  return 'info'
+function maskedKey(key: ApiKey) {
+  const prefix = key.apiKeyPrefix?.trim()
+  return prefix ? `${prefix}_${'•'.repeat(18)}` : '未返回 Key 前缀'
 }
 
-function showSourceTip(source: DataSource, label: string) {
-  if (source === 'mock') {
-    ElMessage.info(`${label} 真实接口暂不可用，当前使用模拟数据`)
-  }
+function oneTimeKey() {
+  return createdKey.value?.apiKey?.trim() ?? ''
+}
+
+function keyName(apiKeyId: number) {
+  return keyNameMap.value.get(apiKeyId) ?? `Key #${apiKeyId}`
+}
+
+function modelName(modelId: number) {
+  return modelNameMap.value.get(modelId) ?? `模型 #${modelId}`
 }
 
 function formatNumber(value: number) {
@@ -342,310 +577,309 @@ function formatNumber(value: number) {
 }
 
 function formatDate(value?: string) {
-  return value || '-'
+  if (!value) return '从未使用'
+  return value.replace('T', ' ')
 }
 
-function quotaText(row: ApiKey) {
-  return row.dailyQuota ? `${formatNumber(row.dailyQuota)} 次/日` : '未返回'
+function parseDate(value?: string) {
+  if (!value) return null
+  const parsed = new Date(value.replace(' ', 'T'))
+  return Number.isNaN(parsed.getTime()) ? null : parsed
 }
 
-async function copyText(value: string, successMessage = '已复制') {
-  if (!value) {
-    ElMessage.warning('没有可复制的内容')
-    return
-  }
+function startOfDaysAgo(days: number) {
+  const date = new Date()
+  date.setHours(0, 0, 0, 0)
+  date.setDate(date.getDate() - days)
+  return date
+}
 
+function errorMessage(error: unknown, fallback: string) {
+  return error instanceof Error ? error.message : fallback
+}
+
+async function copyText(value: string) {
+  if (!value) return
   try {
     await navigator.clipboard.writeText(value)
-    ElMessage.success(successMessage)
+    ElMessage.success('API Key 已复制')
   } catch {
-    ElMessage.error('复制失败，请手动选择文本复制')
+    ElMessage.error('复制失败，请手动复制')
   }
 }
 </script>
 
 <template>
   <section class="api-page">
-    <div class="page-heading">
-      <div>
-        <h1>API 管理</h1>
-        <p>查看 API Key、开放预测调用日志和接口使用状态</p>
-      </div>
-      <div class="heading-actions">
-        <el-tag :type="sourceType(keySource)" effect="light">{{ sourceLabel(keySource) }}</el-tag>
-        <el-button type="primary" @click="createDialogVisible = true">申请 API Key</el-button>
-      </div>
-    </div>
-
-    <el-alert
-      v-if="keySource !== 'remote' || logSource !== 'remote' || statsSource !== 'remote'"
-      class="source-alert"
-      title="部分数据当前使用 mock 兜底；真实接口恢复后会自动展示后端数据。"
-      type="info"
-      show-icon
-      :closable="false"
-    />
-
-    <el-alert
-      v-if="loadError"
-      class="source-alert"
-      :title="loadError"
-      type="error"
-      show-icon
-      :closable="false"
-    >
-      <template #default>
-        <el-button size="small" type="primary" @click="fetchPageData">重试</el-button>
-      </template>
-    </el-alert>
-
-    <div class="overview-grid">
-      <div v-for="item in overviewCards" :key="item.label" class="overview-card">
-        <span>{{ item.label }}</span>
-        <strong>{{ item.value }}</strong>
-        <small>{{ item.note }}</small>
-      </div>
-    </div>
-
-    <div class="api-layout">
-      <section class="panel key-panel">
-        <div class="panel-head">
-          <div>
-            <h2>API Key 列表</h2>
-            <p>Key 明文仅创建时返回；列表通常只展示前缀和状态。</p>
-          </div>
-          <el-button :loading="keysLoading" @click="fetchKeys">刷新</el-button>
+    <section class="key-section">
+      <div class="section-heading key-heading">
+        <div>
+          <p class="section-kicker">Access credentials</p>
+          <h1>API Keys</h1>
+          <p class="security-copy">
+            完整 API Key 仅在创建或重新生成时展示一次。请妥善保存，不要在浏览器脚本、公开仓库或客户端代码中暴露密钥。
+          </p>
         </div>
+        <el-button type="primary" size="large" @click="createDialogVisible = true">创建 API Key</el-button>
+      </div>
 
-        <el-table v-loading="keysLoading" :data="apiKeys" stripe>
-          <el-table-column prop="keyName" label="API 名称" min-width="180" />
-          <el-table-column label="Key 前缀" min-width="150">
+      <el-alert v-if="keyError" :title="keyError" type="error" show-icon :closable="false">
+        <template #default>
+          <el-button text type="primary" @click="loadKeys">重新加载</el-button>
+        </template>
+      </el-alert>
+
+      <div class="key-table-shell">
+        <el-table v-loading="keysLoading" :data="apiKeys" class="key-table" empty-text="暂无 API Key">
+          <el-table-column prop="keyName" label="名称" min-width="170" />
+          <el-table-column label="Key" min-width="280">
             <template #default="{ row }: { row: ApiKey }">
-              <code>{{ row.apiKeyPrefix || keyText(row) || '-' }}</code>
+              <code class="masked-key">{{ maskedKey(row) }}</code>
             </template>
           </el-table-column>
-          <el-table-column label="状态" width="96">
+          <el-table-column label="创建时间" min-width="165">
+            <template #default="{ row }: { row: ApiKey }">{{ formatDate(row.createdAt) }}</template>
+          </el-table-column>
+          <el-table-column label="最近使用" min-width="165">
+            <template #default="{ row }: { row: ApiKey }">{{ formatDate(row.lastUsedAt) }}</template>
+          </el-table-column>
+          <el-table-column label="状态" width="100">
             <template #default="{ row }: { row: ApiKey }">
               <el-tag :type="keyStatusType(row.status)" effect="light">{{ keyStatusLabel(row.status) }}</el-tag>
             </template>
           </el-table-column>
-          <el-table-column label="限流" width="120">
+          <el-table-column label="操作" width="270" fixed="right">
             <template #default="{ row }: { row: ApiKey }">
-              {{ row.rateLimitPerMinute ? `${row.rateLimitPerMinute}/分钟` : '-' }}
-            </template>
-          </el-table-column>
-          <el-table-column label="日额度" width="140">
-            <template #default="{ row }: { row: ApiKey }">
-              {{ quotaText(row) }}
-            </template>
-          </el-table-column>
-          <el-table-column label="到期时间" min-width="160">
-            <template #default="{ row }: { row: ApiKey }">
-              {{ formatDate(row.expireAt || row.expireTime) }}
-            </template>
-          </el-table-column>
-          <el-table-column label="最后调用" min-width="160">
-            <template #default="{ row }: { row: ApiKey }">
-              {{ formatDate(row.lastUsedAt) }}
-            </template>
-          </el-table-column>
-          <el-table-column label="操作" width="230" fixed="right">
-            <template #default="{ row }: { row: ApiKey }">
-              <el-button
-                size="small"
-                text
-                type="primary"
-                :loading="actionLoadingId === row.apiKeyId"
-                @click="toggleKeyStatus(row)"
-              >
-                {{ normalizeKeyStatus(row.status) === 'ACTIVE' ? '停用' : '启用' }}
-              </el-button>
-              <el-button size="small" text @click="resetKey(row)">重置</el-button>
-              <el-button size="small" text type="danger" @click="deleteKey(row)">删除</el-button>
+              <div class="key-actions">
+                <el-tooltip content="后端暂未提供修改 Key 名称接口" placement="top">
+                  <span><el-button link disabled>编辑</el-button></span>
+                </el-tooltip>
+                <el-button
+                  link
+                  type="primary"
+                  :loading="actionLoadingId === row.apiKeyId"
+                  :disabled="row.status === 'EXPIRED'"
+                  @click="toggleKeyStatus(row)"
+                >
+                  {{ normalizeKeyStatus(row.status) === 'ACTIVE' ? '停用' : '启用' }}
+                </el-button>
+                <el-button
+                  link
+                  type="primary"
+                  :loading="actionLoadingId === row.apiKeyId"
+                  @click="resetKey(row)"
+                >
+                  重新生成
+                </el-button>
+                <el-button
+                  link
+                  type="danger"
+                  :loading="actionLoadingId === row.apiKeyId"
+                  @click="deleteKey(row)"
+                >
+                  删除
+                </el-button>
+              </div>
             </template>
           </el-table-column>
         </el-table>
-      </section>
+      </div>
+    </section>
 
-      <aside class="side-stack">
-        <section class="panel quota-panel">
-          <div class="panel-head compact">
-            <div>
-              <h2>使用状态</h2>
-              <p>基于调用日志计算，额度字段以后端返回为准。</p>
-            </div>
-          </div>
-          <div class="quota-list">
-            <div>
-              <span>剩余额度</span>
-              <strong>{{ formatNumber(remainingQuota) }}</strong>
-            </div>
-            <div>
-              <span>累计调用</span>
-              <strong>{{ formatNumber(usageStats?.summary.totalCalls ?? 0) }}</strong>
-            </div>
-            <div>
-              <span>成功调用</span>
-              <strong>{{ formatNumber(usageStats?.summary.successCalls ?? 0) }}</strong>
-            </div>
-          </div>
-        </section>
-
-        <section class="panel capability-panel">
-          <div class="panel-head compact">
-            <div>
-              <h2>开放账户</h2>
-              <p>展示开放平台账户接口状态。</p>
-            </div>
-          </div>
-          <div class="capability-list">
-            <div v-for="item in placeholderCapabilities" :key="item.title">
-              <div>
-                <span>{{ item.title }}</span>
-                <strong>{{ item.value }}</strong>
-              </div>
-              <small>{{ item.note }}</small>
-            </div>
-          </div>
-        </section>
-      </aside>
-    </div>
-
-    <section class="panel log-panel">
-      <div class="panel-head">
+    <section class="usage-section">
+      <div class="section-heading usage-heading">
         <div>
-          <h2>调用日志</h2>
-          <p>来源：GET /api/open/call-logs；后端不可用时展示模拟日志。</p>
+          <p class="section-kicker">Usage analytics</p>
+          <h2>使用统计</h2>
+          <p>{{ statsCoverageText }}</p>
         </div>
-        <el-tag :type="sourceType(logSource)" effect="light">{{ sourceLabel(logSource) }}</el-tag>
+        <div class="heading-actions">
+          <el-tooltip content="后端暂未提供统计导出接口" placement="top">
+            <span><el-button disabled>导出</el-button></span>
+          </el-tooltip>
+          <el-button :loading="refreshing" @click="loadPage">刷新数据</el-button>
+        </div>
       </div>
 
-      <div class="log-filters">
-        <el-select v-model="logQuery.apiKeyId" clearable placeholder="按 Key 筛选" @change="fetchLogs">
-          <el-option v-for="item in apiKeys" :key="item.apiKeyId" :label="item.keyName" :value="item.apiKeyId" />
+      <div class="filter-bar">
+        <el-select v-model="filters.days" class="filter-control" aria-label="时间范围">
+          <el-option v-for="option in timeOptions" :key="option.value" :label="option.label" :value="option.value" />
         </el-select>
-        <el-select v-model="logQuery.status" clearable placeholder="按状态筛选" @change="fetchLogs">
+        <el-select v-model="filters.apiKeyId" class="filter-control" clearable placeholder="全部 API Key">
+          <el-option v-for="key in apiKeys" :key="key.apiKeyId" :label="key.keyName" :value="key.apiKeyId" />
+        </el-select>
+        <el-select v-model="filters.modelId" class="filter-control" clearable placeholder="全部模型">
+          <el-option v-for="model in modelOptions" :key="model.value" :label="model.label" :value="model.value" />
+        </el-select>
+        <el-select v-model="filters.status" class="filter-control" clearable placeholder="全部状态">
           <el-option label="成功" value="SUCCESS" />
           <el-option label="失败" value="FAILED" />
         </el-select>
-        <el-button @click="clearLogFilters">清空</el-button>
-        <el-button :loading="logsLoading" @click="fetchLogs">刷新</el-button>
       </div>
 
-      <el-table v-loading="logsLoading" :data="callLogs" stripe>
-        <el-table-column prop="createdAt" label="时间" min-width="170" />
-        <el-table-column prop="path" label="路径" min-width="190" />
-        <el-table-column prop="method" label="方法" width="88" />
-        <el-table-column label="状态" width="96">
-          <template #default="{ row }: { row: NormalizedApiCallLog }">
-            <el-tag :type="logStatusType(row)" effect="light">{{ logStatusLabel(row) }}</el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column prop="statusCode" label="HTTP" width="88" />
-        <el-table-column label="耗时" width="100">
-          <template #default="{ row }: { row: NormalizedApiCallLog }">
-            {{ row.costTime }} ms
-          </template>
-        </el-table-column>
-        <el-table-column prop="modelName" label="模型" min-width="140" />
-        <el-table-column prop="errorMessage" label="错误信息" min-width="180" show-overflow-tooltip />
-      </el-table>
+      <el-alert v-if="statsTruncated" type="warning" show-icon :closable="false">
+        当前统计只覆盖最近 {{ formatNumber(statsLogs.length) }} 条调用日志；如需全量、按时间或模型精确统计，需要后端补充聚合接口。
+      </el-alert>
+      <el-alert v-if="statsError" :title="statsError" type="error" show-icon :closable="false">
+        <template #default>
+          <el-button text type="primary" @click="loadStatsLogs">重新加载</el-button>
+        </template>
+      </el-alert>
 
-      <div class="pagination-row">
-        <el-pagination
-          background
-          layout="total, sizes, prev, pager, next"
-          :total="totalLogs"
-          :current-page="logQuery.pageNum"
-          :page-size="logQuery.pageSize"
-          :page-sizes="[10, 20, 50]"
-          @current-change="handleLogPageChange"
-          @size-change="handleLogSizeChange"
-        />
+      <div v-loading="statsLoading" class="summary-grid">
+        <article v-for="card in summaryCards" :key="card.label" class="summary-card" :class="`tone-${card.tone}`">
+          <span>{{ card.label }}</span>
+          <strong>{{ card.value }}</strong>
+          <small>{{ card.note }}</small>
+        </article>
+        <article class="summary-card unavailable-card">
+          <span>Token 使用量</span>
+          <strong>—</strong>
+          <small>调用日志暂未返回 Token 字段</small>
+          <el-tag size="small" type="info" effect="plain">暂未接通</el-tag>
+        </article>
       </div>
+
+      <div v-if="!statsLoading && !statsError && filteredLogs.length === 0" class="usage-empty">
+        <el-empty description="当前筛选条件下暂无调用数据" :image-size="86" />
+      </div>
+
+      <div v-show="filteredLogs.length" class="chart-layout">
+        <section class="chart-card trend-card">
+          <div class="chart-heading">
+            <div>
+              <h3>调用趋势</h3>
+              <p>按调用日期聚合成功与失败次数</p>
+            </div>
+          </div>
+          <div ref="trendChartRef" class="chart-canvas"></div>
+        </section>
+
+        <section class="chart-card">
+          <div class="chart-heading">
+            <div>
+              <h3>模型调用占比</h3>
+              <p>根据调用日志中的 modelId 聚合</p>
+            </div>
+          </div>
+          <div ref="modelChartRef" class="chart-canvas compact-chart"></div>
+        </section>
+
+        <section class="chart-card">
+          <div class="chart-heading">
+            <div>
+              <h3>API Key 调用情况</h3>
+              <p>最多展示当前筛选结果中的前 8 个 Key</p>
+            </div>
+          </div>
+          <div ref="keyChartRef" class="chart-canvas compact-chart"></div>
+        </section>
+      </div>
+
+      <section class="log-card">
+        <div class="chart-heading log-heading">
+          <div>
+            <h3>调用记录</h3>
+            <p>记录来自 GET /api/open/call-logs，当前表格对已读取日志进行前端筛选和分页。</p>
+          </div>
+          <span>{{ formatNumber(filteredLogs.length) }} 条</span>
+        </div>
+
+        <el-table v-loading="statsLoading" :data="visibleLogs" stripe empty-text="暂无调用记录">
+          <el-table-column label="时间" min-width="168">
+            <template #default="{ row }: { row: NormalizedCallLog }">{{ formatDate(row.requestTime) }}</template>
+          </el-table-column>
+          <el-table-column label="API Key" min-width="150">
+            <template #default="{ row }: { row: NormalizedCallLog }">
+              {{ row.apiKeyId == null ? '未记录' : keyName(row.apiKeyId) }}
+            </template>
+          </el-table-column>
+          <el-table-column label="模型" min-width="160">
+            <template #default="{ row }: { row: NormalizedCallLog }">
+              {{ row.modelId == null ? '未记录' : modelName(row.modelId) }}
+            </template>
+          </el-table-column>
+          <el-table-column label="接口" min-width="190">
+            <template #default="{ row }: { row: NormalizedCallLog }">
+              <span class="path-cell"><b>{{ row.method }}</b>{{ row.path }}</span>
+            </template>
+          </el-table-column>
+          <el-table-column label="状态" width="92">
+            <template #default="{ row }: { row: NormalizedCallLog }">
+              <el-tag :type="logStatusType(row)" effect="light">{{ logStatusLabel(row) }}</el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column prop="statusCode" label="HTTP" width="82" />
+          <el-table-column label="耗时" width="100">
+            <template #default="{ row }: { row: NormalizedCallLog }">{{ row.costTime }} ms</template>
+          </el-table-column>
+          <el-table-column prop="errorMessage" label="错误信息" min-width="180" show-overflow-tooltip />
+        </el-table>
+
+        <div class="pagination-row">
+          <el-pagination
+            background
+            layout="total, sizes, prev, pager, next"
+            :total="filteredLogs.length"
+            :current-page="logPage.pageNum"
+            :page-size="logPage.pageSize"
+            :page-sizes="[10, 20, 50]"
+            @current-change="logPage.pageNum = $event"
+            @size-change="logPage.pageSize = $event; logPage.pageNum = 1"
+          />
+        </div>
+      </section>
     </section>
 
-    <section class="panel example-panel">
-      <div class="panel-head">
-        <div>
-          <h2>开放 API 调用示例</h2>
-          <p>文档要求请求头使用 X-API-KEY，开放预测路径为 /openapi/v1/predict。</p>
-        </div>
-        <el-button type="primary" plain @click="copyText(curlExample, '调用示例已复制')">复制 curl</el-button>
-      </div>
-
-      <div class="code-grid">
-        <div class="code-block">
-          <div class="code-title">
-            <span>curl</span>
-            <el-button size="small" text type="primary" @click="copyText(curlExample, 'curl 已复制')">复制</el-button>
-          </div>
-          <pre>{{ curlExample }}</pre>
-        </div>
-        <div class="code-block">
-          <div class="code-title">
-            <span>请求 JSON</span>
-            <el-button
-              size="small"
-              text
-              type="primary"
-              @click="copyText(JSON.stringify(requestExample, null, 2), '请求 JSON 已复制')"
-            >
-              复制
-            </el-button>
-          </div>
-          <pre>{{ JSON.stringify(requestExample, null, 2) }}</pre>
-        </div>
-        <div class="code-block">
-          <div class="code-title">
-            <span>响应 JSON</span>
-            <el-button
-              size="small"
-              text
-              type="primary"
-              @click="copyText(JSON.stringify(responseExample, null, 2), '响应 JSON 已复制')"
-            >
-              复制
-            </el-button>
-          </div>
-          <pre>{{ JSON.stringify(responseExample, null, 2) }}</pre>
-        </div>
-      </div>
-    </section>
-
-    <el-dialog v-model="createDialogVisible" title="申请 API Key" width="460px" @closed="resetCreateForm">
+    <el-dialog v-model="createDialogVisible" title="创建 API Key" width="480px" @closed="resetCreateForm">
       <el-form label-position="top" @submit.prevent>
-        <el-form-item label="Key 名称" required>
-          <el-input v-model="createForm.keyName" maxlength="64" show-word-limit placeholder="例如：iTransformer 生产调用" />
+        <el-form-item label="名称" required>
+          <el-input
+            v-model="createForm.keyName"
+            maxlength="128"
+            show-word-limit
+            placeholder="例如：生产环境预测服务"
+          />
         </el-form-item>
-        <el-form-item label="有效期">
-          <el-input-number v-model="createForm.expireDays" :min="1" :max="365" :step="30" controls-position="right" />
-          <span class="form-tip">单位：天。后端以 expireDays 字段接收。</span>
+        <el-form-item label="有效期（天）">
+          <el-input-number
+            v-model="createForm.expireDays"
+            :min="1"
+            :max="3650"
+            :step="30"
+            controls-position="right"
+          />
+          <p class="form-tip">后端允许 1–3650 天，到期后 Key 将无法继续调用。</p>
         </el-form-item>
       </el-form>
       <template #footer>
         <el-button @click="createDialogVisible = false">取消</el-button>
-        <el-button type="primary" :loading="createLoading" @click="submitCreateKey">申请</el-button>
+        <el-button type="primary" :loading="createLoading" @click="submitCreateKey">创建</el-button>
       </template>
     </el-dialog>
 
-    <el-dialog v-model="resultDialogVisible" title="API Key 结果" width="520px">
+    <el-dialog
+      v-model="resultDialogVisible"
+      title="保存你的 API Key"
+      width="560px"
+      :close-on-click-modal="false"
+      @closed="clearOneTimeKey"
+    >
       <div class="key-result">
         <el-alert
-          v-if="createdKeySource === 'mock'"
-          title="当前为模拟 API Key，真实接口恢复后请重新申请真实 Key。"
-          type="info"
+          title="完整 Key 只在本次响应中展示，关闭后无法再次查看。"
+          type="warning"
           show-icon
           :closable="false"
         />
-        <p>完整 Key 通常只在创建时返回；如果后端仅返回前缀，页面只展示前缀。</p>
-        <div class="key-box">
-          <code>{{ keyText(createdKey) || '未返回 API Key' }}</code>
-          <el-button size="small" @click="copyText(keyText(createdKey), 'API Key 已复制')">复制</el-button>
+        <div v-if="oneTimeKey()" class="one-time-key">
+          <code>{{ oneTimeKey() }}</code>
+          <el-button type="primary" plain @click="copyText(oneTimeKey())">复制</el-button>
         </div>
+        <el-empty v-else description="后端本次响应未返回完整 API Key" :image-size="72" />
       </div>
       <template #footer>
-        <el-button type="primary" @click="resultDialogVisible = false">知道了</el-button>
+        <el-button type="primary" @click="resultDialogVisible = false">我已保存</el-button>
       </template>
     </el-dialog>
   </section>
@@ -654,149 +888,261 @@ async function copyText(value: string, successMessage = '已复制') {
 <style scoped>
 .api-page {
   display: grid;
+  gap: 28px;
+}
+
+.key-section,
+.usage-section {
+  display: grid;
   gap: 18px;
 }
 
-.page-heading,
-.panel-head,
+.usage-section {
+  padding-top: 28px;
+  border-top: 1px solid var(--color-border);
+}
+
+.section-heading,
 .heading-actions,
-.code-title,
-.key-box {
+.chart-heading,
+.key-actions,
+.one-time-key {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 14px;
 }
 
-.page-heading h1,
-.panel-head h2 {
+.section-heading {
+  align-items: flex-end;
+}
+
+.key-heading > div,
+.usage-heading > div {
+  max-width: 880px;
+}
+
+.section-kicker {
+  margin: 0 0 5px;
+  color: var(--color-primary);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.section-heading h1,
+.section-heading h2,
+.chart-heading h3 {
   margin: 0;
   color: #10274c;
 }
 
-.page-heading h1 {
-  font-size: 28px;
+.section-heading h1 {
+  font-size: 32px;
 }
 
-.panel-head h2 {
-  font-size: 18px;
+.section-heading h2 {
+  font-size: 26px;
 }
 
-.page-heading p,
-.panel-head p,
-.capability-list small,
-.form-tip,
-.key-result p {
-  margin: 6px 0 0;
+.security-copy,
+.section-heading p:not(.section-kicker),
+.chart-heading p,
+.form-tip {
+  margin: 7px 0 0;
   color: var(--color-muted);
-  line-height: 1.6;
+  line-height: 1.7;
 }
 
-.source-alert {
-  margin: 0;
-}
-
-.overview-grid {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 14px;
-}
-
-.overview-card,
-.panel {
-  border: 1px solid var(--color-border);
-  border-radius: 8px;
+.key-table-shell,
+.chart-card,
+.log-card {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid #dce6f1;
+  border-radius: 12px;
   background: #ffffff;
-  box-shadow: var(--shadow-panel);
+  box-shadow: 0 8px 24px rgba(20, 65, 120, 0.05);
 }
 
-.overview-card {
-  min-height: 112px;
+.key-table :deep(.el-table__header th) {
+  height: 54px;
+  color: #526278;
+  background: #f7f9fc;
+}
+
+.key-table :deep(.el-table__row td) {
+  height: 66px;
+}
+
+.masked-key {
+  color: #34455d;
+  font-family: Consolas, "Courier New", monospace;
+  font-size: 13px;
+}
+
+.key-actions {
+  justify-content: flex-start;
+  gap: 3px;
+  white-space: nowrap;
+}
+
+.filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid #dce6f1;
+  border-radius: 10px;
+  background: #ffffff;
+}
+
+.filter-control {
+  width: 190px;
+}
+
+.summary-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 14px;
+  min-height: 136px;
+}
+
+.summary-card {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  min-height: 132px;
+  padding: 18px;
+  overflow: hidden;
+  flex-direction: column;
+  border: 1px solid #dce6f1;
+  border-radius: 12px;
+  background: #ffffff;
+}
+
+.summary-card::before {
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 0;
+  height: 3px;
+  background: #1d6fdc;
+  content: '';
+}
+
+.summary-card.tone-green::before {
+  background: #27a67a;
+}
+
+.summary-card.tone-red::before {
+  background: #dc6570;
+}
+
+.summary-card.tone-purple::before {
+  background: #8069dd;
+}
+
+.summary-card > span,
+.summary-card small {
+  color: #728198;
+  font-size: 12px;
+}
+
+.summary-card strong {
+  display: block;
+  margin: 12px 0 8px;
+  overflow: hidden;
+  color: #10274c;
+  font-size: 25px;
+  line-height: 1.1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.unavailable-card {
+  background: #f8fafc;
+}
+
+.unavailable-card::before {
+  background: #a5b1c1;
+}
+
+.unavailable-card .el-tag {
+  align-self: flex-start;
+  margin-top: auto;
+}
+
+.usage-empty {
+  display: grid;
+  min-height: 260px;
+  place-items: center;
+  border: 1px dashed #d1dce9;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.65);
+}
+
+.chart-layout {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.trend-card {
+  grid-column: 1 / -1;
+}
+
+.chart-card,
+.log-card {
   padding: 18px;
 }
 
-.overview-card span,
-.quota-list span,
-.capability-list span {
+.chart-heading {
+  align-items: flex-start;
+}
+
+.chart-heading h3 {
+  font-size: 17px;
+}
+
+.chart-heading p {
+  font-size: 12px;
+}
+
+.chart-canvas {
+  width: 100%;
+  height: 330px;
+  margin-top: 8px;
+}
+
+.compact-chart {
+  height: 300px;
+}
+
+.log-card {
+  display: grid;
+  gap: 16px;
+}
+
+.log-heading > span {
   color: var(--color-muted);
   font-size: 13px;
 }
 
-.overview-card strong {
-  display: block;
-  margin: 10px 0 6px;
-  color: #10274c;
-  font-size: 28px;
-  line-height: 1;
-}
-
-.overview-card small {
-  color: var(--color-muted);
-}
-
-.api-layout {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 320px;
-  gap: 16px;
-  align-items: start;
-}
-
-.panel {
-  min-width: 0;
-  padding: 18px;
-}
-
-.key-panel,
-.log-panel,
-.example-panel {
-  display: grid;
-  gap: 16px;
-}
-
-.side-stack {
-  display: grid;
-  gap: 16px;
-}
-
-.compact {
-  align-items: flex-start;
-}
-
-.quota-list,
-.capability-list {
-  display: grid;
-  gap: 10px;
-  margin-top: 14px;
-}
-
-.quota-list div,
-.capability-list > div {
-  padding: 12px;
-  border-radius: 8px;
-  background: #f8fbff;
-}
-
-.quota-list strong,
-.capability-list strong {
-  display: block;
-  margin-top: 6px;
-  color: #10274c;
-  font-size: 18px;
-}
-
-.capability-list > div {
-  display: grid;
-  gap: 4px;
-}
-
-.log-filters {
+.path-cell {
   display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
+  min-width: 0;
+  align-items: center;
+  gap: 7px;
 }
 
-.log-filters .el-select {
-  width: 220px;
+.path-cell b {
+  padding: 2px 5px;
+  border-radius: 4px;
+  color: #27649f;
+  background: #eaf3ff;
+  font-size: 10px;
 }
 
 .pagination-row {
@@ -804,95 +1150,65 @@ async function copyText(value: string, successMessage = '已复制') {
   justify-content: flex-end;
 }
 
-.code-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
-  gap: 12px;
-}
-
-.code-block {
-  min-width: 0;
-  border: 1px solid var(--color-border);
-  border-radius: 8px;
-  overflow: hidden;
-  background: #fbfdff;
-}
-
-.code-block:first-child {
-  grid-column: 1 / -1;
-}
-
-.code-title {
-  padding: 10px 12px;
-  border-bottom: 1px solid var(--color-border);
-  color: #10274c;
-  font-weight: 700;
-}
-
-pre {
-  max-height: 280px;
-  margin: 0;
-  padding: 12px;
-  overflow: auto;
-  color: #172033;
-  font-family: Consolas, "Courier New", monospace;
-  font-size: 12px;
-  line-height: 1.7;
-  white-space: pre-wrap;
-  word-break: break-word;
-}
-
-code {
-  color: #10274c;
-  overflow-wrap: anywhere;
-}
-
 .form-tip {
-  display: block;
-  margin-left: 12px;
+  font-size: 12px;
 }
 
 .key-result {
   display: grid;
-  gap: 14px;
+  gap: 16px;
 }
 
-.key-box {
+.one-time-key {
+  align-items: stretch;
   padding: 12px;
-  border: 1px solid var(--color-border);
-  border-radius: 8px;
-  background: #f8fbff;
+  border: 1px solid #c9d8e9;
+  border-radius: 10px;
+  background: #f7faff;
 }
 
-.key-box code {
+.one-time-key code {
   min-width: 0;
+  padding: 8px 4px;
+  overflow-wrap: anywhere;
+  color: #10274c;
+  font-family: Consolas, "Courier New", monospace;
+  font-size: 13px;
 }
 
-@media (max-width: 1180px) {
-  .overview-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .api-layout,
-  .code-grid {
-    grid-template-columns: 1fr;
+@media (max-width: 1280px) {
+  .summary-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
 
-@media (max-width: 760px) {
-  .page-heading,
-  .panel-head,
-  .heading-actions {
+@media (max-width: 980px) {
+  .section-heading {
     align-items: flex-start;
     flex-direction: column;
   }
 
-  .overview-grid {
+  .summary-grid,
+  .chart-layout {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 680px) {
+  .summary-grid,
+  .chart-layout {
     grid-template-columns: 1fr;
   }
 
-  .log-filters .el-select {
+  .filter-control {
     width: 100%;
+  }
+
+  .heading-actions,
+  .one-time-key {
+    width: 100%;
+    align-items: stretch;
+    flex-direction: column;
   }
 }
 </style>
