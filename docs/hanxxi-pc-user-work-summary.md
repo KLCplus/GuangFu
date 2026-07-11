@@ -1,22 +1,33 @@
 ﻿# hanxxi PC 用户端阶段工作总结
 
+更新时间：2026-07-10
+
 ## 工作范围
 
 本阶段聚焦 PC Web 用户端页面和本地联调链路，主要覆盖：
 
 - 登录链路相关修复。
+- 用户看板 `/dashboard`。
 - U-04 模型广场 `/marketplace`。
 - U-05 API 管理 `/api`。
+- 云图预测 `/cloud-forecast`。
 - U-07 新闻通知 `/news` 与 `/news/:newsId`。
 - U-08 我的页面 `/profile`。
 - 用户端页面所需的数据聚合与 mock 兜底。
 
-未纳入本阶段页面开发范围：
+本阶段边界：
 
 - 未修改小程序 `miniapp`。
-- 未新增后端业务能力。
+- 已补充用户端聚合与云图预测后端接口。
 - 未修改模型服务 `model-service`。
 - 未修改全局主题样式。
+
+## 当前联调状态
+
+- 本机 MySQL 已存在 `pv_platform` 数据库，启动脚本默认不做数据库初始化。
+- Linux 联调使用根目录 `./start-local.sh`，需要重置数据库时才手动追加 `--init-db --force-db-reset`。
+- 模型服务不是前后端启动必需项；云图预测和模型预测在模型服务不可用时按前端兜底逻辑展示。
+- 前后端接口以 `docs/back_front_api.md` 为准，旧的临时审计、需求拆分和页面拆分文档已清理。
 
 ## 登录链路相关修复
 
@@ -51,6 +62,35 @@ curl.exe -i -X POST "http://localhost:8080/api/auth/register" -H "Content-Type: 
 curl.exe -i -X POST "http://localhost:8080/api/auth/login" -H "Content-Type: application/json" --data '{"username":"test2","password":"Demo123456"}'
 ```
 
+## 用户看板
+
+页面路径：
+
+```text
+/dashboard
+```
+
+页面文件：
+
+```text
+web-frontend/src/views/Dashboard.vue
+```
+
+已实现能力：
+
+- 看板聚合接口：优先调用 `GET /api/dashboard/overview`。
+- 电站列表、当前天气、三日天气、实时光伏数据和服务资源状态由后端聚合返回。
+- 后端单项数据失败时返回 `PARTIAL`，前端显示“部分接口”。
+- 聚合接口不可用时，前端回退到原有电站、天气、实时数据分接口和 mock 兜底。
+
+使用的数据方法：
+
+- `getDashboardOverview`
+- `getStations`
+- `getCurrentWeather`
+- `getForecast`
+- `getRealtime`
+
 ## U-04 模型广场
 
 页面路径：
@@ -74,7 +114,7 @@ web-frontend/src/views/Marketplace.vue
 - 权益筛选：全部、免费试用、按量计费、套餐。
 - 模型卡片：展示名称、分类、状态、版本、简介、标签、计费说明、调用量、平均时延、试用状态。
 - 模型详情抽屉：展示输入说明、输出说明、适用场景、计费方式、开放路径、调用示例、请求示例、响应示例。
-- 免费试用：当前为 mock/占位能力。
+- 免费试用：已接入 `POST /api/open/trials`，失败时保留 mock 兜底。
 - 申请 API：优先调用真实 API Key 申请接口，失败时使用 mock 兜底。
 - 复制调用示例、请求 JSON、响应 JSON、API Key。
 
@@ -108,7 +148,7 @@ web-frontend/src/views/ApiPlatform.vue
 - API Key 启用、停用、删除。
 - API 调用日志：按 Key、状态筛选，支持分页。
 - 开放预测接口示例：展示 curl、请求 JSON、响应 JSON，并支持复制。
-- 余额、套餐、购买/续费、Key 重置等未确认接口能力以“待后端接口接入”或 mock 明确展示。
+- 余额、套餐展示、Key 重置已接入真实开放平台接口；购买/续费流程仍保留后续接口衔接。
 
 使用的数据方法：
 
@@ -119,6 +159,32 @@ web-frontend/src/views/ApiPlatform.vue
 - `setApiKeyEnabled`
 - `removeApiKey`
 - `resetApiKey`
+
+## 云图预测
+
+页面路径：
+
+```text
+/cloud-forecast
+```
+
+页面文件：
+
+```text
+web-frontend/src/views/CloudForecast.vue
+```
+
+已实现能力：
+
+- 上传或填充 10 张历史云图。
+- 调用真实后端接口 `POST /api/cloud-forecast/predict`。
+- 后端转发到模型服务 `POST /cloud-api/predict`，返回未来 10 张云图。
+- 模型服务不可用时，前端提示错误并展示本地兜底结果。
+- 支持单张下载和批量下载预测云图。
+
+使用的数据方法：
+
+- `predictCloudForecast`
 
 ## U-07 新闻通知
 
@@ -181,8 +247,8 @@ web-frontend/src/views/Profile.vue
 - 人脸认证状态：读取真实人脸状态接口，仅展示状态，不在本页上传人脸。
 - 第三方绑定：展示 OAuth 绑定列表，支持解绑已有绑定账号。
 - API Key：展示当前用户 API Key 列表。
-- API 权益：展示已购买模型、额度、到期时间；当前为 mock 权益数据。
-- 钱包：展示余额、冻结余额、本月消费和流水；当前为 mock/占位数据。
+- API 权益：展示已购买模型、额度、到期时间，已接入开放平台权益接口。
+- 钱包：展示余额、冻结余额、本月消费和流水，已接入开放平台钱包接口。
 - loading、empty、error 状态。
 - 真实接口失败但 mock 兜底成功时，页面仍可使用，并提示当前为模拟或混合数据。
 
@@ -204,6 +270,18 @@ GET /api/models
 GET /api/models/{modelId}
 ```
 
+用户看板：
+
+```http
+GET /api/dashboard/overview?stationId=1
+```
+
+云图预测：
+
+```http
+POST /api/cloud-forecast/predict
+```
+
 开放平台：
 
 ```http
@@ -211,7 +289,13 @@ POST   /api/open/apply-key
 GET    /api/open/keys
 PUT    /api/open/keys/{apiKeyId}/status
 DELETE /api/open/keys/{apiKeyId}
+POST   /api/open/keys/{apiKeyId}/reset
 GET    /api/open/call-logs?pageNum=1&pageSize=10
+POST   /api/open/trials
+GET    /api/open/entitlements
+GET    /api/open/wallet
+GET    /api/open/plans
+GET    /api/open/overview
 POST   /openapi/v1/predict
 ```
 
@@ -246,15 +330,14 @@ POST /api/auth/login
 
 ## mock 或占位能力
 
-当前只做 mock 或占位的能力：
+本次已补齐真实接口并同步前端连接的能力：
 
-- 模型免费试用。
+- 看板统计聚合、云图预测、模型免费试用、套餐展示、钱包余额与流水聚合、API Key 重置、API 权益与额度汇总。
+
+仍只做 mock 或占位的能力：
+
 - 模型购买。
-- 套餐权益。
-- 钱包余额与流水。
-- API Key 重置。
 - 外部天气新闻、第三方新闻源聚合。
-- API 权益、已购买模型和额度汇总。
 - 邮箱验证码绑定流程。
 - 人脸录入上传流程。
 - 部分模型展示字段：价格、标签、平均时延、今日调用量等。

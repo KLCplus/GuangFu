@@ -65,12 +65,13 @@ public class OpenApiService {
             }
             validateStation(request.stationId(), principal.userId());
             List<ModelInputFrame> frames = convertAndValidate(request.input(), model);
+            validateImages(request.inputImages(), frames);
             String start = frames.get(0).time().format(FORMATTER);
             String end = frames.get(frames.size() - 1).time().format(FORMATTER);
             task = persistenceService.createTaskWithSnapshotsForUser(principal.userId(),
                 request.stationId(), model.getModelId(), "OPEN_API", start, end, frames);
             persistenceService.markRunning(task.getTaskId());
-            ModelPredictResponse.Data data = executionService.execute(model, frames);
+            ModelPredictResponse.Data data = executionService.execute(model, frames, request.inputImages());
             persistenceService.saveResultsAndMarkSuccess(task.getTaskId(), data,
                 executionService.getLastInputTime(frames));
             return new OpenPredictVO(task.getTaskId(), task.getTaskNo(), "SUCCESS",
@@ -94,7 +95,8 @@ public class OpenApiService {
                 model == null ? null : model.getModelId(), httpRequest.getRequestURI(),
                 httpRequest.getMethod(), clientIp(httpRequest), started, status, error,
                 "{\"modelName\":\"" + safe(request.modelName()) + "\",\"frameCount\":"
-                    + (request.input() == null ? 0 : request.input().size()) + "}",
+                    + (request.input() == null ? 0 : request.input().size()) + ",\"imageCount\":"
+                    + (request.inputImages() == null ? 0 : request.inputImages().size()) + "}",
                 task == null ? null : "{\"taskId\":" + task.getTaskId() + "}");
             httpRequest.setAttribute("OPEN_API_AUDITED", Boolean.TRUE);
         }
@@ -126,6 +128,31 @@ public class OpenApiService {
             }
         }
         return frames;
+    }
+
+
+    private void validateImages(List<ModelPredictRequest.ImageFrame> images, List<ModelInputFrame> frames) {
+        if (images == null || images.size() != 30) {
+            throw new BusinessException(400, "图片输入必须包含 30 张");
+        }
+        for (int i = 0; i < images.size(); i++) {
+            ModelPredictRequest.ImageFrame image = images.get(i);
+            if (image.image() == null || image.image().isBlank()) {
+                throw new BusinessException(400, "图片输入不能为空");
+            }
+            LocalDateTime imageTime;
+            try {
+                imageTime = LocalDateTime.parse(image.time(), FORMATTER);
+            } catch (DateTimeParseException | NullPointerException e) {
+                throw new BusinessException(400, "图片输入时间格式不合法");
+            }
+            if (!imageTime.equals(frames.get(i).time())) {
+                throw new BusinessException(400, "图片时间必须与数值时间一一对应");
+            }
+            if (i > 0 && Duration.between(LocalDateTime.parse(images.get(i - 1).time(), FORMATTER), imageTime).toSeconds() != 60) {
+                throw new BusinessException(400, "图片时间序列必须按 1 分钟间隔连续");
+            }
+        }
     }
 
     private void validateStation(Long stationId, Long userId) {

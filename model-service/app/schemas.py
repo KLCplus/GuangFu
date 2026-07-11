@@ -8,9 +8,15 @@ class InputFrame(BaseModel):
     irradiance: float = Field(ge=0)
 
 
+class ImageFrame(BaseModel):
+    time: str
+    image: str = Field(min_length=1)
+
+
 class PredictRequest(BaseModel):
     modelName: str = Field(min_length=1)
-    input: list[InputFrame] = Field(min_length=1)
+    input: list[InputFrame] = Field(min_length=30, max_length=30)
+    inputImages: list[ImageFrame] = Field(min_length=30, max_length=30)
 
 
 class Prediction(BaseModel):

@@ -8,7 +8,7 @@
 
 - 创建预测任务接口。
 - 预测前校验电站查看权限和模型必须为 `ONLINE`。
-- 当前实现支持 `STATION_HISTORY` 输入模式，从 `pvdata` 读取最近数据并转换为模型输入帧。
+- 当前实现支持 `MANUAL_MULTIMODAL` 输入模式，请求传入 30 个数值点和 30 张图片，均按 1 分钟间隔连续。
 - 创建任务时保存 `prediction_task` 和 `prediction_input_snapshot`。
 - 调用 `ModelServiceClient` 访问模型服务 `/model-api/predict`。
 - 模型服务返回后保存 `prediction_result`，并将任务状态更新为 `SUCCESS`。
@@ -20,7 +20,7 @@
 ## 未实现或限制
 
 - 预测执行是同步流程，没有队列、异步 worker、取消任务或重试机制。
-- 目前只实现 `STATION_HISTORY` 输入；`FILE_UPLOAD`、`MANUAL_INPUT` 等模式未实现。
+- 目前只实现 `MANUAL_MULTIMODAL` 输入；`STATION_HISTORY`、`FILE_UPLOAD` 等模式未实现。
 - `latestThirty` 不严格校验输入数据连续性，可能不满足模型对 30 分钟连续帧的要求。
 - 没有预测结果与后续真实值的误差回填任务。
 - 没有任务超时后的后台补偿处理，只在同步调用异常时标记失败。

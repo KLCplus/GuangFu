@@ -42,6 +42,12 @@ class PredictorProxy:
         if request.modelName not in MODEL_NAMES:
             raise ValueError(f"Unknown model: {request.modelName}")
 
+        if len(request.inputImages) != len(request.input):
+            raise ValueError("inputImages length must match input length")
+        for numeric_frame, image_frame in zip(request.input, request.inputImages):
+            if numeric_frame.time != image_frame.time:
+                raise ValueError("inputImages timestamps must match input timestamps")
+
         powers = [frame.power for frame in request.input]
         recent = powers[-6:]
         baseline = mean(recent)

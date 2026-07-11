@@ -63,6 +63,32 @@ public class WeatherService {
         }
     }
 
+    public CurrentWeatherVO currentByCoordinates(double longitude, double latitude) {
+        validateCoordinates(longitude, latitude);
+        WeatherProvider provider = activeProvider();
+        CurrentWeatherResult result = provider.getCurrent(longitude, latitude);
+        return currentVO(null, result, provider.source(), false);
+    }
+
+    public List<WeatherForecastVO> forecastByCoordinates(double longitude, double latitude) {
+        validateCoordinates(longitude, latitude);
+        WeatherProvider provider = activeProvider();
+        return provider.getForecast(longitude, latitude).stream()
+            .limit(Math.max(1, properties.getForecastDays()))
+            .map(result -> forecastVO(result, provider.source(), false))
+            .toList();
+    }
+
+    public CurrentWeatherVO currentByLocation(String location) {
+        WeatherLocation resolved = activeProvider().resolveLocation(location);
+        return currentByCoordinates(resolved.longitude(), resolved.latitude());
+    }
+
+    public List<WeatherForecastVO> forecastByLocation(String location) {
+        WeatherLocation resolved = activeProvider().resolveLocation(location);
+        return forecastByCoordinates(resolved.longitude(), resolved.latitude());
+    }
+
     public List<WeatherForecastVO> forecast(Long stationId) {
         PowerStationDO station = requireCoordinates(stationId);
         WeatherProvider provider = activeProvider();
@@ -175,19 +201,29 @@ public class WeatherService {
             row.getWeatherTime().format(TIME_FORMAT), row.getSource(), cached);
     }
 
+    private CurrentWeatherVO currentVO(Long stationId, CurrentWeatherResult result,
+                                       String source, boolean cached) {
+        return new CurrentWeatherVO(stationId, result.weather(), number(result.temperature()),
+            number(result.humidity()), result.windDirection(), result.windPower(),
+            number(result.windSpeed()), result.reportTime().format(TIME_FORMAT), source, cached);
+    }
+
     private List<WeatherForecastVO> forecastVOs(List<WeatherDataDO> rows, boolean cached) {
         return rows.stream().map(row -> {
             try {
                 WeatherForecastResult result = objectMapper.readValue(
                     row.getRawData(), WeatherForecastResult.class);
-                return new WeatherForecastVO(result.date().toString(), result.dayWeather(),
-                    result.nightWeather(), number(result.dayTemp()), number(result.nightTemp()),
-                    number(result.humidity()), result.windDirection(), result.windPower(),
-                    row.getSource(), cached);
+                return forecastVO(result, row.getSource(), cached);
             } catch (Exception exception) {
                 throw new BusinessException(500, "天气缓存数据格式错误");
             }
         }).toList();
+    }
+
+    private WeatherForecastVO forecastVO(WeatherForecastResult result, String source, boolean cached) {
+        return new WeatherForecastVO(result.date().toString(), result.dayWeather(),
+            result.nightWeather(), number(result.dayTemp()), number(result.nightTemp()),
+            number(result.humidity()), result.windDirection(), result.windPower(), source, cached);
     }
 
     private String json(Object value) {
@@ -196,6 +232,12 @@ public class WeatherService {
             return json.length() <= 8000 ? json : json.substring(0, 8000);
         } catch (JsonProcessingException exception) {
             throw new BusinessException(500, "天气数据序列化失败");
+        }
+    }
+
+    private void validateCoordinates(double longitude, double latitude) {
+        if (longitude < -180 || longitude > 180 || latitude < -90 || latitude > 90) {
+            throw new BusinessException(400, "经纬度参数不合法");
         }
     }
 

@@ -509,14 +509,14 @@ onMounted(() => {
   flex-direction: column;
   gap: 8px;
   padding: 18px;
-  border: 1px solid var(--color-border);
+  border: 1px solid var(--admin-line);
   border-radius: 8px;
-  background: #ffffff;
-  box-shadow: var(--shadow-panel);
+  background: var(--admin-surface);
+  box-shadow: var(--admin-shadow);
 }
 
 .stat-label {
-  color: var(--color-muted);
+  color: var(--admin-muted);
   font-size: 13px;
 }
 

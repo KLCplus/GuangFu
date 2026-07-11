@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   loadProfileOverview,
@@ -8,7 +8,7 @@ import {
   updateUserPassword
 } from '../api/userPages'
 import type { DataSource, ProfileOverview } from '../api/userPages'
-import type { ChangePasswordPayload, UpdateProfilePayload, UserProfile } from '../api/user'
+import { deleteFace, enrollFace, getFaceStatus, type ChangePasswordPayload, type UpdateProfilePayload, type UserProfile } from '../api/user'
 import { useUserStore } from '../store/user'
 
 interface ProfileForm {
@@ -30,6 +30,13 @@ const loading = ref(false)
 const saving = ref(false)
 const passwordSaving = ref(false)
 const actionLoadingId = ref<number | null>(null)
+const faceSaving = ref(false)
+const faceRevoking = ref(false)
+const faceFile = ref<File>()
+const facePreview = ref('')
+const videoRef = ref<HTMLVideoElement>()
+const cameraActive = ref(false)
+let cameraStream: MediaStream | undefined
 const loadError = ref('')
 const overview = ref<ProfileOverview | null>(null)
 const dataSource = ref<DataSource>('remote')
@@ -64,12 +71,12 @@ const profileStats = computed(() => [
   {
     label: 'API 权益',
     value: String(entitlements.value.length),
-    note: '购买模型/试用额度当前来自 mock 权益'
+    note: '来自开放平台权益接口'
   },
   {
     label: '钱包余额',
-    value: wallet.value ? `￥${wallet.value.balance.toFixed(2)}` : '待接入',
-    note: '钱包接口待后端接入'
+    value: wallet.value ? `￥${wallet.value.balance.toFixed(2)}` : '暂无数据',
+    note: '来自开放平台钱包接口'
   },
   {
     label: '第三方绑定',
@@ -80,6 +87,11 @@ const profileStats = computed(() => [
 
 onMounted(() => {
   void fetchOverview()
+})
+
+onBeforeUnmount(() => {
+  stopFaceCamera()
+  clearFaceSelection()
 })
 
 async function fetchOverview() {
@@ -183,6 +195,140 @@ async function unbindOAuth(oauthId: number, provider: string) {
     ElMessage.error(error instanceof Error ? error.message : '解绑失败')
   } finally {
     actionLoadingId.value = null
+  }
+}
+
+function clearFaceSelection() {
+  if (facePreview.value) URL.revokeObjectURL(facePreview.value)
+  facePreview.value = ''
+  faceFile.value = undefined
+}
+
+function selectFaceFile(event: Event) {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  if (!file) return
+  if (!file.type.startsWith('image/')) {
+    ElMessage.warning('请选择图片文件')
+    input.value = ''
+    return
+  }
+  if (file.size > 5 * 1024 * 1024) {
+    ElMessage.warning('图片大小不超过 5MB')
+    input.value = ''
+    return
+  }
+  clearFaceSelection()
+  faceFile.value = file
+  facePreview.value = URL.createObjectURL(file)
+}
+
+async function openFaceCamera() {
+  if (!navigator.mediaDevices?.getUserMedia) {
+    ElMessage.error('当前浏览器不支持摄像头调用')
+    return
+  }
+
+  try {
+    cameraStream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: 'user' },
+      audio: false
+    })
+    cameraActive.value = true
+    await nextTick()
+    if (videoRef.value) {
+      videoRef.value.srcObject = cameraStream
+      await videoRef.value.play()
+    }
+  } catch {
+    ElMessage.error('无法打开摄像头，请检查浏览器权限')
+  }
+}
+
+function stopFaceCamera() {
+  cameraStream?.getTracks().forEach((track) => track.stop())
+  cameraStream = undefined
+  cameraActive.value = false
+  if (videoRef.value) {
+    videoRef.value.srcObject = null
+  }
+}
+
+async function captureFacePhoto() {
+  const video = videoRef.value
+  if (!video || !video.videoWidth || !video.videoHeight) {
+    ElMessage.warning('摄像头画面尚未准备好')
+    return
+  }
+
+  const canvas = document.createElement('canvas')
+  canvas.width = video.videoWidth
+  canvas.height = video.videoHeight
+  const context = canvas.getContext('2d')
+  if (!context) {
+    ElMessage.error('无法生成拍照图片')
+    return
+  }
+
+  context.drawImage(video, 0, 0, canvas.width, canvas.height)
+  const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.92))
+  if (!blob) {
+    ElMessage.error('拍照失败，请重试')
+    return
+  }
+
+  clearFaceSelection()
+  faceFile.value = new File([blob], 'face-' + Date.now() + '.jpg', { type: 'image/jpeg' })
+  facePreview.value = URL.createObjectURL(faceFile.value)
+  stopFaceCamera()
+  ElMessage.success('已完成拍照')
+}
+
+async function refreshFaceStatus() {
+  if (!overview.value) return
+  overview.value.faceStatus = await getFaceStatus()
+}
+
+async function enrollSelectedFace() {
+  if (!faceFile.value) {
+    ElMessage.warning('请先选择人脸图片')
+    return
+  }
+
+  faceSaving.value = true
+  try {
+    await enrollFace(faceFile.value)
+    await refreshFaceStatus()
+    clearFaceSelection()
+    ElMessage.success('人脸已录入，可用于人脸登录')
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : '人脸录入失败')
+  } finally {
+    faceSaving.value = false
+  }
+}
+
+async function revokeFaceAuth() {
+  try {
+    await ElMessageBox.confirm('确认撤销当前账号的人脸信息吗？', '撤销人脸认证', {
+      type: 'warning',
+      confirmButtonText: '撤销',
+      cancelButtonText: '取消'
+    })
+  } catch {
+    return
+  }
+
+  faceRevoking.value = true
+  try {
+    await deleteFace()
+    await refreshFaceStatus()
+    clearFaceSelection()
+    ElMessage.success('人脸信息已撤销')
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : '撤销人脸失败')
+  } finally {
+    faceRevoking.value = false
   }
 }
 
@@ -374,10 +520,50 @@ function recordTypeLabel(type: string) {
                 <strong>{{ profile.email ? '已绑定' : '未绑定' }}</strong>
                 <small>邮箱修改复用资料保存接口，验证码绑定流程待确认。</small>
               </div>
-              <div>
-                <span>人脸认证</span>
-                <strong>{{ faceStatus?.enrolled ? '已录入' : '未录入' }}</strong>
-                <small>当前只展示 GET /api/user/face 状态，不在本页上传人脸。</small>
+              <div class="face-auth-card">
+                <div class="face-auth-top">
+                  <div>
+                    <span>人脸认证</span>
+                    <strong>{{ faceStatus?.enrolled ? '已录入' : '未录入' }}</strong>
+                    <small>{{ faceStatus?.enrolledAt ? '录入时间：' + faceStatus.enrolledAt : '选择清晰正脸图片后可录入或更新' }}</small>
+                  </div>
+                  <el-tag :type="faceStatus?.enrolled ? 'success' : 'info'" effect="light">
+                    {{ faceStatus?.enrolled ? '可用' : '未启用' }}
+                  </el-tag>
+                </div>
+
+                <div v-if="cameraActive" class="face-camera-panel">
+                  <video ref="videoRef" autoplay muted playsinline />
+                  <div class="face-camera-actions">
+                    <el-button type="primary" @click="captureFacePhoto">拍照</el-button>
+                    <el-button @click="stopFaceCamera">关闭摄像头</el-button>
+                  </div>
+                </div>
+
+                <div v-if="facePreview" class="face-preview">
+                  <img :src="facePreview" alt="人脸预览" />
+                  <el-button text type="danger" @click="clearFaceSelection">移除</el-button>
+                </div>
+
+                <div class="face-actions">
+                  <label class="face-file-button">
+                    <input type="file" accept="image/*" @change="selectFaceFile" />
+                    选择图片
+                  </label>
+                  <el-button plain @click="openFaceCamera">打开摄像头</el-button>
+                  <el-button type="primary" :loading="faceSaving" :disabled="!faceFile" @click="enrollSelectedFace">
+                    {{ faceStatus?.enrolled ? '更新人脸' : '录入人脸' }}
+                  </el-button>
+                  <el-button
+                    type="danger"
+                    plain
+                    :loading="faceRevoking"
+                    :disabled="!faceStatus?.enrolled"
+                    @click="revokeFaceAuth"
+                  >
+                    撤销
+                  </el-button>
+                </div>
               </div>
             </div>
           </section>
@@ -388,7 +574,7 @@ function recordTypeLabel(type: string) {
             <div class="panel-head">
               <div>
                 <h2>API 权益</h2>
-                <p>API Key 来自真实接口；已购买模型和权益额度当前为 mock 展示。</p>
+                <p>API Key、已购买模型和权益额度来自开放平台接口。</p>
               </div>
             </div>
             <el-empty v-if="entitlements.length === 0" description="暂无 API 权益" />
@@ -435,9 +621,9 @@ function recordTypeLabel(type: string) {
             <div class="panel-head">
               <div>
                 <h2>钱包</h2>
-                <p>钱包余额、充值和消费流水暂无真实用户端接口，当前为 mock/占位。</p>
+                <p>钱包余额和消费流水来自开放平台钱包接口。</p>
               </div>
-              <el-tag type="info" effect="light">待后端接口接入</el-tag>
+              <el-tag type="success" effect="light">已接入</el-tag>
             </div>
             <div v-if="wallet" class="wallet-grid">
               <div>
@@ -667,6 +853,72 @@ function recordTypeLabel(type: string) {
   margin-top: 18px;
 }
 
+.face-auth-card {
+  display: grid;
+  gap: 12px;
+}
+
+.face-auth-top,
+.face-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.face-camera-panel {
+  display: grid;
+  gap: 10px;
+}
+
+.face-camera-panel video {
+  width: 100%;
+  height: 220px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: #f7fbff;
+  object-fit: cover;
+}
+
+.face-camera-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.face-preview {
+  display: grid;
+  grid-template-columns: 96px auto;
+  align-items: center;
+  gap: 12px;
+}
+
+.face-preview img {
+  width: 96px;
+  height: 96px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  object-fit: cover;
+}
+
+.face-file-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 32px;
+  padding: 0 15px;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  color: #10274c;
+  background: #ffffff;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.face-file-button input {
+  display: none;
+}
+
 .entitlement-card,
 .key-item,
 .record-item,
@@ -738,7 +990,9 @@ function recordTypeLabel(type: string) {
   .panel-head,
   .key-item,
   .record-item,
-  .oauth-item {
+  .oauth-item,
+  .face-auth-top,
+  .face-actions {
     flex-direction: column;
   }
 }

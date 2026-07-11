@@ -4,11 +4,15 @@
 
 - 前端调用 Spring Boot：[`back_front_api.md`](back_front_api.md)
 - Spring Boot 调用模型服务：[`module_back_api.md`](module_back_api.md)
+- PC 用户端进度：[`hanxxi-pc-user-work-summary.md`](hanxxi-pc-user-work-summary.md)
+- 架构说明：[`architecture.md`](architecture.md)
+- 数据库说明：[`database.md`](database.md)
+- DeepSeek 分析报告配置：[`deepseek_integration.md`](deepseek_integration.md)
 - Swagger UI：`http://localhost:8080/swagger-ui.html`
 - 后端 OpenAPI JSON：`http://localhost:8080/v3/api-docs`
 - 模型服务 Swagger：`http://localhost:9000/docs`
 
-前端联调以 `back_front_api.md` 为最终交付文档。旧版 mock 接口说明已经废弃，不再在本文件重复维护接口细节。
+前后端联调以 `back_front_api.md` 为最终交付文档。旧版 mock 接口说明和临时审计文档已经清理，不再重复维护接口细节。
 
 统一响应格式：
 

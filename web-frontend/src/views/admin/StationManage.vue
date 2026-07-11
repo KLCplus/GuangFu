@@ -319,43 +319,44 @@ onMounted(loadStations)
         <el-button @click="resetFilters">重置筛选</el-button>
       </div>
 
-      <el-table v-loading="loading" :data="filteredRows" size="large" stripe>
-        <el-table-column prop="stationName" label="电站名称" min-width="190" fixed="left">
+      <el-table v-loading="loading" :data="filteredRows" size="large" stripe class="station-table">
+        <el-table-column prop="stationName" label="电站名称" min-width="190">
           <template #default="{ row }">
             <strong class="table-title">{{ row.stationName }}</strong>
             <span class="table-sub">{{ row.description }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="位置" min-width="220">
+        <el-table-column label="位置" min-width="180">
           <template #default="{ row }">
             <span>{{ row.province }} {{ row.city }}</span>
             <span class="table-sub">{{ row.address }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="经纬度" min-width="150">
+        <el-table-column label="经纬度" width="122">
           <template #default="{ row }">
             {{ formatCoordinate(row.longitude) }}, {{ formatCoordinate(row.latitude) }}
           </template>
         </el-table-column>
-        <el-table-column prop="capacity" label="容量" width="110" sortable>
+        <el-table-column prop="capacity" label="容量" width="96" sortable>
           <template #default="{ row }">{{ row.capacity }} kW</template>
         </el-table-column>
-        <el-table-column prop="dataSource" label="数据源" min-width="130" />
-        <el-table-column prop="weatherSource" label="天气源" min-width="130" />
-        <el-table-column prop="status" label="状态" width="100">
+        <el-table-column prop="dataSource" label="数据源" width="112" />
+        <el-table-column prop="weatherSource" label="天气源" width="112" />
+        <el-table-column prop="status" label="状态" width="90">
           <template #default="{ row }">
             <el-tag :type="statusType(row.status)">{{ statusText(row.status) }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="updatedAt" label="更新时间" min-width="170" />
-        <el-table-column label="操作" width="260" fixed="right">
+        <el-table-column label="操作" width="210">
           <template #default="{ row }">
-            <el-button size="small" text type="primary" @click="openEdit(row)">编辑</el-button>
-            <el-button size="small" text @click="toggleStation(row)">
-              {{ row.status === 'RUNNING' ? '停用' : '启用' }}
-            </el-button>
-            <el-button size="small" text @click="setMaintenance(row)">维护</el-button>
-            <el-button size="small" text type="danger" @click="removeStation(row)">删除</el-button>
+            <div class="table-actions">
+              <el-button size="small" text type="primary" @click="openEdit(row)">编辑</el-button>
+              <el-button size="small" text @click="toggleStation(row)">
+                {{ row.status === 'RUNNING' ? '停用' : '启用' }}
+              </el-button>
+              <el-button size="small" text @click="setMaintenance(row)">维护</el-button>
+              <el-button size="small" text type="danger" @click="removeStation(row)">删除</el-button>
+            </div>
           </template>
         </el-table-column>
       </el-table>
@@ -429,23 +430,22 @@ onMounted(loadStations)
 }
 
 .summary-card {
-  min-height: 96px;
   padding: 18px;
-  border: 1px solid var(--color-border);
+  border: 1px solid var(--admin-line);
   border-radius: 8px;
-  background: #ffffff;
-  box-shadow: var(--shadow-panel);
+  background: var(--admin-surface);
+  box-shadow: var(--admin-shadow);
 }
 
 .summary-card span {
-  color: var(--color-muted);
+  color: var(--admin-muted);
   font-size: 13px;
 }
 
 .summary-card strong {
   display: block;
   margin-top: 12px;
-  color: #10274c;
+  color: var(--admin-ink);
   font-size: 24px;
 }
 
@@ -466,13 +466,35 @@ onMounted(loadStations)
 }
 
 .table-title {
-  color: #10274c;
+  color: var(--admin-ink);
 }
 
 .table-sub {
   margin-top: 4px;
-  color: var(--color-muted);
+  color: var(--admin-muted);
   font-size: 12px;
+}
+
+.station-table {
+  width: 100%;
+}
+
+.station-table :deep(.el-table__body-wrapper) {
+  overflow-x: hidden;
+}
+
+.station-table :deep(.cell) {
+  word-break: break-word;
+}
+
+.table-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 8px;
+}
+
+.table-actions :deep(.el-button + .el-button) {
+  margin-left: 0;
 }
 
 .station-form {

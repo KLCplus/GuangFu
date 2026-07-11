@@ -30,10 +30,11 @@ function logout() {
 
 <template>
   <div class="admin-shell">
-    <!-- 深色侧边栏 -->
     <aside class="admin-sidebar">
       <router-link class="admin-brand" to="/admin/users-apis">
-        <span class="admin-brand-mark">PV</span>
+        <span class="admin-brand-mark">
+          PV
+        </span>
         <div class="admin-brand-text">
           <span class="admin-brand-title">光伏平台</span>
           <span class="admin-brand-sub">管理后台</span>
@@ -71,9 +72,7 @@ function logout() {
       </div>
     </aside>
 
-    <!-- 主内容区 -->
     <div class="admin-main">
-      <!-- 内容区 -->
       <main class="admin-content">
         <router-view />
       </main>
@@ -84,16 +83,17 @@ function logout() {
 <style scoped>
 .admin-shell {
   display: grid;
-  grid-template-columns: 184px minmax(0, 1fr);
+  grid-template-columns: 176px minmax(0, 1fr);
   min-height: 100vh;
   background: #f0f2f5;
+  overflow-x: hidden;
 }
 
-/* ===== 深色侧边栏 ===== */
 .admin-sidebar {
   position: sticky;
   top: 0;
   height: 100vh;
+  padding: 16px 10px;
   display: flex;
   flex-direction: column;
   background: #001529;
@@ -104,11 +104,10 @@ function logout() {
 .admin-brand {
   display: flex;
   align-items: center;
-  gap: 10px;
-  height: 58px;
-  padding: 0 14px;
+  gap: 8px;
+  height: 44px;
+  padding: 0 8px;
   min-width: 0;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 .admin-brand-mark {
@@ -143,19 +142,20 @@ function logout() {
   font-size: 12px;
 }
 
-/* 深色菜单覆盖 */
 .admin-menu {
   flex: 1;
-  margin-top: 8px;
+  margin-top: 14px;
   border-right: 0;
 }
 
 .admin-menu .el-menu-item {
-  margin: 2px 7px;
-  border-radius: 6px;
+  margin: 3px 0;
+  border-radius: 8px;
   height: 40px;
   line-height: 40px;
   padding-left: 14px !important;
+  color: rgba(255, 255, 255, 0.65);
+  font-weight: 650;
 }
 
 .admin-menu .el-menu-item:hover {
@@ -167,11 +167,10 @@ function logout() {
   color: #ffffff !important;
 }
 
-/* 侧边栏底部 */
 .admin-sidebar-footer {
   display: grid;
   gap: 6px;
-  padding: 14px 10px;
+  padding-top: 12px;
   border-top: 1px solid rgba(255, 255, 255, 0.08);
 }
 
@@ -187,33 +186,12 @@ function logout() {
   background: rgba(255, 255, 255, 0.08);
 }
 
-/* ===== 主内容区 ===== */
 .admin-main {
   min-width: 0;
+  max-width: 100%;
+  overflow-x: hidden;
   display: flex;
   flex-direction: column;
-}
-
-/* 顶部栏 */
-.admin-topbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  height: 48px;
-  padding: 0 24px;
-  background: #ffffff;
-  border-bottom: 1px solid #e8e8e8;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04);
-}
-
-.admin-topbar-left {
-  display: flex;
-  align-items: center;
-}
-
-.admin-topbar-right {
-  display: flex;
-  align-items: center;
 }
 
 .admin-user {
@@ -246,29 +224,14 @@ function logout() {
   font-weight: 600;
 }
 
-/* 页面标题区 */
-.admin-page-header {
-  padding: 20px 24px 0;
-  background: #ffffff;
-}
-
-.admin-page-header h1 {
-  margin: 0;
-  padding-bottom: 16px;
-  font-size: 20px;
-  font-weight: 600;
-  color: #001529;
-  border-bottom: 1px solid #f0f0f0;
-}
-
-/* 内容区 */
 .admin-content {
   flex: 1;
   min-width: 0;
-  padding: 20px 24px 32px;
+  max-width: 100%;
+  overflow-x: hidden;
+  padding: 24px 28px 36px;
 }
 
-/* 响应式 */
 @media (max-width: 900px) {
   .admin-shell {
     grid-template-columns: 1fr;
@@ -286,6 +249,10 @@ function logout() {
 
   .admin-menu .el-menu-item {
     flex: 0 0 auto;
+  }
+
+  .admin-content {
+    padding: 18px 14px 28px;
   }
 }
 </style>

@@ -17,8 +17,11 @@ import com.example.pvplatform.persistence.mapper.SysUserRoleMapper;
 import com.example.pvplatform.security.JwtTokenService;
 import com.example.pvplatform.security.SecurityUtils;
 import jakarta.servlet.http.HttpServletRequest;
+import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.LinkedMultiValueMap;
+import org.springframework.util.MultiValueMap;
 import org.springframework.web.reactive.function.client.WebClient;
 
 import java.util.*;
@@ -63,6 +66,9 @@ public class OAuthService {
 
     @org.springframework.beans.factory.annotation.Value("${server.port:8080}")
     private int serverPort;
+
+    @org.springframework.beans.factory.annotation.Value("${oauth.callback-base-url:http://localhost:5173}")
+    private String callbackBaseUrl;
 
     /**
      * Build the authorize URL. GitHub redirects back to backend callback, which then
@@ -113,7 +119,7 @@ public class OAuthService {
                 + "&refreshToken=" + urlEncode(login.refreshToken())
                 + "&expiresIn=" + login.expiresIn();
         } catch (Exception e) {
-            String frontendUrl = "http://localhost:" + serverPort + "/login.html";
+            String frontendUrl = callbackBaseUrl + "/login";
             String message = e instanceof BusinessException
                 ? e.getMessage()
                 : "OAuth 登录处理失败，请重新尝试";
@@ -247,16 +253,18 @@ public class OAuthService {
 
     private OAuthUserInfo exchangeAndFetch(OAuthProviderConfig provider, String code, String redirectUri) {
         try {
+            MultiValueMap<String, String> tokenForm = new LinkedMultiValueMap<>();
+            tokenForm.add("client_id", provider.clientId());
+            tokenForm.add("client_secret", provider.clientSecret());
+            tokenForm.add("code", code);
+            tokenForm.add("redirect_uri", redirectUri);
+            tokenForm.add("grant_type", "authorization_code");
+
             Map<String, Object> tokenResp = webClientBuilder.build().post()
                 .uri(provider.tokenUrl())
                 .header("Accept", "application/json")
-                .bodyValue(Map.of(
-                    "client_id", provider.clientId(),
-                    "client_secret", provider.clientSecret(),
-                    "code", code,
-                    "redirect_uri", redirectUri,
-                    "grant_type", "authorization_code"
-                ))
+                .contentType(MediaType.APPLICATION_FORM_URLENCODED)
+                .bodyValue(tokenForm)
                 .retrieve()
                 .bodyToMono(Map.class)
                 .block();

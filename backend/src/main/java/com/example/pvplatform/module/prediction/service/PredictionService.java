@@ -2,12 +2,14 @@ package com.example.pvplatform.module.prediction.service;
 
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.example.pvplatform.client.dto.ModelPredictRequest;
 import com.example.pvplatform.client.vo.ModelPredictResponse;
 import com.example.pvplatform.common.PageResult;
 import com.example.pvplatform.common.exception.BusinessException;
 import com.example.pvplatform.module.model.service.ModelService;
 import com.example.pvplatform.module.prediction.dto.ModelInputFrame;
 import com.example.pvplatform.module.prediction.dto.PredictionRequest;
+import com.example.pvplatform.module.prediction.vo.PredictionCreateVO;
 import com.example.pvplatform.module.prediction.vo.PredictionDetailVO;
 import com.example.pvplatform.module.prediction.vo.PredictionResultVO;
 import com.example.pvplatform.module.prediction.vo.PredictionTaskVO;
@@ -22,16 +24,18 @@ import com.example.pvplatform.security.SecurityUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
-
+import java.time.Duration;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
 import java.util.List;
 
 @Service
 public class PredictionService {
 
     private static final Logger log = LoggerFactory.getLogger(PredictionService.class);
+    private static final DateTimeFormatter FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
     private final ModelService modelService;
     private final StationService stationService;
@@ -56,7 +60,7 @@ public class PredictionService {
 
     // ── 创建预测任务 ──────────────────────────────────────────
 
-    public PredictionTaskVO create(PredictionRequest request) {
+    public PredictionCreateVO create(PredictionRequest request) {
         // 1. 校验电站存在和权限
         PowerStation station = stationService.detail(request.stationId());
         validateStationAccess(station);
@@ -65,18 +69,23 @@ public class PredictionService {
         ModelInfoDO model = modelService.requireOnlineModel(request.modelId());
 
         // 3. 校验 inputMode
-        String inputMode = request.inputMode() == null ? "STATION_HISTORY" : request.inputMode();
-        if (!"STATION_HISTORY".equals(inputMode)) {
-            throw new BusinessException(400, "当前仅支持 STATION_HISTORY 输入模式");
+        String inputMode = request.inputMode() == null ? "MANUAL_MULTIMODAL" : request.inputMode();
+        if (!"MANUAL_MULTIMODAL".equals(inputMode)) {
+            throw new BusinessException(400, "当前仅支持 MANUAL_MULTIMODAL 输入模式");
         }
 
         // 4. 获取并校验输入
-        List<ModelInputFrame> frames = inputService.loadStationHistory(request.stationId());
+        List<ModelInputFrame> frames = convertNumericValues(request.numericValues());
+        List<ModelPredictRequest.ImageFrame> imageFrames = validateImages(request.inputImages(), frames);
 
         // 5. 创建 PENDING 任务 + 保存快照（短事务）
+        String inputStartTime = request.inputStartTime() != null
+                ? request.inputStartTime() : frames.get(0).time().format(FORMATTER);
+        String inputEndTime = request.inputEndTime() != null
+                ? request.inputEndTime() : frames.get(frames.size() - 1).time().format(FORMATTER);
         PredictionTaskDO task = persistenceService.createTaskWithSnapshots(
                 request.stationId(), request.modelId(), inputMode,
-                request.inputStartTime(), request.inputEndTime(), frames);
+                inputStartTime, inputEndTime, frames);
 
         Long taskId = task.getTaskId();
         log.info("预测任务已创建: taskId={}, taskNo={}, modelCode={}", taskId, task.getTaskNo(), model.getModelCode());
@@ -86,7 +95,7 @@ public class PredictionService {
             persistenceService.markRunning(taskId);
 
             // 7. 调用 FastAPI（无事务）
-            ModelPredictResponse.Data responseData = executionService.execute(model, frames);
+            ModelPredictResponse.Data responseData = executionService.execute(model, frames, imageFrames);
             LocalDateTime lastInputTime = executionService.getLastInputTime(frames);
 
             // 8. 保存结果 + 更新 SUCCESS（短事务）
@@ -94,9 +103,7 @@ public class PredictionService {
 
             log.info("预测任务成功: taskId={}, costTimeMs={}", taskId, responseData.costTime());
 
-            PredictionTaskDO completed = taskMapper.selectById(taskId);
-            return buildTaskVO(completed == null ? task : completed,
-                    model, responseData.predictions());
+            return new PredictionCreateVO(taskId);
 
         } catch (BusinessException e) {
             // 9. 异常时更新 FAILED（独立事务）
@@ -170,6 +177,66 @@ public class PredictionService {
     }
 
     // ── 内部工具 ──────────────────────────────────────────────
+
+
+    private List<ModelInputFrame> convertNumericValues(List<PredictionRequest.NumericValue> values) {
+        if (values == null || values.size() != 30) {
+            throw new BusinessException(400, "数值输入必须包含 30 个点");
+        }
+        List<ModelInputFrame> frames;
+        try {
+            frames = values.stream().map(value -> {
+                if (!Double.isFinite(value.value())) {
+                    throw new BusinessException(400, "数值输入包含非法值");
+                }
+                double numericValue = value.value();
+                return new ModelInputFrame(
+                        LocalDateTime.parse(value.time(), FORMATTER),
+                        numericValue,
+                        numericValue,
+                        numericValue);
+            }).toList();
+        } catch (DateTimeParseException | NullPointerException e) {
+            throw new BusinessException(400, "数值输入时间格式不合法");
+        }
+        validateOneMinuteInterval(frames);
+        return frames;
+    }
+
+    private List<ModelPredictRequest.ImageFrame> validateImages(List<ModelPredictRequest.ImageFrame> images,
+                                                                 List<ModelInputFrame> frames) {
+        if (images == null || images.size() != 30) {
+            throw new BusinessException(400, "图片输入必须包含 30 张");
+        }
+        for (int i = 0; i < images.size(); i++) {
+            ModelPredictRequest.ImageFrame image = images.get(i);
+            if (image.image() == null || image.image().isBlank()) {
+                throw new BusinessException(400, "图片输入不能为空");
+            }
+            LocalDateTime imageTime;
+            try {
+                imageTime = LocalDateTime.parse(image.time(), FORMATTER);
+            } catch (DateTimeParseException | NullPointerException e) {
+                throw new BusinessException(400, "图片输入时间格式不合法");
+            }
+            if (!imageTime.equals(frames.get(i).time())) {
+                throw new BusinessException(400, "图片时间必须与数值时间一一对应");
+            }
+            if (i > 0 && Duration.between(LocalDateTime.parse(images.get(i - 1).time(), FORMATTER), imageTime).toSeconds() != 60) {
+                throw new BusinessException(400, "图片时间序列必须按 1 分钟间隔连续");
+            }
+        }
+        return images;
+    }
+
+    private void validateOneMinuteInterval(List<ModelInputFrame> frames) {
+        for (int i = 1; i < frames.size(); i++) {
+            long seconds = Duration.between(frames.get(i - 1).time(), frames.get(i).time()).toSeconds();
+            if (seconds != 60) {
+                throw new BusinessException(400, "数值时间序列必须按 1 分钟间隔连续");
+            }
+        }
+    }
 
     private void validateStationAccess(PowerStation station) {
         // 基础检查：电站存在

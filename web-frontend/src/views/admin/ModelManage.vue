@@ -683,23 +683,22 @@ onMounted(loadModels)
 }
 
 .summary-card {
-  min-height: 96px;
   padding: 18px;
-  border: 1px solid var(--color-border);
+  border: 1px solid var(--admin-line);
   border-radius: 8px;
-  background: #ffffff;
-  box-shadow: var(--shadow-panel);
+  background: var(--admin-surface);
+  box-shadow: var(--admin-shadow);
 }
 
 .summary-card span {
-  color: var(--color-muted);
+  color: var(--admin-muted);
   font-size: 13px;
 }
 
 .summary-card strong {
   display: block;
   margin-top: 12px;
-  color: #10274c;
+  color: var(--admin-ink);
   font-size: 26px;
 }
 
@@ -720,12 +719,12 @@ onMounted(loadModels)
 }
 
 .table-title {
-  color: #10274c;
+  color: var(--admin-ink);
 }
 
 .table-sub {
   margin-top: 4px;
-  color: var(--color-muted);
+  color: var(--admin-muted);
   font-size: 12px;
 }
 

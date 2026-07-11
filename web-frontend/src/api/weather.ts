@@ -14,6 +14,13 @@ export interface CurrentWeather {
   cached: boolean
 }
 
+
+export interface WeatherLocationQuery {
+  location?: string
+  longitude?: number
+  latitude?: number
+}
+
 export interface WeatherForecastItem {
   date: string
   dayWeather: string
@@ -31,3 +38,8 @@ export const getCurrentWeather = (stationId: number) =>
   request.get<CurrentWeather>(`/stations/${stationId}/weather/current`)
 export const getForecast = (stationId: number) =>
   request.get<WeatherForecastItem[]>(`/stations/${stationId}/weather/forecast`)
+
+export const getLocationCurrentWeather = (params: WeatherLocationQuery) =>
+  request.get<CurrentWeather>('/weather/current', { params })
+export const getLocationForecast = (params: WeatherLocationQuery) =>
+  request.get<WeatherForecastItem[]>('/weather/forecast', { params })

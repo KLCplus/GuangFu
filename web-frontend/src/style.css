@@ -11,6 +11,13 @@
   --color-muted: #66758c;
   --color-surface: #ffffff;
   --shadow-panel: 0 10px 28px rgba(20, 65, 120, 0.08);
+  --admin-ink: #10274c;
+  --admin-muted: var(--color-muted);
+  --admin-line: var(--color-border);
+  --admin-surface: #ffffff;
+  --admin-soft: var(--color-primary-soft);
+  --admin-accent: var(--color-primary);
+  --admin-shadow: var(--shadow-panel);
 }
 
 /* 协作提示：两人分别开发页面时，请复用 .page-shell、.page-section、.toolbar、.page-title 等公共类和上方主题变量。 */
@@ -209,6 +216,123 @@ a {
   border-radius: 8px;
   background: var(--color-surface);
   box-shadow: var(--shadow-panel);
+}
+
+.admin-content .page-shell {
+  gap: 18px;
+}
+
+.admin-content .page-title {
+  align-items: flex-start;
+  padding: 2px 0 4px;
+}
+
+.admin-content .page-title h2 {
+  color: var(--admin-ink);
+  font-size: 24px;
+  font-weight: 800;
+  letter-spacing: 0;
+}
+
+.admin-content .page-title p {
+  max-width: 720px;
+  color: var(--admin-muted);
+  font-size: 14px;
+  line-height: 1.7;
+}
+
+.admin-content .page-section {
+  max-width: 100%;
+  overflow: hidden;
+  border-color: var(--admin-line);
+  background: var(--admin-surface);
+  box-shadow: var(--admin-shadow);
+}
+
+.admin-content .page-section[style*="padding:0"] {
+  overflow: hidden;
+}
+
+.admin-content .toolbar {
+  align-items: flex-start;
+  margin-bottom: 16px;
+}
+
+.admin-content .summary-grid,
+.admin-content .stat-row {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.admin-content .summary-card,
+.admin-content .stat-card {
+  position: relative;
+  min-height: 98px;
+  overflow: hidden;
+  border: 1px solid var(--admin-line);
+  border-radius: 8px;
+  background: var(--admin-surface);
+  box-shadow: var(--admin-shadow);
+}
+
+.admin-content .summary-card span,
+.admin-content .stat-label {
+  color: var(--admin-muted);
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.admin-content .summary-card strong,
+.admin-content .stat-value {
+  color: var(--admin-ink);
+  font-family: "JetBrains Mono", "SFMono-Regular", Consolas, monospace;
+  font-size: 28px;
+  font-weight: 800;
+  letter-spacing: 0;
+}
+
+.admin-content .title-actions,
+.admin-content .toolbar-actions,
+.admin-content .toolbar-right,
+.admin-content .toolbar-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.admin-content .table-title {
+  color: var(--admin-ink);
+  font-weight: 800;
+}
+
+.admin-content .table-sub {
+  color: var(--admin-muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.admin-content .el-table {
+  width: 100%;
+  max-width: 100%;
+  border-radius: 8px;
+}
+
+.admin-content .el-table th.el-table__cell {
+  font-weight: 800;
+}
+
+.admin-content .el-tag {
+  border-radius: 999px;
+  font-weight: 700;
+}
+
+.admin-content .summary-grid,
+.admin-content .stat-row,
+.admin-content .toolbar,
+.admin-content .page-title {
+  min-width: 0;
 }
 
 .toolbar {

@@ -21,6 +21,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -59,6 +60,7 @@ class PredictionServiceTest {
     private Long testStationId;
     private Long testModelId;
     private static final Long TEST_USER_ID = 100L;
+    private static final DateTimeFormatter FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
     @BeforeEach
     void setUp() {
@@ -128,6 +130,22 @@ class PredictionServiceTest {
         SecurityContextHolder.clearContext();
     }
 
+    private PredictionRequest predictionRequest() {
+        LocalDateTime start = LocalDateTime.of(2026, 7, 6, 10, 0);
+        List<PredictionRequest.NumericValue> values = java.util.stream.IntStream.range(0, 30)
+            .mapToObj(i -> new PredictionRequest.NumericValue(
+                start.plusMinutes(i).format(FORMATTER),
+                500.0 + i))
+            .toList();
+        List<ModelPredictRequest.ImageFrame> images = java.util.stream.IntStream.range(0, 30)
+            .mapToObj(i -> new ModelPredictRequest.ImageFrame(
+                start.plusMinutes(i).format(FORMATTER),
+                "data:image/png;base64,aGVsbG8="))
+            .toList();
+        return new PredictionRequest(testStationId, testModelId, "MANUAL_MULTIMODAL",
+            null, null, values, images);
+    }
+
     // ── Tests ──────────────────────────────────────────────────
 
     @Test
@@ -145,13 +163,11 @@ class PredictionServiceTest {
         when(modelServiceClient.predict(any(ModelPredictRequest.class), any(String.class), any(Integer.class)))
             .thenReturn(mockResponse);
 
-        PredictionRequest request = new PredictionRequest(testStationId, testModelId, "STATION_HISTORY", null, null);
+        PredictionRequest request = predictionRequest();
         var result = predictionService.create(request);
 
         assertNotNull(result);
-        assertEquals("SUCCESS", result.status());
-        assertEquals("test_lstm", result.modelCode());
-        assertEquals(100L, result.costTimeMs());
+        assertNotNull(result.taskId());
 
         // Verify 30 snapshots saved
         Long snapshotCount = inputMapper.selectCount(Wrappers.<PredictionInputSnapshotDO>lambdaQuery()
@@ -169,7 +185,7 @@ class PredictionServiceTest {
         when(modelServiceClient.predict(any(ModelPredictRequest.class), any(String.class), any(Integer.class)))
             .thenThrow(new BusinessException(502, "模型服务不可用"));
 
-        PredictionRequest request = new PredictionRequest(testStationId, testModelId, "STATION_HISTORY", null, null);
+        PredictionRequest request = predictionRequest();
 
         assertThrows(BusinessException.class, () -> predictionService.create(request));
 
@@ -188,7 +204,7 @@ class PredictionServiceTest {
         model.setStatus("OFFLINE");
         modelInfoMapper.updateById(model);
 
-        PredictionRequest request = new PredictionRequest(testStationId, testModelId, "STATION_HISTORY", null, null);
+        PredictionRequest request = predictionRequest();
 
         BusinessException ex = assertThrows(BusinessException.class,
             () -> predictionService.create(request));
@@ -210,7 +226,7 @@ class PredictionServiceTest {
         when(modelServiceClient.predict(any(ModelPredictRequest.class), any(String.class), any(Integer.class)))
             .thenReturn(mockResponse);
 
-        PredictionRequest request = new PredictionRequest(testStationId, testModelId, "STATION_HISTORY", null, null);
+        PredictionRequest request = predictionRequest();
         var result = predictionService.create(request);
 
         // Manually change userId to another user
@@ -239,7 +255,7 @@ class PredictionServiceTest {
             when(modelServiceClient.predict(any(ModelPredictRequest.class), any(String.class), any(Integer.class)))
                 .thenReturn(mockResponse);
 
-            PredictionRequest request = new PredictionRequest(testStationId, testModelId, "STATION_HISTORY", null, null);
+            PredictionRequest request = predictionRequest();
             predictionService.create(request);
         }
 

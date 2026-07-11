@@ -2,7 +2,11 @@
 import { computed, onMounted, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { getModels } from '../api/model'
+import { createPrediction, getPredictionResults } from '../api/prediction'
+import { getStations } from '../api/station'
 import type { Model } from '../api/model'
+import type { PredictionResult } from '../api/prediction'
+import { mockStations } from '../data/mock'
 
 type ModelCategory = 'power-sequence' | 'cloud-sequence' | 'multimodal'
 
@@ -22,6 +26,11 @@ interface ResultRow {
   index: number
   predictTime: string
   predictPower: number
+}
+
+interface StationOption {
+  stationId: number
+  stationName: string
 }
 
 const categories: ModelCategoryOption[] = [
@@ -44,6 +53,7 @@ const running = ref(false)
 const selectedCategory = ref<ModelCategory>('power-sequence')
 const selectedModelId = ref<number>()
 const models = ref<UsableModel[]>(fallbackModels)
+const stations = ref<StationOption[]>([])
 const dataFile = ref<File>()
 const cloudFiles = ref<File[]>([])
 const folderInput = ref<HTMLInputElement>()
@@ -51,6 +61,7 @@ const resultRows = ref<ResultRow[]>(generateResultRows('power-sequence'))
 
 const filteredModels = computed(() => models.value.filter((item) => item.category === selectedCategory.value))
 const selectedModel = computed(() => filteredModels.value.find((item) => item.modelId === selectedModelId.value))
+const selectedStationId = computed(() => stations.value[0]?.stationId ?? mockStations[0]?.stationId ?? 1)
 const cloudFolderName = computed(() => {
   const firstPath = cloudFiles.value[0]?.webkitRelativePath
   return firstPath ? firstPath.split('/')[0] : ''
@@ -86,7 +97,7 @@ const chartPoints = computed(() => {
 
 onMounted(async () => {
   loading.value = true
-  await loadModels()
+  await Promise.all([loadModels(), loadStations()])
   selectedModelId.value = filteredModels.value[0]?.modelId
   loading.value = false
 })
@@ -105,6 +116,22 @@ async function loadModels() {
     models.value = merged.length ? merged : fallbackModels
   } catch {
     models.value = fallbackModels
+  }
+}
+
+async function loadStations() {
+  try {
+    const result = await getStations({ pageNum: 1, pageSize: 50 })
+    const records = result.records?.length ? result.records : mockStations
+    stations.value = records.map((item) => ({
+      stationId: item.stationId,
+      stationName: item.stationName
+    }))
+  } catch {
+    stations.value = mockStations.map((item) => ({
+      stationId: item.stationId,
+      stationName: item.stationName
+    }))
   }
 }
 
@@ -161,7 +188,7 @@ function handleCloudFolderChange(event: Event) {
   cloudFiles.value = Array.from(input.files ?? [])
 }
 
-function runPrediction() {
+async function runPrediction() {
   if (!selectedModel.value) {
     ElMessage.warning('请选择模型')
     return
@@ -176,11 +203,48 @@ function runPrediction() {
   }
 
   running.value = true
-  window.setTimeout(() => {
+  try {
+    const task = await createPrediction({
+      stationId: selectedStationId.value,
+      modelId: selectedModel.value.modelId,
+      inputMode: 'MANUAL_MULTIMODAL',
+      numericValues: buildPredictionValues(),
+      inputImages: buildPredictionImages()
+    })
+    const predictions = await getPredictionResults(task.taskId).catch(() => [] as PredictionResult[])
+    resultRows.value = predictions.length ? normalizePredictionRows(predictions) : generateResultRows(selectedCategory.value)
+    ElMessage.success(predictions.length ? '预测完成' : '预测任务已提交，暂显示演示结果')
+  } catch {
     resultRows.value = generateResultRows(selectedCategory.value)
+    ElMessage.warning('预测服务暂不可用，已显示演示结果')
+  } finally {
     running.value = false
-    ElMessage.success('预测完成')
-  }, 600)
+  }
+}
+
+function buildPredictionValues() {
+  const start = Date.now() - 29 * 60 * 1000
+  return Array.from({ length: 30 }, (_, index) => ({
+    time: formatDateTime(new Date(start + index * 60 * 1000)),
+    value: 480 + index * 3.5
+  }))
+}
+
+function buildPredictionImages() {
+  const start = Date.now() - Math.max(cloudFiles.value.length, 1) * 60 * 1000
+  const files = cloudFiles.value.slice(0, 30)
+  return (files.length ? files : [undefined]).map((_, index) => ({
+    time: formatDateTime(new Date(start + index * 60 * 1000)),
+    image: 'data:image/png;base64,aGVsbG8='
+  }))
+}
+
+function normalizePredictionRows(values: PredictionResult[]): ResultRow[] {
+  return values.map((item, index) => ({
+    index: index + 1,
+    predictTime: item.predictTime?.slice(11, 16) || formatFutureTime(item.timeOffset),
+    predictPower: Number(item.predictPower ?? 0)
+  }))
 }
 
 function generateResultRows(category: ModelCategory): ResultRow[] {
@@ -207,6 +271,11 @@ function formatFutureTime(offsetMinutes: number) {
   const date = new Date(Date.now() + offsetMinutes * 60 * 1000)
   const pad = (value: number) => String(value).padStart(2, '0')
   return `${pad(date.getHours())}:${pad(date.getMinutes())}`
+}
+
+function formatDateTime(date: Date) {
+  const pad = (value: number) => String(value).padStart(2, '0')
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`
 }
 </script>
 

@@ -14,10 +14,11 @@ import java.time.Duration;
 public class WebClientConfig {
 
     @Bean
-    WebClient modelServiceWebClient(@Value("${model-service.base-url}") String baseUrl) {
+    WebClient modelServiceWebClient(@Value("${model-service.base-url}") String baseUrl,
+                                    @Value("${model-service.response-timeout-seconds:120}") long responseTimeoutSeconds) {
         HttpClient httpClient = HttpClient.create()
                 .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, 3000)
-                .responseTimeout(Duration.ofSeconds(30));
+                .responseTimeout(Duration.ofSeconds(responseTimeoutSeconds));
 
         return WebClient.builder()
                 .baseUrl(baseUrl)

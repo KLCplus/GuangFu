@@ -3,6 +3,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Location, Refresh, Timer } from '@element-plus/icons-vue'
 import * as echarts from 'echarts'
+import { getDashboardOverview } from '../api/dashboard'
 import { getCurrentWeather, getForecast, getHistory, getRealtime, getStation, getStations } from '../api/station'
 import type { Station } from '../api/station'
 import type { PvHistoryItem, RealtimePvData } from '../api/pvData'
@@ -67,6 +68,26 @@ onBeforeUnmount(() => {
 async function loadStations() {
   loading.value = true
   try {
+    const overview = await getDashboardOverview()
+    stations.value = overview.stations ?? []
+    selectedStationId.value = overview.selectedStationId ?? stations.value[0]?.stationId
+    if (selectedStationId.value) {
+      applyDashboardOverview(overview)
+      await nextTick()
+      renderChart()
+    } else {
+      clearDashboard()
+      ElMessage.warning('暂无可展示的电站数据')
+    }
+  } catch {
+    await loadStationsBySection()
+  } finally {
+    loading.value = false
+  }
+}
+
+async function loadStationsBySection() {
+  try {
     const result = await getStations({ pageNum: 1, pageSize: 50 })
     stations.value = result.records ?? []
     selectedStationId.value = stations.value[0]?.stationId
@@ -79,8 +100,6 @@ async function loadStations() {
   } catch (error) {
     clearDashboard()
     ElMessage.error(message(error, '电站列表加载失败'))
-  } finally {
-    loading.value = false
   }
 }
 
@@ -88,6 +107,18 @@ async function loadDashboard() {
   if (!selectedStationId.value) return
   loading.value = true
   const stationId = selectedStationId.value
+
+  try {
+    const overview = await getDashboardOverview({ stationId })
+    applyDashboardOverview(overview)
+    loading.value = false
+    await nextTick()
+    renderChart()
+    return
+  } catch {
+    // 兼容旧后端：聚合看板接口不可用时，继续使用分段接口加载。
+  }
+
   const end = new Date()
   const start = new Date(end.getTime() - 60 * 60 * 1000)
 
@@ -127,6 +158,18 @@ async function loadDashboard() {
   loading.value = false
   await nextTick()
   renderChart()
+}
+
+function applyDashboardOverview(overview: Awaited<ReturnType<typeof getDashboardOverview>>) {
+  if (overview.stations?.length) {
+    stations.value = overview.stations
+  }
+  selectedStationId.value = overview.selectedStationId ?? selectedStationId.value
+  stationDetail.value = stations.value.find((item) => item.stationId === selectedStationId.value) ?? null
+  weather.value = overview.weather ?? null
+  forecasts.value = overview.forecasts?.slice(0, 3) ?? []
+  realtime.value = overview.realtime ?? null
+  chartRows.value = overview.realtime ? [mapRealtimePoint(overview.realtime)] : []
 }
 
 function clearDashboard() {

@@ -525,7 +525,147 @@ GET /api/stations/{stationId}/weather/forecast
 http://localhost:8080/weather-debug.html
 ```
 
-## 8. 模型
+## 8. PVOutput 公开电站
+
+所有 PVOutput 调用都走后端，前端不要保存或传递 PVOutput API Key。后端从环境变量读取：
+
+```text
+PVOUTPUT_API_KEY
+PVOUTPUT_AUTH_SYSTEM_ID
+```
+
+后端会把公开电站和状态数据落库。页面平时读取数据库数据；手动同步、启动同步和定时同步才会请求 PVOutput 官方 API。同步失败时不会清空历史数据，接口仍可读取库内最近一次成功数据。
+
+### 8.1 搜索公开电站
+
+```http
+GET /api/pvoutput/stations/search?keyword=Enphase&countryCode=au&seenDays=7
+```
+
+参数默认值：
+
+| 参数 | 默认值 | 说明 |
+|---|---|---|
+| `keyword` | `Enphase` | 搜索关键词，可为空 |
+| `countryCode` | `au` | 国家代码 |
+| `seenDays` | `7` | 最近输出天数 |
+
+响应：
+
+```json
+[
+  {
+    "systemName": "Demo PV",
+    "systemSizeW": 6500,
+    "postcode": "3000",
+    "orientation": "North",
+    "outputs": 1234,
+    "lastOutputText": "Today",
+    "externalSystemId": 123456,
+    "panel": "Panel",
+    "inverter": "Inverter",
+    "distanceKm": 10.2,
+    "latitude": -37.8136,
+    "longitude": 144.9631
+  }
+]
+```
+
+### 8.2 添加或重新申请公开电站
+
+```http
+POST /api/pvoutput/stations
+```
+
+请求体使用搜索结果中的 `externalSystemId`。如果已存在，会更新基础信息并重新启用，不重复插入：
+
+```json
+{
+  "externalSystemId": 123456,
+  "systemName": "Demo PV",
+  "systemSizeW": 6500,
+  "postcode": "3000",
+  "orientation": "North",
+  "outputs": 1234,
+  "lastOutputText": "Today",
+  "panel": "Panel",
+  "inverter": "Inverter",
+  "distanceKm": 10.2,
+  "latitude": -37.8136,
+  "longitude": 144.9631
+}
+```
+
+### 8.3 查询已添加公开电站
+
+```http
+GET /api/pvoutput/stations?enabled=true&keyword=Demo
+```
+
+`enabled` 和 `keyword` 都可选。返回数据库中的公开电站列表，包含最近同步状态：
+
+```json
+[
+  {
+    "id": 1,
+    "source": "PVOUTPUT",
+    "externalSystemId": 123456,
+    "systemName": "Demo PV",
+    "enabled": true,
+    "lastSyncTime": "2026-07-10 10:00:00",
+    "lastSyncStatus": "SUCCESS",
+    "lastSyncError": null
+  }
+]
+```
+
+### 8.4 启用或禁用公开电站
+
+```http
+PATCH /api/pvoutput/stations/{id}/enabled?enabled=false
+```
+
+禁用后保留历史状态数据，周期同步会跳过该电站。
+
+### 8.5 手动同步
+
+```http
+POST /api/pvoutput/stations/{id}/sync
+POST /api/pvoutput/stations/sync-all
+```
+
+`sync-all` 会串行同步所有启用电站，每个 PVOutput 请求间隔约 1 秒，避免并发请求。返回每个电站的同步结果：
+
+```json
+{
+  "stationId": 1,
+  "externalSystemId": 123456,
+  "systemName": "Demo PV",
+  "status": "SUCCESS",
+  "message": "同步成功",
+  "latestStatus": {
+    "externalSystemId": 123456,
+    "sampleTime": "2026-07-10 09:55:00",
+    "energyGenerationWh": 12000,
+    "powerGenerationW": 2300,
+    "temperatureC": 28.5,
+    "voltageV": 230.1
+  }
+}
+```
+
+PVOutput 返回 `Donation Mode`、`Inaccessible System ID`、`No status found`、超限等错误时，后端会把错误写入 `lastSyncError`，并继续保留历史状态数据。
+
+### 8.6 查询状态数据
+
+```http
+GET /api/pvoutput/stations/{id}/latest-status
+GET /api/pvoutput/stations/{id}/status?startTime=2026-07-01T00:00:00&endTime=2026-07-10T23:59:59
+```
+
+历史状态按 `sampleTime` 升序返回；不传时间默认最近 7 天。前端功率曲线使用 `sampleTime` 作为 x 轴，`powerGenerationW` 作为 y 轴。
+
+## 9. 模型
 
 ```http
 GET /api/models?type=NUMERIC
@@ -566,7 +706,7 @@ PUT /api/admin/models/{modelId}/status
 }
 ```
 
-## 9. 预测
+## 10. 预测
 
 ```http
 POST /api/predictions
@@ -581,39 +721,65 @@ GET  /api/predictions/history?pageNum=1&pageSize=10&stationId=&modelId=&status=
 {
   "stationId": 1,
   "modelId": 1,
-  "inputMode": "STATION_HISTORY",
-  "inputStartTime": "2026-07-06 10:00:00",
-  "inputEndTime": "2026-07-06 10:30:00"
+  "inputMode": "MANUAL_MULTIMODAL",
+  "numericValues": [
+    { "time": "2026-07-06 10:00:00", "value": 500.2 }
+  ],
+  "inputImages": [
+    { "time": "2026-07-06 10:00:00", "image": "data:image/png;base64,..." }
+  ]
 }
 ```
 
-预测任务响应关键字段：
+`numericValues` 必须正好 30 个数值，`inputImages` 必须正好 30 张图片；两组数据都按时间升序排列，时间间隔均为 1 分钟，且同一序号的数值和图片时间必须一致。图片支持 data URL 或纯 base64 字符串。
+
+创建预测响应：
+
+```json
+{
+  "taskId": 1001
+}
+```
+
+预测任务详情和结果通过下面两个接口查询。
+
+`GET /api/predictions/{taskId}` 返回任务详情，不包含 `predictions`：
 
 ```json
 {
   "taskId": 1001,
   "taskNo": "PRED-xxx",
-  "taskStatus": "SUCCESS",
-  "modelName": "LSTM 光伏功率预测",
-  "modelCode": "lstm_v1",
   "stationId": 1,
+  "stationName": "成都站",
+  "modelId": 3,
+  "modelName": "iTransformer光伏功率预测模型",
+  "modelCode": "iTransformer",
   "inputMode": "STATION_HISTORY",
-  "createdAt": "2026-07-06 10:30:00",
-  "costTime": 120,
-  "predictions": [
-    {
-      "timeOffset": 5,
-      "predictTime": "2026-07-06 10:35:00",
-      "predictPower": 530.2,
-      "actualPowerKw": null,
-      "errorValue": null,
-      "errorRate": null
-    }
-  ]
+  "status": "SUCCESS",
+  "createdAt": "2026-07-08 11:09:55",
+  "startedAt": "2026-07-08 11:09:55",
+  "finishedAt": "2026-07-08 11:09:55",
+  "costTimeMs": 20,
+  "errorMessage": null
 }
 ```
 
-## 10. 综合分析
+`GET /api/predictions/{taskId}/results` 返回预测结果数组：
+
+```json
+[
+  {
+    "timeOffset": 5,
+    "predictTime": "2026-07-08 11:14:00",
+    "predictPower": 75.85,
+    "actualPowerKw": null,
+    "errorValue": null,
+    "errorRate": null
+  }
+]
+```
+
+## 11. 综合分析
 
 ```http
 POST /api/analysis/report
@@ -653,16 +819,89 @@ GET  /api/analysis/reports/{reportId}
 }
 ```
 
-## 11. 开放平台
+## 12. 用户看板
 
-### 11.1 用户 API Key
+```http
+GET /api/dashboard/overview?stationId=1
+```
+
+`stationId` 不传时，后端选当前用户可访问的第一个电站。接口聚合电站列表、当前天气、天气预报、实时光伏数据和服务资源状态；其中天气或实时数据某一项失败时，接口仍返回可用数据，`dataSource` 为 `PARTIAL`。
+
+响应字段：
+
+```json
+{
+  "stations": [],
+  "selectedStationId": 1,
+  "weather": {},
+  "forecasts": [],
+  "realtime": {},
+  "resources": [
+    {
+      "name": "CPU",
+      "value": 35,
+      "detail": "后端服务负载",
+      "level": "healthy"
+    }
+  ],
+  "dataSource": "REMOTE",
+  "lastUpdate": "2026-07-10 12:00:00"
+}
+```
+
+## 13. 云图预测
+
+```http
+POST /api/cloud-forecast/predict
+```
+
+请求体：
+
+```json
+{
+  "modelName": "SimVP_Cloud",
+  "inputImages": [
+    "data:image/png;base64,..."
+  ]
+}
+```
+
+`inputImages` 必须正好 10 张图片，支持 data URL 或纯 base64 字符串。Spring Boot 会转发到模型服务 `POST /cloud-api/predict`，模型服务不可用时返回 502。
+
+响应：
+
+```json
+{
+  "modelName": "SimVP_Cloud",
+  "predictions": [
+    {
+      "frameIndex": 0,
+      "timeOffset": 5,
+      "image": "data:image/png;base64,...",
+      "confidence": 96.0,
+      "cloudCoverage": null
+    }
+  ],
+  "costTime": 1200
+}
+```
+
+## 14. 开放平台
+
+### 14.1 用户 API Key
 
 ```http
 POST   /api/open/apply-key
 GET    /api/open/keys
 PUT    /api/open/keys/{apiKeyId}/status
 DELETE /api/open/keys/{apiKeyId}
+POST   /api/open/keys/{apiKeyId}/reset
 GET    /api/open/call-logs?pageNum=1&pageSize=10
+POST   /api/open/trials
+GET    /api/open/entitlements
+GET    /api/open/wallet
+GET    /api/open/plans
+GET    /api/open/overview
 ```
 
 申请 Key：
@@ -682,7 +921,60 @@ GET    /api/open/call-logs?pageNum=1&pageSize=10
 }
 ```
 
-### 11.2 开放预测接口
+重置 Key 会重新生成密钥哈希，只在本次响应返回完整 `apiKey`，旧 Key 立即失效。
+
+模型免费试用：
+
+```http
+POST /api/open/trials
+```
+
+```json
+{
+  "modelId": 1
+}
+```
+
+响应：
+
+```json
+{
+  "trialId": 1780000000000,
+  "modelId": 1,
+  "modelName": "iTransformer",
+  "expireTime": "2026-07-17 12:00:00",
+  "quota": 100
+}
+```
+
+权益、钱包、套餐和开放账户总览：
+
+```http
+GET /api/open/entitlements
+GET /api/open/wallet
+GET /api/open/plans
+GET /api/open/overview
+```
+
+`/api/open/overview` 返回：
+
+```json
+{
+  "wallet": {
+    "balance": 0.00,
+    "frozenBalance": 0.00,
+    "monthlyCost": 12.30,
+    "currency": "CNY",
+    "records": []
+  },
+  "apiEntitlements": [],
+  "plans": []
+}
+```
+
+当前版本不新增钱包充值/订单表，钱包月消费和权益已用量基于当前用户 API 调用日志聚合；套餐列表为后端固定配置，用于前端展示和后续购买接口衔接。
+
+### 14.2 开放预测接口
 
 ```http
 POST /openapi/v1/predict
@@ -700,13 +992,16 @@ X-API-KEY: <api-key>
       "temperature": 31.2,
       "irradiance": 820.5
     }
+  ],
+  "inputImages": [
+    { "time": "2026-07-06 10:00:00", "image": "data:image/png;base64,..." }
   ]
 }
 ```
 
-`input` 必须正好 30 帧。
+`input` 必须正好 30 帧，`inputImages` 必须正好 30 张图片；两组数据都按时间升序排列，时间间隔均为 1 分钟，且同一序号时间必须一致。
 
-### 11.3 管理员开放平台
+### 14.3 管理员开放平台
 
 ```http
 GET /api/admin/api-keys
@@ -714,16 +1009,16 @@ PUT /api/admin/api-keys/{apiKeyId}/status
 GET /api/admin/api-call-logs?pageNum=1&pageSize=10
 ```
 
-## 12. 新闻与通知
+## 15. 新闻与通知
 
-### 12.1 新闻
+### 15.1 新闻
 
 ```http
 GET /api/news?pageNum=1&pageSize=10&type=
 GET /api/news/{newsId}
 ```
 
-### 12.2 管理员新闻
+### 15.2 管理员新闻
 
 ```http
 GET    /api/admin/news?pageNum=1&pageSize=10&status=&type=
@@ -747,7 +1042,7 @@ DELETE /api/admin/news/{newsId}
 }
 ```
 
-### 12.3 站内通知
+### 15.3 站内通知
 
 ```http
 GET /api/notifications?pageNum=1&pageSize=10&readStatus=0
@@ -758,7 +1053,7 @@ PUT /api/notifications/read-all
 
 通知按当前用户隔离。
 
-## 13. 联调前置条件
+## 14. 联调前置条件
 
 后端接口已经按当前代码整理完毕，可以进入前端联调。联调前需要确认：
 
