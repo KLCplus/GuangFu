@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, reactive, ref } from 'vue'
+import { computed, nextTick, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useUserStore } from '../store/user'
 import {
@@ -21,9 +21,10 @@ import { getModel, getModels } from '../api/model'
 import { getNews, getNewsList } from '../api/news'
 import { getNotifications, getUnreadCount } from '../api/notification'
 import { getProfile } from '../api/user'
+import { approveAgentApproval, getAgentTools, streamAgentChat, type AgentToolInfo, type AgentSseEnvelope } from '../api/agent'
 
 type MessageRole = 'user' | 'agent' | 'system' | 'tool'
-type MessageType = 'text' | 'error' | 'report' | 'status'
+type MessageType = 'text' | 'error' | 'report' | 'status' | 'approval'
 type StepStatus = 'pending' | 'running' | 'success' | 'failed'
 type ToolStatus = 'connected' | 'available' | 'pending'
 
@@ -33,6 +34,7 @@ interface ChatMessage {
   type: MessageType
   content: string
   report?: AnalysisReportDetail
+  metadata?: Record<string, unknown>
   time: string
 }
 
@@ -98,6 +100,8 @@ const running = ref(false)
 const historyError = ref('')
 const detailError = ref('')
 const debugRecords = ref<DebugRecord[]>([])
+const agentSessionId = ref<number | null>(null)
+const agentTools = ref<AgentToolInfo[]>([])
 const leftCollapsed = ref(false)
 const rightCollapsed = ref(false)
 const showArchived = ref(false)
@@ -118,11 +122,12 @@ const form = reactive({
 })
 
 const slashCommands: SlashCommand[] = [
-  { command: '/report', title: '综合分析', detail: '调用 /analysis/report', action: 'report' },
-  { command: '/predict', title: '预测解读', detail: '工具尚未接入真实接口', action: 'predict' },
-  { command: '/weather', title: '天气分析', detail: '工具尚未接入真实接口', action: 'weather' },
-  { command: '/station', title: '电站上下文', detail: '工具尚未接入真实接口', action: 'station' },
-  { command: '/api', title: 'API 查看', detail: '工具尚未接入真实接口', action: 'api' }
+  { command: '/report', title: '综合分析', detail: '生成综合分析报告，需要确认写入', action: 'report' },
+  { command: '/predict', title: '预测解读', detail: '交给 Agent 决策调用预测工具', action: 'predict' },
+  { command: '/weather', title: '天气分析', detail: '交给 Agent 决策调用天气工具', action: 'weather' },
+  { command: '/station', title: '电站上下文', detail: '交给 Agent 决策调用电站工具', action: 'station' },
+  { command: '/api', title: 'API 查看', detail: '交给 Agent 决策调用 API 工具', action: 'api' },
+  { command: '/model', title: '模型查询', detail: '交给 Agent 决策调用模型工具', action: 'model' }
 ]
 
 const tools: ToolItem[] = [
@@ -179,6 +184,16 @@ const groupedTools = computed(() => {
   for (const tool of tools) {
     groups[tool.group] = groups[tool.group] ?? []
     groups[tool.group].push(tool)
+  }
+  return groups
+})
+
+const groupedAgentTools = computed(() => {
+  const groups: Record<string, AgentToolInfo[]> = {}
+  for (const tool of agentTools.value) {
+    const group = tool.category || 'AGENT'
+    groups[group] = groups[group] ?? []
+    groups[group].push(tool)
   }
   return groups
 })
@@ -284,11 +299,10 @@ function createSystemMessage(): ChatMessage {
 
 function baseSteps(): ExecutionStep[] {
   return [
-    { name: '准备参数', status: 'pending', detail: '等待任务。' },
-    { name: 'POST /analysis/report', status: 'pending', detail: '等待调用。' },
-    { name: '接收响应', status: 'pending', detail: '等待后端。' },
-    { name: '刷新历史', status: 'pending', detail: '等待生成成功。' },
-    { name: '加载详情', status: 'pending', detail: '等待 reportId。' }
+    { name: '理解任务', status: 'pending', detail: '等待输入。' },
+    { name: '选择工具', status: 'pending', detail: '等待 Agent 决策。' },
+    { name: '调用接口', status: 'pending', detail: '等待真实接口返回。' },
+    { name: '生成回答', status: 'pending', detail: '等待 DeepSeek 总结。' }
   ]
 }
 
@@ -297,6 +311,33 @@ function firstText(...values: unknown[]) {
     if (typeof value === 'string' && value.trim()) return value.trim()
   }
   return ''
+}
+
+function recordValue(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {}
+}
+
+function messageMeta(message: ChatMessage, key: string): Record<string, unknown> {
+  return recordValue(message.metadata?.[key])
+}
+
+function formatAgentPayload(value: unknown) {
+  if (value === undefined || value === null || value === '') return '{}'
+  try {
+    return JSON.stringify(value, null, 2)
+  } catch {
+    return String(value)
+  }
+}
+
+function approvalTitle(message: ChatMessage) {
+  const approval = messageMeta(message, 'approval')
+  return firstText(approval.displayName, approval.toolName, '待确认操作')
+}
+
+function approvalReason(message: ChatMessage) {
+  const approval = messageMeta(message, 'approval')
+  return firstText(approval.reason, '该操作需要确认后才会执行。')
 }
 
 function parsedReportJson(report?: AnalysisReportDetail | null) {
@@ -673,6 +714,141 @@ function buildUserTask(payload: CreateAnalysisReportRequest) {
   return `生成电站 ${payload.stationId} 的综合分析报告${parts.length ? `，包含${parts.join('和')}。` : '。'}`
 }
 
+
+function agentContext() {
+  return {
+    stationId: form.stationId,
+    taskId: form.taskId,
+    includeWeather: form.includeWeather,
+    includePrediction: form.includePrediction,
+    currentReportId: currentReportId.value
+  }
+}
+
+function eventData(event: AgentSseEnvelope) {
+  return event.data || {}
+}
+
+function pushAgentDebug(event: AgentSseEnvelope) {
+  recordDebug({
+    name: `Agent:${event.event}`,
+    method: 'SSE',
+    url: '/agent/chat/stream',
+    payload: event.data,
+    status: event.event === 'error' ? 'failed' : 'success',
+    response: event.data,
+    duration: 0,
+    time: nowTime()
+  })
+}
+
+function handleAgentEvent(event: AgentSseEnvelope) {
+  pushAgentDebug(event)
+  const data = eventData(event)
+  if (event.event === 'started') {
+    agentSessionId.value = firstNumber(data.sessionId, agentSessionId.value)
+    setStep(0, 'success', firstText(data.text) || 'Agent 已开始处理。')
+    return
+  }
+  if (event.event === 'thinking') {
+    setStep(1, 'running', firstText(data.text) || '正在选择工具。')
+    addMessage({ role: 'tool', type: 'status', content: firstText(data.text) || '正在选择工具。' })
+    return
+  }
+  if (event.event === 'plan') {
+    const steps = Array.isArray(data.steps) ? data.steps.map((item) => String(item)) : []
+    executionSteps.value = steps.length
+      ? steps.map((step, index) => ({ name: step, status: index === 0 ? 'running' : 'pending', detail: firstText(data.reason) || '等待执行。' }))
+      : executionSteps.value
+    return
+  }
+  if (event.event === 'tool_call') {
+    setStep(2, 'running', `调用 ${firstText(data.displayName, data.toolName)}`)
+    addMessage({
+      role: 'tool',
+      type: 'status',
+      content: `正在调用：${firstText(data.displayName, data.toolName)}`,
+      metadata: { tool: data }
+    })
+    return
+  }
+  if (event.event === 'tool_result') {
+    const ok = firstText(data.status) === 'success'
+    setStep(2, ok ? 'success' : 'failed', firstText(data.summary, data.error) || '工具调用完成。')
+    addMessage({
+      role: 'tool',
+      type: ok ? 'status' : 'error',
+      content: `${firstText(data.displayName, data.toolName)}：${firstText(data.summary, data.error)}`,
+      metadata: { toolResult: data }
+    })
+    return
+  }
+  if (event.event === 'approval_required') {
+    setStep(2, 'running', '等待用户确认。')
+    addMessage({
+      role: 'agent',
+      type: 'approval',
+      content: `需要确认：${firstText(data.displayName, data.toolName)}`,
+      metadata: { approval: data }
+    })
+    return
+  }
+  if (event.event === 'final') {
+    setStep(3, 'success', '回答已生成。')
+    const content = firstText(data.markdown, data.content) || 'Agent 已完成。'
+    addMessage({ role: 'agent', type: 'text', content, metadata: { final: data } })
+    return
+  }
+  if (event.event === 'error') {
+    setStep(3, 'failed', firstText(data.message) || 'Agent 执行失败。')
+    addMessage({ role: 'agent', type: 'error', content: `${firstText(data.message) || 'Agent 执行失败'}\n${firstText(data.detail)}` })
+  }
+}
+
+async function runAgentChat(message: string, approvalId?: number | null) {
+  if (running.value) return
+  running.value = true
+  detailError.value = ''
+  showSlashMenu.value = false
+  activeTab.value = 'debug'
+  resetSteps()
+  if (!approvalId) addMessage({ role: 'user', type: 'text', content: message })
+  try {
+    await streamAgentChat({
+      sessionId: agentSessionId.value,
+      message,
+      approvalId: approvalId ?? null,
+      context: agentContext(),
+      mode: 'auto',
+      allowedTools: [],
+      requireApproval: true
+    }, handleAgentEvent)
+  } catch (error) {
+    const message = humanError(error)
+    detailError.value = message
+    addMessage({ role: 'agent', type: 'error', content: `Agent 请求失败：${message}` })
+  } finally {
+    running.value = false
+  }
+}
+
+async function decideApproval(message: ChatMessage, approved: boolean) {
+  const approval = message.metadata?.approval as Record<string, unknown> | undefined
+  const approvalId = firstNumber(approval?.approvalId)
+  if (!approvalId || running.value) return
+  await approveAgentApproval(approvalId, approved, approved ? '同意执行' : '拒绝执行')
+  addMessage({ role: 'user', type: 'text', content: approved ? '确认执行' : '取消执行' })
+  await runAgentChat(approved ? '继续执行已确认的操作' : '取消刚才的操作', approvalId)
+}
+
+async function loadAgentTools() {
+  try {
+    agentTools.value = await getAgentTools()
+  } catch {
+    agentTools.value = []
+  }
+}
+
 async function runAnalysis() {
   if (running.value) return
   const payload = buildPayload()
@@ -987,14 +1163,10 @@ async function runUserTool() {
 }
 
 async function runToolCommand(command: SlashCommand, args: string[]) {
-  if (command.action === 'report') {
-    await runAnalysis()
-    return
-  }
   showSlashMenu.value = false
-  addMessage({ role: 'user', type: 'text', content: [command.command, ...args].join(' ').trim() })
-  addMessage({ role: 'tool', type: 'status', content: '工具尚未接入真实接口。' })
+  const text = [command.command, ...args].join(' ').trim() || command.command
   composerText.value = ''
+  await runAgentChat(text)
 }
 
 function onComposerInput() {
@@ -1019,7 +1191,9 @@ async function submitComposer() {
     await runToolCommand(found, args)
     return
   }
-  await runAnalysis()
+  const fallback = text || `分析 ${form.stationId} 号电站，结合当前上下文给出结论`
+  composerText.value = ''
+  await runAgentChat(fallback)
 }
 
 function onComposerKeydown(event: KeyboardEvent) {
@@ -1120,7 +1294,10 @@ function logout() {
   window.location.href = '/login'
 }
 
-loadReports()
+onMounted(() => {
+  void loadAgentTools()
+  void loadReports()
+})
 </script>
 
 <template>
@@ -1278,6 +1455,39 @@ loadReports()
             </div>
             <p>{{ message.content }}</p>
 
+            <div v-if="message.metadata?.tool" class="agent-tool-card">
+              <div>
+                <strong>{{ firstText(messageMeta(message, 'tool').displayName, messageMeta(message, 'tool').toolName) }}</strong>
+                <el-tag size="small" effect="plain">调用中</el-tag>
+              </div>
+              <pre>{{ formatAgentPayload(messageMeta(message, 'tool').arguments) }}</pre>
+            </div>
+
+            <div v-if="message.metadata?.toolResult" class="agent-tool-card" :class="firstText(messageMeta(message, 'toolResult').status)">
+              <div>
+                <strong>{{ firstText(messageMeta(message, 'toolResult').displayName, messageMeta(message, 'toolResult').toolName) }}</strong>
+                <el-tag size="small" :type="firstText(messageMeta(message, 'toolResult').status) === 'success' ? 'success' : 'danger'">{{ firstText(messageMeta(message, 'toolResult').status) }}</el-tag>
+              </div>
+              <small>{{ firstText(messageMeta(message, 'toolResult').summary, messageMeta(message, 'toolResult').error) }}</small>
+              <details>
+                <summary>dataPreview</summary>
+                <pre>{{ formatAgentPayload(messageMeta(message, 'toolResult').dataPreview) }}</pre>
+              </details>
+            </div>
+
+            <div v-if="message.type === 'approval'" class="approval-card">
+              <div>
+                <strong>{{ approvalTitle(message) }}</strong>
+                <el-tag size="small" type="warning">需要确认</el-tag>
+              </div>
+              <p>{{ approvalReason(message) }}</p>
+              <pre>{{ formatAgentPayload(messageMeta(message, 'approval').arguments) }}</pre>
+              <div class="approval-actions">
+                <el-button size="small" type="primary" :loading="running" @click="decideApproval(message, true)">确认执行</el-button>
+                <el-button size="small" :disabled="running" @click="decideApproval(message, false)">取消</el-button>
+              </div>
+            </div>
+
             <div v-if="message.type === 'report' && message.report" class="result-card">
               <div class="result-head">
                 <strong>{{ currentTitle }}</strong>
@@ -1384,7 +1594,19 @@ loadReports()
           </el-tab-pane>
 
           <el-tab-pane label="工具" name="tools">
-            <div class="tool-groups">
+            <div v-if="agentTools.length > 0" class="tool-groups">
+              <section v-for="(items, group) in groupedAgentTools" :key="group">
+                <p>{{ group }}</p>
+                <button v-for="tool in items" :key="tool.name" type="button" @click="composerText = tool.name">
+                  <span>
+                    <strong>{{ tool.displayName }}</strong>
+                    <small>{{ tool.name }} · {{ tool.permissionLevel }}</small>
+                  </span>
+                  <em :class="tool.enabled ? 'connected' : 'pending'">{{ tool.requiresApproval ? '需确认' : tool.enabled ? '可调用' : '禁用' }}</em>
+                </button>
+              </section>
+            </div>
+            <div v-else class="tool-groups">
               <section v-for="(items, group) in groupedTools" :key="group">
                 <p>{{ group }}</p>
                 <button v-for="tool in items" :key="tool.command" type="button" @click="setCommand(tool.command)">
@@ -1941,6 +2163,58 @@ button {
   color: #34445f;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 3;
+}
+
+.agent-tool-card,
+.approval-card {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+  padding: 10px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.72);
+  box-shadow: inset 0 0 0 1px rgba(122, 139, 165, 0.14);
+}
+
+.agent-tool-card > div,
+.approval-card > div,
+.approval-actions {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  align-items: center;
+}
+
+.agent-tool-card pre,
+.approval-card pre {
+  max-height: 180px;
+  overflow: auto;
+  margin: 0;
+  padding: 8px;
+  border-radius: 8px;
+  background: #111827;
+  color: #dbeafe;
+  font-size: 12px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.agent-tool-card small {
+  color: #59687d;
+  line-height: 1.55;
+}
+
+.agent-tool-card.success {
+  box-shadow: inset 0 0 0 1px rgba(47, 186, 116, 0.24);
+}
+
+.agent-tool-card.failed {
+  box-shadow: inset 0 0 0 1px rgba(217, 76, 76, 0.28);
+}
+
+.approval-card {
+  background: #fff8eb;
 }
 
 .tool-activity {
