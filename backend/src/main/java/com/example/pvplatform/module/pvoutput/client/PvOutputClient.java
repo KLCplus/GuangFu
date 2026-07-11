@@ -5,6 +5,8 @@ import com.example.pvplatform.module.pvoutput.config.PvOutputProperties;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.client.WebClient;
+
+import java.net.URI;
 import reactor.core.publisher.Mono;
 
 @Component
@@ -42,6 +44,22 @@ public class PvOutputClient {
                 .queryParam("ext", 1)
                 .build())
             .headers(headers -> addAuthHeaders(headers))
+            .retrieve()
+            .onStatus(HttpStatusCode::isError, response -> response.bodyToMono(String.class)
+                .defaultIfEmpty("")
+                .flatMap(body -> Mono.error(new BusinessException(response.statusCode().value(), pvOutputMessage(body, response.statusCode().value())))))
+            .bodyToMono(String.class)
+            .block();
+    }
+
+
+
+    public String getLiveOutputsPage() {
+        String rootUrl = properties.getBaseUrl() == null
+            ? "https://pvoutput.org"
+            : properties.getBaseUrl().replaceFirst("/service/r2/?$", "");
+        return WebClient.create(rootUrl).get()
+            .uri(URI.create(rootUrl + "/live.jsp"))
             .retrieve()
             .onStatus(HttpStatusCode::isError, response -> response.bodyToMono(String.class)
                 .defaultIfEmpty("")

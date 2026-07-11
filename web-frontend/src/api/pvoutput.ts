@@ -68,6 +68,10 @@ export function syncAllPvOutputStations() {
   return request.post<PvOutputSyncResult[]>('/pvoutput/stations/sync-all')
 }
 
+export function syncPvOutputLiveStations() {
+  return request.post<PvOutputSyncResult[]>('/pvoutput/stations/sync-live')
+}
+
 export function loadPvOutputLatestStatus(id: number) {
   return request.get<PvOutputStatus | null>(`/pvoutput/stations/${id}/latest-status`)
 }

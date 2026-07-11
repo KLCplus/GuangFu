@@ -386,6 +386,23 @@ CREATE TABLE model_info (
 
     status VARCHAR(32) NOT NULL DEFAULT 'ONLINE' COMMENT '状态：ONLINE上线，OFFLINE下线，TESTING测试中',
     description VARCHAR(1000) DEFAULT NULL COMMENT '模型描述',
+    short_description VARCHAR(500) DEFAULT NULL COMMENT '模型广场短描述',
+    tags JSON DEFAULT NULL COMMENT '模型标签数组',
+    model_family VARCHAR(64) DEFAULT NULL COMMENT '模型家族：TIME_SERIES/VISION_FUSION/VIDEO_RECURSIVE',
+    provider VARCHAR(128) DEFAULT NULL COMMENT '模型来源机构或作者',
+    release_year INT DEFAULT NULL COMMENT '论文或模型发布时间',
+    paper_title VARCHAR(255) DEFAULT NULL COMMENT '论文标题',
+    paper_url VARCHAR(512) DEFAULT NULL COMMENT '论文链接',
+    source_url VARCHAR(512) DEFAULT NULL COMMENT '源码或项目链接',
+    capabilities JSON DEFAULT NULL COMMENT '核心能力数组',
+    applicable_scenarios JSON DEFAULT NULL COMMENT '适用场景数组',
+    advantages JSON DEFAULT NULL COMMENT '优势数组',
+    limitations JSON DEFAULT NULL COMMENT '局限数组',
+    supported_input_modes JSON DEFAULT NULL COMMENT '支持输入方式数组',
+    reference_info JSON DEFAULT NULL COMMENT '参考信息，指标来源等',
+    marketplace_visible TINYINT(1) NOT NULL DEFAULT 1 COMMENT '是否在模型广场展示',
+    is_featured TINYINT(1) NOT NULL DEFAULT 0 COMMENT '是否推荐展示',
+    sort_order INT NOT NULL DEFAULT 999 COMMENT '模型广场排序',
     created_by BIGINT DEFAULT NULL COMMENT '创建者用户ID',
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
@@ -394,6 +411,7 @@ CREATE TABLE model_info (
     UNIQUE KEY uk_model_code (model_code),
     KEY idx_model_type (model_type),
     KEY idx_model_status (status),
+    KEY idx_model_marketplace (marketplace_visible, sort_order),
 
     CONSTRAINT fk_model_created_by
         FOREIGN KEY (created_by) REFERENCES sys_user(user_id)

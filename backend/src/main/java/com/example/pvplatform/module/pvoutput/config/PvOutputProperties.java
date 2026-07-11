@@ -22,4 +22,8 @@ public class PvOutputProperties {
     public void setBaseUrl(String baseUrl) { this.baseUrl = baseUrl; }
     public long getSyncIntervalMs() { return syncIntervalMs; }
     public void setSyncIntervalMs(long syncIntervalMs) { this.syncIntervalMs = syncIntervalMs; }
+
+    public boolean hasCredentials() {
+        return apiKey != null && !apiKey.isBlank() && authSystemId != null && !authSystemId.isBlank();
+    }
 }

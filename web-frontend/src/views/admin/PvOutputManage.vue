@@ -10,6 +10,7 @@ import {
   searchPvOutputStations,
   setPvOutputStationEnabled,
   syncAllPvOutputStations,
+  syncPvOutputLiveStations,
   syncPvOutputStation
 } from '../../api/pvoutput'
 import type { PvOutputStation, PvOutputStatus } from '../../api/pvoutput'
@@ -19,6 +20,7 @@ const listQuery = reactive({ keyword: '', enabled: undefined as boolean | undefi
 const searchLoading = ref(false)
 const stationLoading = ref(false)
 const syncAllLoading = ref(false)
+const syncLiveLoading = ref(false)
 const actionLoadingId = ref<number | null>(null)
 const searchResults = ref<PvOutputStation[]>([])
 const stations = ref<PvOutputStation[]>([])
@@ -121,6 +123,19 @@ async function syncAll() {
   }
 }
 
+async function syncLive() {
+  syncLiveLoading.value = true
+  try {
+    const results = await syncPvOutputLiveStations()
+    ElMessage.success(`公开实时页同步完成：${results.length} 个电站`)
+    await fetchStations()
+  } catch (error) {
+    ElMessage.error(message(error, '公开实时页同步失败'))
+  } finally {
+    syncLiveLoading.value = false
+  }
+}
+
 async function viewStatus(row: PvOutputStation) {
   if (!row.id) return
   selectedStation.value = row
@@ -216,7 +231,10 @@ function message(error: unknown, fallback: string) {
           <p class="page-kicker">已添加</p>
           <h2>公开电站列表</h2>
         </div>
-        <el-button type="primary" :loading="syncAllLoading" @click="syncAll">同步全部</el-button>
+        <div class="header-actions">
+          <el-button :loading="syncLiveLoading" @click="syncLive">同步公开实时页</el-button>
+          <el-button type="primary" :loading="syncAllLoading" @click="syncAll">同步全部</el-button>
+        </div>
       </div>
       <el-form class="toolbar" inline :model="listQuery">
         <el-form-item label="关键词">

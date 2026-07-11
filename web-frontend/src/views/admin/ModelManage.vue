@@ -408,6 +408,16 @@ async function changeRemoteModelStatus(row: ModelRow, status: ModelStatus) {
   return updateModelStatus(row.modelId, { modelStatus: status })
 }
 
+function schemaToText(value: unknown) {
+  if (!value) return ''
+  if (typeof value === 'string') return value
+  try {
+    return JSON.stringify(value, null, 2)
+  } catch {
+    return ''
+  }
+}
+
 function mapModel(model: Model, extra?: Partial<ModelRow>): ModelRow {
   const modelCode = model.modelCode || extra?.modelCode || slugify(model.modelName)
   const modelType = normalizeModelType(model.modelType || extra?.modelType)
@@ -428,8 +438,8 @@ function mapModel(model: Model, extra?: Partial<ModelRow>): ModelRow {
     inputFrameIntervalSeconds: model.inputFrameIntervalSeconds ?? extra?.inputFrameIntervalSeconds ?? 60,
     outputSteps: model.outputSteps ?? extra?.outputSteps ?? 6,
     outputStepMinutes: model.outputStepMinutes ?? extra?.outputStepMinutes ?? 5,
-    inputSchema: model.inputSchema || extra?.inputSchema || '{"input":[]}',
-    outputSchema: model.outputSchema || extra?.outputSchema || '{"predictions":[]}',
+    inputSchema: schemaToText(model.inputSchema) || extra?.inputSchema || '{"input":[]}',
+    outputSchema: schemaToText(model.outputSchema) || extra?.outputSchema || '{"predictions":[]}',
     score: model.score ?? extra?.score ?? inferScore(category),
     latency: model.latency ?? extra?.latency ?? inferLatency(category),
     description: model.description || extra?.description || '',

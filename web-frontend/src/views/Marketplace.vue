@@ -1,144 +1,96 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import { useRouter } from 'vue-router'
-import { ElMessage } from 'element-plus'
-import {
-  applyMarketplaceApi,
-  getMarketplaceModelCategories,
-  loadMarketplaceModelDetail,
-  loadMarketplaceModels,
-  requestMarketplaceTrial
-} from '../api/userPages'
-import type { DataSource, MarketplaceTrialResult } from '../api/userPages'
-import type { ApiKey } from '../api/open'
-import type { MarketplaceModel, ModelCategory, ModelStatus } from '../data/mock'
+import { getModel, getModels } from '../api/model'
+import type { ModelDetail, ModelListItem, ModelType } from '../api/model'
 
-type CategoryFilter = ModelCategory | 'ALL'
-type StatusFilter = 'ALL' | 'ONLINE' | 'INACTIVE'
-type PriceFilter = 'ALL' | 'TRIAL' | 'USAGE' | 'PACKAGE'
-
-interface StatCard {
+interface TypeOption {
   label: string
   value: string
-  note: string
+  count: number
 }
 
-const router = useRouter()
+interface DetailConfigItem {
+  label: string
+  value: string
+}
 
 const loading = ref(false)
-const detailLoading = ref(false)
 const loadError = ref('')
-const models = ref<MarketplaceModel[]>([])
-const dataSource = ref<DataSource>('remote')
-const selectedModel = ref<MarketplaceModel | null>(null)
-const detailVisible = ref(false)
-const detailSource = ref<DataSource>('remote')
-const trialLoadingId = ref<number | null>(null)
-const apiLoadingId = ref<number | null>(null)
-const apiDialogVisible = ref(false)
-const apiResult = ref<ApiKey | null>(null)
-const apiResultSource = ref<DataSource>('remote')
+const models = ref<ModelListItem[]>([])
+const keyword = ref('')
+const selectedTypes = ref<string[]>([])
+const filterVisible = ref(false)
 
-const filters = ref({
-  keyword: '',
-  category: 'ALL' as CategoryFilter,
-  status: 'ALL' as StatusFilter,
-  price: 'ALL' as PriceFilter
+const detailVisible = ref(false)
+const detailLoading = ref(false)
+const detailError = ref('')
+const selectedModel = ref<ModelDetail | null>(null)
+
+const typeOptions = computed<TypeOption[]>(() => {
+  const counts = new Map<string, number>()
+  models.value.forEach((model) => {
+    const type = cleanText(model.modelType)
+    if (type) counts.set(type, (counts.get(type) ?? 0) + 1)
+  })
+
+  return Array.from(counts.entries()).map(([value, count]) => ({
+    value,
+    count,
+    label: modelTypeLabel(value)
+  }))
 })
 
-const categoryOptions = computed(() => [
-  { label: '全部', value: 'ALL' as CategoryFilter },
-  ...getMarketplaceModelCategories()
-])
-
-const statusOptions: Array<{ label: string; value: StatusFilter }> = [
-  { label: '全部', value: 'ALL' },
-  { label: '在线', value: 'ONLINE' },
-  { label: '维护中/离线', value: 'INACTIVE' }
-]
-
-const priceOptions: Array<{ label: string; value: PriceFilter }> = [
-  { label: '全部', value: 'ALL' },
-  { label: '免费试用', value: 'TRIAL' },
-  { label: '按量计费', value: 'USAGE' },
-  { label: '套餐', value: 'PACKAGE' }
-]
-
 const filteredModels = computed(() => {
-  const keyword = filters.value.keyword.trim().toLowerCase()
-  return models.value.filter((model) => {
-    const matchesKeyword =
-      !keyword ||
-      model.modelName.toLowerCase().includes(keyword) ||
-      model.description.toLowerCase().includes(keyword) ||
-      model.tags.some((tag) => tag.toLowerCase().includes(keyword))
-    const matchesCategory = filters.value.category === 'ALL' || model.category === filters.value.category
-    const matchesStatus =
-      filters.value.status === 'ALL' ||
-      (filters.value.status === 'ONLINE' && normalizeStatus(model.modelStatus) === 'ONLINE') ||
-      (filters.value.status === 'INACTIVE' && normalizeStatus(model.modelStatus) !== 'ONLINE')
-    const matchesPrice =
-      filters.value.price === 'ALL' ||
-      (filters.value.price === 'TRIAL' && model.trialEnabled) ||
-      (filters.value.price === 'USAGE' && model.price > 0) ||
-      (filters.value.price === 'PACKAGE' && model.quota > 0)
+  const normalizedKeyword = keyword.value.trim().toLocaleLowerCase()
 
-    return matchesKeyword && matchesCategory && matchesStatus && matchesPrice
+  return models.value.filter((model) => {
+    const matchesType = !selectedTypes.value.length || selectedTypes.value.includes(model.modelType)
+    const searchableText = [
+      model.modelName,
+      model.modelCode,
+      model.description,
+      model.shortDescription,
+      model.modelFamily,
+      model.provider,
+      ...(model.tags ?? [])
+    ]
+      .filter((value): value is string => Boolean(cleanText(value)))
+      .join(' ')
+      .toLocaleLowerCase()
+    const matchesKeyword = !normalizedKeyword || searchableText.includes(normalizedKeyword)
+
+    return matchesType && matchesKeyword
   })
 })
 
-const stats = computed<StatCard[]>(() => {
-  const onlineCount = models.value.filter((model) => normalizeStatus(model.modelStatus) === 'ONLINE').length
-  const trialCount = models.value.filter((model) => model.trialEnabled).length
-  const todayCalls = models.value.reduce((sum, model) => sum + model.callCount, 0)
-  const avgLatency = models.value.length
-    ? Math.round(models.value.reduce((sum, model) => sum + latencyOf(model), 0) / models.value.length)
-    : 0
+const hasActiveFilters = computed(() => Boolean(keyword.value.trim()) || selectedTypes.value.length > 0)
 
-  return [
-    { label: '上线模型数', value: String(onlineCount), note: `共 ${models.value.length} 个模型` },
-    { label: '可试用模型数', value: String(trialCount), note: '支持快速开通试用额度' },
-    { label: '今日调用量', value: formatNumber(todayCalls), note: '按模型调用热度估算' },
-    { label: '平均响应时延', value: `${avgLatency} ms`, note: '基于当前模型能力展示' }
-  ]
+const emptyDescription = computed(() => {
+  if (!models.value.length) return '接口当前没有返回可展示的模型'
+  if (keyword.value.trim() && selectedTypes.value.length) return '没有匹配当前搜索与类型筛选的模型'
+  if (keyword.value.trim()) return '没有匹配当前搜索内容的模型'
+  if (selectedTypes.value.length) return '没有匹配当前类型筛选的模型'
+  return '暂无可展示的模型'
 })
 
-const detailRequestExample = computed(() => {
+const detailConfigs = computed<DetailConfigItem[]>(() => {
   const model = selectedModel.value
-  return {
-    stationId: 1,
-    modelName: model?.serviceModelName ?? model?.modelCode ?? 'iTransformer',
-    input: [
-      {
-        time: '2026-07-09 10:00:00',
-        power: 52.8,
-        temperature: 31.2,
-        irradiance: 820
-      }
-    ]
+  if (!model) return []
+
+  const items: DetailConfigItem[] = []
+  if (isNumber(model.inputWindowMinutes)) {
+    items.push({ label: '输入窗口', value: `${model.inputWindowMinutes} 分钟` })
   }
-})
-
-const detailResponseExample = computed(() => ({
-  taskId: 1001,
-  taskNo: 'PRED-20260709-001',
-  status: 'SUCCESS',
-  modelName: selectedModel.value?.serviceModelName ?? selectedModel.value?.modelCode ?? 'iTransformer',
-  predictions: [
-    { timeOffset: 5, predictPower: 75.85 },
-    { timeOffset: 10, predictPower: 78.12 }
-  ],
-  costTime: latencyOf(selectedModel.value)
-}))
-
-const curlExample = computed(() => {
-  const path = selectedModel.value?.apiPath || '/openapi/v1/predict'
-  return [
-    `curl -X POST "${path}" \\`,
-    '  -H "Content-Type: application/json" \\',
-    '  -H "X-API-KEY: <your-api-key>" \\',
-    `  -d '${JSON.stringify(detailRequestExample.value, null, 2)}'`
-  ].join('\n')
+  if (isNumber(model.inputFrameIntervalSeconds)) {
+    items.push({ label: '输入间隔', value: `${model.inputFrameIntervalSeconds} 秒` })
+  }
+  if (isNumber(model.outputSteps)) {
+    items.push({ label: '输出步数', value: `${model.outputSteps} 步` })
+  }
+  if (isNumber(model.outputStepMinutes)) {
+    items.push({ label: '输出步长', value: `${model.outputStepMinutes} 分钟` })
+  }
+  return items
 })
 
 onMounted(() => {
@@ -149,371 +101,401 @@ async function fetchModels() {
   loading.value = true
   loadError.value = ''
   try {
-    const result = await loadMarketplaceModels()
-    models.value = result.data
-    dataSource.value = result.source
-    if (result.source === 'mock') {
-      ElMessage.info('真实接口暂不可用，当前展示模拟模型数据')
-    }
+    models.value = await getModels()
+    const availableTypes = new Set(models.value.map((model) => model.modelType))
+    selectedTypes.value = selectedTypes.value.filter((type) => availableTypes.has(type))
   } catch (error) {
-    loadError.value = error instanceof Error ? error.message : '模型广场数据加载失败'
+    models.value = []
+    loadError.value = error instanceof Error ? error.message : '模型列表加载失败'
   } finally {
     loading.value = false
   }
 }
 
-async function openDetail(model: MarketplaceModel) {
-  selectedModel.value = model
+async function openDetail(model: ModelListItem) {
+  selectedModel.value = { ...model }
+  detailError.value = ''
   detailVisible.value = true
+  await fetchDetail(model.modelId)
+}
+
+async function fetchDetail(modelId: number) {
   detailLoading.value = true
+  detailError.value = ''
   try {
-    const result = await loadMarketplaceModelDetail(model.modelId)
-    selectedModel.value = result.data
-    detailSource.value = result.source
-    if (result.source === 'mock') {
-      ElMessage.info('当前展示模拟数据')
-    }
+    const detail = await getModel(modelId)
+    if (selectedModel.value?.modelId === modelId) selectedModel.value = detail
   } catch (error) {
-    ElMessage.error(error instanceof Error ? error.message : '模型详情加载失败')
+    detailError.value = error instanceof Error ? error.message : '模型详情加载失败'
   } finally {
     detailLoading.value = false
   }
 }
 
-async function startTrial(model: MarketplaceModel) {
-  if (!model.trialEnabled) return
-  trialLoadingId.value = model.modelId
-  try {
-    const result = await requestMarketplaceTrial(model.modelId)
-    ElMessage.success(trialMessage(result.data, result.source))
-  } catch (error) {
-    ElMessage.error(error instanceof Error ? error.message : '试用开通失败')
-  } finally {
-    trialLoadingId.value = null
+function closeDetail() {
+  selectedModel.value = null
+  detailError.value = ''
+}
+
+function clearTypeFilters() {
+  selectedTypes.value = []
+}
+
+function clearAllFilters() {
+  keyword.value = ''
+  selectedTypes.value = []
+}
+
+function modelTypeLabel(type?: ModelType) {
+  const labels: Record<string, string> = {
+    NUMERIC: '时序基线',
+    FUSION: '云图 / 视觉融合',
+    MULTIMODAL: '视频时空递归',
+    IMAGE_TO_NUMERIC: '图像转数值',
+    IMAGE: '图像模型'
   }
+  const value = cleanText(type)
+  return value ? labels[value] ?? value : ''
 }
 
-async function applyApi(model: MarketplaceModel) {
-  apiLoadingId.value = model.modelId
-  try {
-    const result = await applyMarketplaceApi(model.modelId, {
-      keyName: `${model.modelName} API Key`,
-      expireDays: 90
-    })
-    apiResult.value = result.data
-    apiResultSource.value = result.source
-    apiDialogVisible.value = true
-    ElMessage.success(result.source === 'mock' ? '当前为模拟 API Key' : 'API Key 申请成功')
-  } catch (error) {
-    ElMessage.error(error instanceof Error ? error.message : 'API Key 申请失败')
-  } finally {
-    apiLoadingId.value = null
+function modelTypeSymbol(type?: ModelType) {
+  const symbols: Record<string, string> = {
+    NUMERIC: '序',
+    FUSION: '融',
+    MULTIMODAL: '云',
+    IMAGE_TO_NUMERIC: '图',
+    IMAGE: '图'
   }
+  return symbols[cleanText(type)] ?? '模'
 }
 
-function normalizeStatus(status: ModelStatus): ModelStatus {
-  if (status === 'OFFLINE' || status === 'TESTING') return status
-  return 'ONLINE'
+function modelTypeClass(type?: ModelType) {
+  const value = cleanText(type).toLowerCase().replace(/[^a-z0-9_-]/g, '-')
+  return value ? `type-${value}` : 'type-default'
 }
 
-function statusLabel(status: ModelStatus) {
-  const normalized = normalizeStatus(status)
-  if (normalized === 'ONLINE') return '在线'
-  if (normalized === 'TESTING') return '维护中'
-  return '离线'
+function statusLabel(status?: string) {
+  const labels: Record<string, string> = {
+    ONLINE: '已上线',
+    TESTING: '测试中',
+    OFFLINE: '仅展示'
+  }
+  const value = cleanText(status)
+  return value ? labels[value] ?? value : ''
 }
 
-function statusType(status: ModelStatus) {
-  const normalized = normalizeStatus(status)
-  if (normalized === 'ONLINE') return 'success'
-  if (normalized === 'TESTING') return 'warning'
-  return 'danger'
+function statusTagType(status?: string) {
+  const value = cleanText(status)
+  if (value === 'ONLINE') return 'success'
+  if (value === 'TESTING') return 'warning'
+  return 'info'
 }
 
-function latencyOf(model?: MarketplaceModel | null) {
-  if (!model) return 126
-  if (model.category === 'TIME_SERIES') return 96 + (model.modelId % 5) * 8
-  if (model.category === 'VISION_FUSION') return 168 + (model.modelId % 4) * 18
-  return 238 + (model.modelId % 4) * 24
+function displayDescription(model: ModelListItem | ModelDetail) {
+  return cleanText(model.shortDescription) || cleanText(model.description)
 }
 
-function scenarioOf(model: MarketplaceModel) {
-  if (model.category === 'TIME_SERIES') return '分钟级功率预测、历史数据补全、模型效果基线对比。'
-  if (model.category === 'VISION_FUSION') return '云图特征融合、天气突变识别、短时功率波动预测。'
-  return '连续云图外推、云层运动建模、视觉预测能力演示。'
+function hasTextList(value?: string[]) {
+  return Array.isArray(value) && value.some((item) => Boolean(cleanText(item)))
 }
 
-function inputText(model: MarketplaceModel) {
-  return `输入窗口 ${model.inputWindowMinutes} 分钟，采样间隔 ${model.inputFrameIntervalSeconds} 秒。请求体可包含功率、温度、辐照度等序列字段。`
+function canUse(model: ModelListItem | ModelDetail) {
+  return cleanText(model.status) === 'ONLINE'
 }
 
-function outputText(model: MarketplaceModel) {
-  return `输出未来 ${model.outputSteps} 个预测步长，每步 ${model.outputStepMinutes} 分钟，返回预测功率和时间偏移。`
+function formatMetric(value: unknown, suffix = '') {
+  return isNumber(value) ? `${Number(value).toFixed(3)}${suffix}` : '-'
 }
 
-function formatNumber(value: number) {
-  return new Intl.NumberFormat('zh-CN').format(value)
+function cleanText(value: unknown) {
+  return typeof value === 'string' ? value.trim() : ''
 }
 
-function priceText(model: MarketplaceModel) {
-  return model.billingRule || `¥${model.price}/${model.quota} ${model.unit}`
+function isNumber(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value)
 }
 
-function trialMessage(result: MarketplaceTrialResult, source: DataSource) {
-  const suffix = source === 'mock' ? '，当前为模拟试用数据' : ''
-  return `已开通试用额度：${result.quota} 次${suffix}`
+function hasSchema(value?: string | Record<string, unknown>) {
+  if (!value) return false
+  if (typeof value === 'object') return Object.keys(value).length > 0
+  return Boolean(cleanText(value))
 }
 
-function apiKeyText(key: ApiKey | null) {
-  if (!key) return ''
-  return key.apiKey || key.apiKeyPrefix || ''
-}
-
-async function copyText(text: string, successText = '已复制') {
-  if (!text) return
+function formatSchema(value?: string | Record<string, unknown>) {
+  if (!value) return ''
+  if (typeof value === 'object') return JSON.stringify(value, null, 2)
+  const content = cleanText(value)
+  if (!content) return ''
   try {
-    await navigator.clipboard.writeText(text)
-    ElMessage.success(successText)
+    return JSON.stringify(JSON.parse(content), null, 2)
   } catch {
-    ElMessage.error('复制失败，请手动复制')
-  }
-}
-
-function resetFilters() {
-  filters.value = {
-    keyword: '',
-    category: 'ALL',
-    status: 'ALL',
-    price: 'ALL'
+    return content
   }
 }
 </script>
 
 <template>
   <section class="page-shell marketplace-page">
-    <div class="page-title">
-      <div>
-        <h2>模型广场</h2>
-        <p>浏览、试用和申请光伏预测模型 API</p>
-      </div>
-      <el-button :loading="loading" plain type="primary" @click="fetchModels">刷新</el-button>
-    </div>
+    <section class="marketplace-toolbar" aria-label="模型搜索与筛选">
+      <el-button class="filter-toggle" plain @click="filterVisible = !filterVisible">
+        <span class="filter-icon" aria-hidden="true">☷</span>
+        {{ filterVisible ? '隐藏筛选器' : '展开筛选器' }}
+        <span v-if="selectedTypes.length" class="filter-count">{{ selectedTypes.length }}</span>
+      </el-button>
 
-    <el-alert
-      v-if="dataSource === 'mock'"
-      title="真实接口暂不可用，当前页面使用模拟数据兜底。"
-      type="info"
-      show-icon
-      :closable="false"
-    />
-
-    <div class="overview-grid">
-      <div v-for="item in stats" :key="item.label" class="overview-card">
-        <span>{{ item.label }}</span>
-        <strong>{{ item.value }}</strong>
-        <small>{{ item.note }}</small>
-      </div>
-    </div>
-
-    <section class="page-section filter-panel">
-      <div class="toolbar">
-        <el-input
-          v-model="filters.keyword"
-          clearable
-          class="search-input"
-          placeholder="搜索模型名称、描述或标签"
-        />
-        <el-button text type="primary" @click="resetFilters">重置筛选</el-button>
-      </div>
-      <div class="filter-row">
-        <div class="filter-item">
-          <span>分类</span>
-          <el-segmented v-model="filters.category" :options="categoryOptions" />
-        </div>
-        <div class="filter-item">
-          <span>状态</span>
-          <el-segmented v-model="filters.status" :options="statusOptions" />
-        </div>
-        <div class="filter-item">
-          <span>权益</span>
-          <el-segmented v-model="filters.price" :options="priceOptions" />
-        </div>
-      </div>
+      <el-input
+        v-model="keyword"
+        class="model-search"
+        clearable
+        size="large"
+        placeholder="搜索模型名称"
+        aria-label="搜索模型名称"
+      >
+        <template #prefix>
+          <span class="search-icon" aria-hidden="true">⌕</span>
+        </template>
+      </el-input>
     </section>
 
-    <section v-loading="loading" class="models-area">
-      <el-empty v-if="loadError" description="模型广场数据加载失败">
-        <p class="empty-text">{{ loadError }}</p>
-        <el-button type="primary" @click="fetchModels">重试</el-button>
+    <section v-if="loading" class="model-grid" aria-label="正在加载模型">
+      <article v-for="index in 6" :key="index" class="model-card skeleton-card">
+        <el-skeleton animated :rows="4" />
+      </article>
+    </section>
+
+    <section v-else-if="loadError" class="state-panel">
+      <el-empty description="模型列表加载失败" :image-size="88">
+        <p class="state-message">{{ loadError }}</p>
+        <el-button type="primary" @click="fetchModels">重新加载</el-button>
       </el-empty>
-
-      <el-empty v-else-if="!filteredModels.length && !loading" description="暂无符合条件的模型" />
-
-      <div v-else class="model-grid">
-        <article v-for="model in filteredModels" :key="model.modelId" class="model-card">
-          <div class="card-head">
-            <div>
-              <h3>{{ model.modelName }}</h3>
-              <p>{{ model.categoryName }}</p>
-            </div>
-            <el-tag :type="statusType(model.modelStatus)" effect="light">{{ statusLabel(model.modelStatus) }}</el-tag>
-          </div>
-
-          <p class="model-desc">{{ model.description }}</p>
-
-          <div class="tag-row">
-            <el-tag v-for="tag in model.tags" :key="tag" size="small">{{ tag }}</el-tag>
-          </div>
-
-          <div class="meta-grid">
-            <div>
-              <span>版本</span>
-              <strong>{{ model.modelVersion || 'v1.0' }}</strong>
-            </div>
-            <div>
-              <span>调用量</span>
-              <strong>{{ formatNumber(model.callCount) }}</strong>
-            </div>
-            <div>
-              <span>平均时延</span>
-              <strong>{{ latencyOf(model) }} ms</strong>
-            </div>
-            <div>
-              <span>试用</span>
-              <strong>{{ model.trialEnabled ? '支持' : '暂不支持' }}</strong>
-            </div>
-          </div>
-
-          <div class="billing-line">
-            <span>{{ priceText(model) }}</span>
-            <small>{{ formatNumber(model.quota) }} {{ model.unit }}</small>
-          </div>
-
-          <div class="card-actions">
-            <el-button plain @click="openDetail(model)">查看详情</el-button>
-            <el-button
-              :disabled="!model.trialEnabled"
-              :loading="trialLoadingId === model.modelId"
-              @click="startTrial(model)"
-            >
-              免费试用
-            </el-button>
-            <el-button type="primary" :loading="apiLoadingId === model.modelId" @click="applyApi(model)">
-              申请 API
-            </el-button>
-          </div>
-        </article>
-      </div>
     </section>
 
-    <el-drawer v-model="detailVisible" size="560px" title="模型详情">
-      <div v-if="selectedModel" v-loading="detailLoading" class="detail-panel">
-        <el-alert
-          v-if="detailSource === 'mock'"
-          title="当前展示模拟数据"
-          type="info"
-          show-icon
-          :closable="false"
-        />
+    <section v-else-if="!filteredModels.length" class="state-panel">
+      <el-empty :description="emptyDescription" :image-size="88">
+        <el-button v-if="hasActiveFilters" plain type="primary" @click="clearAllFilters">清空条件</el-button>
+      </el-empty>
+    </section>
 
-        <div class="detail-title">
+    <section v-else class="model-grid" aria-live="polite">
+      <button
+        v-for="model in filteredModels"
+        :key="model.modelId"
+        type="button"
+        class="model-card"
+        :aria-label="`查看 ${model.modelName} 详情`"
+        @click="openDetail(model)"
+      >
+        <span class="card-accent" :class="modelTypeClass(model.modelType)"></span>
+        <span class="card-heading">
+          <span class="model-symbol" :class="modelTypeClass(model.modelType)" aria-hidden="true">
+            {{ modelTypeSymbol(model.modelType) }}
+          </span>
+          <span class="model-heading-copy">
+            <strong>{{ model.modelName }}</strong>
+            <small v-if="cleanText(model.modelCode)">{{ model.modelCode }}</small>
+          </span>
+          <span class="card-arrow" aria-hidden="true">→</span>
+        </span>
+
+        <span v-if="displayDescription(model)" class="model-description">{{ displayDescription(model) }}</span>
+
+        <span v-if="hasTextList(model.tags)" class="tag-row">
+          <span v-for="tag in model.tags" :key="tag" class="tag-chip">{{ tag }}</span>
+        </span>
+
+        <span class="card-footer">
+          <span class="card-footer-tags">
+            <span v-if="modelTypeLabel(model.modelType)" class="model-type-tag">
+              {{ modelTypeLabel(model.modelType) }}
+            </span>
+            <span v-if="statusLabel(model.status)" class="status-pill" :class="`status-${cleanText(model.status).toLowerCase()}`">
+              {{ statusLabel(model.status) }}
+            </span>
+          </span>
+          <span class="detail-hint">{{ canUse(model) ? '查看详情' : '仅展示' }}</span>
+        </span>
+      </button>
+    </section>
+
+    <el-drawer
+      v-model="filterVisible"
+      title="筛选模型"
+      direction="ltr"
+      size="320px"
+      class="marketplace-filter-drawer"
+    >
+      <div class="filter-drawer-content">
+        <div class="filter-section-heading">
           <div>
-            <h3>{{ selectedModel.modelName }}</h3>
-            <p>{{ selectedModel.categoryName }} · {{ selectedModel.modelVersion }}</p>
+            <strong>模型类型</strong>
+            <p>可多选，并与模型名称搜索同时生效</p>
           </div>
-          <el-tag :type="statusType(selectedModel.modelStatus)">{{ statusLabel(selectedModel.modelStatus) }}</el-tag>
+          <el-button v-if="selectedTypes.length" text type="primary" @click="clearTypeFilters">清空</el-button>
         </div>
 
-        <p class="detail-desc">{{ selectedModel.description }}</p>
+        <el-checkbox-group v-if="typeOptions.length" v-model="selectedTypes" class="type-filter-list">
+          <el-checkbox v-for="option in typeOptions" :key="option.value" :value="option.value" border>
+            <span>{{ option.label }}</span>
+            <small>{{ option.count }}</small>
+          </el-checkbox>
+        </el-checkbox-group>
+        <el-empty v-else description="暂无可用类型" :image-size="64" />
 
-        <el-descriptions :column="1" border>
-          <el-descriptions-item label="输入说明">{{ inputText(selectedModel) }}</el-descriptions-item>
-          <el-descriptions-item label="输出说明">{{ outputText(selectedModel) }}</el-descriptions-item>
-          <el-descriptions-item label="适用场景">{{ scenarioOf(selectedModel) }}</el-descriptions-item>
-          <el-descriptions-item label="计费方式">{{ priceText(selectedModel) }}</el-descriptions-item>
-          <el-descriptions-item label="开放路径">{{ selectedModel.apiPath }}</el-descriptions-item>
-        </el-descriptions>
-
-        <div class="code-block">
-          <div class="code-title">
-            <span>API 调用示例</span>
-            <el-button size="small" text type="primary" @click="copyText(curlExample, '调用示例已复制')">
-              复制
-            </el-button>
-          </div>
-          <pre>{{ curlExample }}</pre>
-        </div>
-
-        <div class="code-grid">
-          <div class="code-block">
-            <div class="code-title">
-              <span>请求参数示例</span>
-              <el-button
-                size="small"
-                text
-                type="primary"
-                @click="copyText(JSON.stringify(detailRequestExample, null, 2), '请求示例已复制')"
-              >
-                复制
-              </el-button>
-            </div>
-            <pre>{{ JSON.stringify(detailRequestExample, null, 2) }}</pre>
-          </div>
-          <div class="code-block">
-            <div class="code-title">
-              <span>响应示例</span>
-              <el-button
-                size="small"
-                text
-                type="primary"
-                @click="copyText(JSON.stringify(detailResponseExample, null, 2), '响应示例已复制')"
-              >
-                复制
-              </el-button>
-            </div>
-            <pre>{{ JSON.stringify(detailResponseExample, null, 2) }}</pre>
-          </div>
-        </div>
-
-        <div class="drawer-actions">
-          <el-button
-            :disabled="!selectedModel.trialEnabled"
-            :loading="trialLoadingId === selectedModel.modelId"
-            @click="startTrial(selectedModel)"
-          >
-            免费试用
-          </el-button>
-          <el-button
-            type="primary"
-            :loading="apiLoadingId === selectedModel.modelId"
-            @click="applyApi(selectedModel)"
-          >
-            申请 API
-          </el-button>
-        </div>
       </div>
     </el-drawer>
 
-    <el-dialog v-model="apiDialogVisible" width="460px" title="API Key 申请结果">
-      <div class="api-result">
+    <el-drawer
+      v-model="detailVisible"
+      title="模型详情"
+      direction="rtl"
+      size="min(680px, 92vw)"
+      class="marketplace-detail-drawer"
+      @closed="closeDetail"
+    >
+      <div v-if="selectedModel" v-loading="detailLoading" class="detail-panel">
         <el-alert
-          v-if="apiResultSource === 'mock'"
-          title="当前为模拟 API Key"
-          type="info"
-          show-icon
+          v-if="detailError"
+          type="error"
           :closable="false"
-        />
-        <p>请妥善保存 API Key；如果后端仅返回前缀，页面只展示前缀。</p>
-        <div class="key-box">
-          <code>{{ apiKeyText(apiResult) || '未返回 API Key' }}</code>
-          <el-button size="small" @click="copyText(apiKeyText(apiResult), 'API Key 已复制')">复制</el-button>
-        </div>
+          show-icon
+          title="详情接口加载失败，以下仅展示列表接口已返回的信息。"
+        >
+          <template #default>
+            <span>{{ detailError }}</span>
+            <el-button text type="primary" @click="fetchDetail(selectedModel.modelId)">重试</el-button>
+          </template>
+        </el-alert>
+
+        <section class="detail-hero">
+          <span class="detail-symbol" :class="modelTypeClass(selectedModel.modelType)" aria-hidden="true">
+            {{ modelTypeSymbol(selectedModel.modelType) }}
+          </span>
+          <div class="detail-heading-copy">
+            <p v-if="cleanText(selectedModel.modelCode)" class="detail-code">{{ selectedModel.modelCode }}</p>
+            <h2>{{ selectedModel.modelName }}</h2>
+            <div class="detail-badges">
+              <el-tag v-if="modelTypeLabel(selectedModel.modelType)" effect="plain">
+                {{ modelTypeLabel(selectedModel.modelType) }}
+              </el-tag>
+              <el-tag v-if="statusLabel(selectedModel.status)" :type="statusTagType(selectedModel.status)" effect="light">
+                {{ statusLabel(selectedModel.status) }}
+              </el-tag>
+              <el-tag v-if="cleanText(selectedModel.provider)" effect="plain">
+                {{ selectedModel.provider }}
+              </el-tag>
+            </div>
+          </div>
+        </section>
+
+        <section v-if="displayDescription(selectedModel) || cleanText(selectedModel.description)" class="detail-section">
+          <p class="section-kicker">介绍</p>
+          <h3>模型说明</h3>
+          <p v-if="displayDescription(selectedModel)" class="detail-description">{{ displayDescription(selectedModel) }}</p>
+          <p v-if="cleanText(selectedModel.description) && cleanText(selectedModel.description) !== displayDescription(selectedModel)" class="detail-description">
+            {{ selectedModel.description }}
+          </p>
+        </section>
+
+        <section v-if="hasTextList(selectedModel.tags) || cleanText(selectedModel.modelFamily) || cleanText(selectedModel.paperUrl) || cleanText(selectedModel.sourceUrl)" class="detail-section">
+          <p class="section-kicker">Reference</p>
+          <h3>来源与标签</h3>
+          <div v-if="hasTextList(selectedModel.tags)" class="tag-row detail-tags">
+            <span v-for="tag in selectedModel.tags" :key="tag" class="tag-chip">{{ tag }}</span>
+          </div>
+          <dl class="meta-list">
+            <div v-if="cleanText(selectedModel.modelFamily)">
+              <dt>模型家族</dt>
+              <dd>{{ selectedModel.modelFamily }}</dd>
+            </div>
+            <div v-if="cleanText(selectedModel.provider)">
+              <dt>来源机构</dt>
+              <dd>{{ selectedModel.provider }}</dd>
+            </div>
+            <div v-if="selectedModel.releaseYear">
+              <dt>发布年份</dt>
+              <dd>{{ selectedModel.releaseYear }}</dd>
+            </div>
+            <div v-if="cleanText(selectedModel.paperUrl) || cleanText(selectedModel.paperTitle)">
+              <dt>论文</dt>
+              <dd>
+                <a v-if="cleanText(selectedModel.paperUrl)" :href="selectedModel.paperUrl" target="_blank" rel="noreferrer">
+                  {{ selectedModel.paperTitle || selectedModel.paperUrl }}
+                </a>
+                <span v-else>{{ selectedModel.paperTitle }}</span>
+              </dd>
+            </div>
+            <div v-if="cleanText(selectedModel.sourceUrl)">
+              <dt>项目地址</dt>
+              <dd><a :href="selectedModel.sourceUrl" target="_blank" rel="noreferrer">{{ selectedModel.sourceUrl }}</a></dd>
+            </div>
+          </dl>
+        </section>
+
+        <section v-if="hasTextList(selectedModel.capabilities) || hasTextList(selectedModel.applicableScenarios) || hasTextList(selectedModel.advantages) || hasTextList(selectedModel.limitations)" class="detail-section">
+          <p class="section-kicker">Capability</p>
+          <h3>能力说明</h3>
+          <div class="info-grid">
+            <div v-if="hasTextList(selectedModel.capabilities)" class="info-block">
+              <strong>核心能力</strong>
+              <ul><li v-for="item in selectedModel.capabilities" :key="item">{{ item }}</li></ul>
+            </div>
+            <div v-if="hasTextList(selectedModel.applicableScenarios)" class="info-block">
+              <strong>适用场景</strong>
+              <ul><li v-for="item in selectedModel.applicableScenarios" :key="item">{{ item }}</li></ul>
+            </div>
+            <div v-if="hasTextList(selectedModel.advantages)" class="info-block">
+              <strong>优势</strong>
+              <ul><li v-for="item in selectedModel.advantages" :key="item">{{ item }}</li></ul>
+            </div>
+            <div v-if="hasTextList(selectedModel.limitations)" class="info-block">
+              <strong>局限</strong>
+              <ul><li v-for="item in selectedModel.limitations" :key="item">{{ item }}</li></ul>
+            </div>
+          </div>
+        </section>
+
+        <section v-if="selectedModel.metrics?.length" class="detail-section">
+          <p class="section-kicker">Metrics</p>
+          <h3>参考指标</h3>
+          <el-table :data="selectedModel.metrics" size="small" border>
+            <el-table-column prop="datasetName" label="数据集" min-width="130" />
+            <el-table-column label="MAE" width="90">
+              <template #default="{ row }">{{ formatMetric(row.mae) }}</template>
+            </el-table-column>
+            <el-table-column label="RMSE" width="90">
+              <template #default="{ row }">{{ formatMetric(row.rmse) }}</template>
+            </el-table-column>
+            <el-table-column label="MAPE" width="90">
+              <template #default="{ row }">{{ formatMetric(row.mape, '%') }}</template>
+            </el-table-column>
+          </el-table>
+          <p class="metric-note">指标来自论文或离线基线资料，不代表当前平台实时实测。</p>
+        </section>
+
+        <section v-if="detailConfigs.length" class="detail-section">
+          <p class="section-kicker">配置</p>
+          <h3>预测输入与输出</h3>
+          <div class="config-grid">
+            <div v-for="item in detailConfigs" :key="item.label" class="config-card">
+              <span>{{ item.label }}</span>
+              <strong>{{ item.value }}</strong>
+            </div>
+          </div>
+        </section>
+
+        <section v-if="hasSchema(selectedModel.inputSchema)" class="detail-section">
+          <p class="section-kicker">Input</p>
+          <h3>输入要求</h3>
+          <pre class="schema-block">{{ formatSchema(selectedModel.inputSchema) }}</pre>
+        </section>
+
+        <section v-if="hasSchema(selectedModel.outputSchema)" class="detail-section">
+          <p class="section-kicker">Output</p>
+          <h3>输出说明</h3>
+          <pre class="schema-block">{{ formatSchema(selectedModel.outputSchema) }}</pre>
+        </section>
       </div>
-      <template #footer>
-        <el-button @click="apiDialogVisible = false">关闭</el-button>
-        <el-button type="primary" @click="router.push('/api')">去 API 管理查看</el-button>
-      </template>
-    </el-dialog>
+    </el-drawer>
   </section>
 </template>
 
@@ -522,65 +504,57 @@ function resetFilters() {
   gap: 18px;
 }
 
-.overview-grid {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+.marketplace-toolbar {
+  position: sticky;
+  z-index: 5;
+  top: 0;
+  display: flex;
+  align-items: center;
   gap: 14px;
+  padding: 4px 0 2px;
+  background: #f4f8fc;
 }
 
-.overview-card {
-  min-height: 112px;
-  padding: 18px;
-  border: 1px solid var(--color-border);
-  border-radius: 8px;
+.filter-toggle {
+  min-width: 150px;
+  height: 44px;
+  border-color: #cbd9e9;
+  color: #31435f;
   background: #ffffff;
-  box-shadow: var(--shadow-panel);
+  box-shadow: 0 6px 18px rgba(20, 65, 120, 0.06);
 }
 
-.overview-card span,
-.meta-grid span,
-.filter-item span {
-  color: var(--color-muted);
-  font-size: 13px;
-}
-
-.overview-card strong {
-  display: block;
-  margin: 10px 0 6px;
-  color: #10274c;
-  font-size: 28px;
+.filter-icon,
+.search-icon {
+  font-size: 20px;
   line-height: 1;
 }
 
-.overview-card small,
-.billing-line small,
-.empty-text {
-  color: var(--color-muted);
+.filter-count {
+  display: inline-grid;
+  place-items: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 5px;
+  border-radius: 10px;
+  color: #ffffff;
+  background: var(--color-primary);
+  font-size: 12px;
 }
 
-.filter-panel {
-  display: grid;
-  gap: 14px;
+.model-search {
+  max-width: 680px;
 }
 
-.search-input {
-  max-width: 420px;
+.model-search :deep(.el-input__wrapper) {
+  min-height: 44px;
+  border: 1px solid #cbd9e9;
+  box-shadow: none;
 }
 
-.filter-row {
-  display: grid;
-  gap: 12px;
-}
-
-.filter-item {
-  display: grid;
-  grid-template-columns: 56px minmax(0, 1fr);
-  align-items: center;
-  gap: 10px;
-}
-
-.models-area {
-  min-height: 240px;
+.model-search :deep(.el-input__wrapper.is-focus) {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px rgba(29, 111, 220, 0.1);
 }
 
 .model-grid {
@@ -590,173 +564,503 @@ function resetFilters() {
 }
 
 .model-card {
+  position: relative;
   display: flex;
+  min-width: 0;
+  min-height: 252px;
+  padding: 22px;
+  overflow: hidden;
   flex-direction: column;
-  gap: 14px;
-  min-height: 360px;
-  padding: 18px;
-  border: 1px solid var(--color-border);
-  border-radius: 8px;
+  gap: 18px;
+  border: 1px solid #dce6f1;
+  border-radius: 12px;
+  color: #172033;
   background: #ffffff;
-  box-shadow: var(--shadow-panel);
+  box-shadow: 0 8px 24px rgba(20, 65, 120, 0.06);
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+  transition: transform 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
 }
 
-.card-head,
-.detail-title,
-.code-title,
-.billing-line,
-.drawer-actions,
-.key-box {
+.model-card:hover,
+.model-card:focus-visible {
+  border-color: rgba(29, 111, 220, 0.45);
+  outline: none;
+  box-shadow: 0 16px 34px rgba(20, 65, 120, 0.12);
+  transform: translateY(-3px);
+}
+
+.card-accent {
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 0;
+  height: 3px;
+  background: #78aef4;
+}
+
+.card-accent.type-fusion,
+.model-symbol.type-fusion,
+.detail-symbol.type-fusion {
+  background: #e8f7f2;
+  color: #178563;
+}
+
+.card-accent.type-multimodal,
+.model-symbol.type-multimodal,
+.detail-symbol.type-multimodal {
+  background: #f0ecff;
+  color: #6750c7;
+}
+
+.card-accent.type-image_to_numeric,
+.card-accent.type-image,
+.model-symbol.type-image_to_numeric,
+.model-symbol.type-image,
+.detail-symbol.type-image_to_numeric,
+.detail-symbol.type-image {
+  background: #fff3df;
+  color: #b36b05;
+}
+
+.card-accent.type-fusion,
+.card-accent.type-multimodal,
+.card-accent.type-image_to_numeric,
+.card-accent.type-image {
+  color: transparent;
+}
+
+.card-accent.type-fusion {
+  background: #38b98d;
+}
+
+.card-accent.type-multimodal {
+  background: #8069dd;
+}
+
+.card-accent.type-image_to_numeric,
+.card-accent.type-image {
+  background: #e6a23c;
+}
+
+.card-heading {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+}
+
+.model-symbol,
+.detail-symbol {
+  display: inline-grid;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  flex: 0 0 48px;
+  border-radius: 12px;
+  color: #1d6fdc;
+  background: #e8f2ff;
+  font-size: 20px;
+  font-weight: 800;
+}
+
+.model-heading-copy,
+.detail-heading-copy {
+  min-width: 0;
+}
+
+.model-heading-copy strong {
+  display: block;
+  overflow: hidden;
+  color: #10274c;
+  font-size: 17px;
+  line-height: 1.4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.model-heading-copy small {
+  display: block;
+  margin-top: 4px;
+  overflow: hidden;
+  color: #7a89a0;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.card-arrow {
+  margin-left: auto;
+  color: #9aabc0;
+  font-size: 20px;
+  transition: color 180ms ease, transform 180ms ease;
+}
+
+.model-card:hover .card-arrow {
+  color: var(--color-primary);
+  transform: translateX(3px);
+}
+
+.model-description {
+  display: -webkit-box;
+  overflow: hidden;
+  color: #5f7088;
+  line-height: 1.75;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+
+.card-footer {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-}
-
-.card-head h3,
-.detail-title h3 {
-  margin: 0;
-  color: #10274c;
-  font-size: 18px;
-}
-
-.card-head p,
-.detail-title p,
-.detail-desc,
-.model-desc,
-.api-result p {
-  margin: 6px 0 0;
-  color: var(--color-muted);
-  line-height: 1.7;
-}
-
-.model-desc {
-  min-height: 72px;
+  margin-top: auto;
 }
 
 .tag-row {
   display: flex;
+  min-width: 0;
   flex-wrap: wrap;
-  gap: 6px;
-  min-height: 28px;
+  gap: 8px;
 }
 
-.meta-grid {
+.tag-chip {
+  display: inline-flex;
+  max-width: 100%;
+  min-height: 24px;
+  align-items: center;
+  padding: 3px 8px;
+  overflow: hidden;
+  border: 1px solid #d8e5f3;
+  border-radius: 6px;
+  color: #526a86;
+  background: #f7faff;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.card-footer-tags {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.model-type-tag,
+.status-pill {
+  display: inline-flex;
+  max-width: 78%;
+  min-height: 28px;
+  align-items: center;
+  padding: 4px 10px;
+  overflow: hidden;
+  border: 1px solid #cfe0f4;
+  border-radius: 7px;
+  color: #27649f;
+  background: #f2f7fd;
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.status-online {
+  border-color: #b7dfc2;
+  color: #237346;
+  background: #f0fbf3;
+}
+
+.status-offline {
+  border-color: #d9e0ea;
+  color: #65748a;
+  background: #f6f8fb;
+}
+
+.status-testing {
+  border-color: #f1d49b;
+  color: #946200;
+  background: #fff8e8;
+}
+
+.detail-hint {
+  color: #8796aa;
+  font-size: 13px;
+}
+
+.skeleton-card {
+  cursor: default;
+}
+
+.skeleton-card:hover {
+  border-color: #dce6f1;
+  box-shadow: 0 8px 24px rgba(20, 65, 120, 0.06);
+  transform: none;
+}
+
+.state-panel {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  min-height: 360px;
+  place-items: center;
+  border: 1px dashed #cfdae8;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.7);
+}
+
+.state-message {
+  max-width: 520px;
+  margin: 0 0 14px;
+  color: var(--color-muted);
+  line-height: 1.7;
+  text-align: center;
+}
+
+.filter-drawer-content {
+  display: grid;
+  gap: 20px;
+}
+
+.filter-section-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.filter-section-heading strong {
+  color: #10274c;
+  font-size: 16px;
+}
+
+.filter-section-heading p {
+  margin: 6px 0 0;
+  color: var(--color-muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.type-filter-list {
+  display: grid;
   gap: 10px;
 }
 
-.meta-grid div {
-  min-height: 58px;
-  padding: 10px;
+.type-filter-list :deep(.el-checkbox) {
+  width: 100%;
+  height: 42px;
+  margin: 0;
+  padding: 0 12px;
   border-radius: 8px;
-  background: #f8fbff;
 }
 
-.meta-grid strong {
-  display: block;
-  margin-top: 6px;
-  color: #172033;
-}
-
-.billing-line {
-  margin-top: auto;
-  padding-top: 4px;
-}
-
-.billing-line span {
-  color: var(--color-primary);
-  font-weight: 700;
-}
-
-.card-actions {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+.type-filter-list :deep(.el-checkbox__label) {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  align-items: center;
+  justify-content: space-between;
   gap: 8px;
+}
+
+.type-filter-list small {
+  color: #94a2b5;
 }
 
 .detail-panel {
   display: grid;
-  gap: 18px;
+  gap: 24px;
+  padding-bottom: 20px;
 }
 
-.detail-desc {
+.detail-hero {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  padding: 18px;
+  border: 1px solid #dce6f1;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #f8fbff 0%, #ffffff 70%);
+}
+
+.detail-symbol {
+  width: 58px;
+  height: 58px;
+  flex-basis: 58px;
+  font-size: 23px;
+}
+
+.detail-code,
+.section-kicker {
+  margin: 0 0 5px;
+  color: var(--color-primary);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.detail-heading-copy h2 {
+  margin: 0;
+  color: #10274c;
+  font-size: 22px;
+  line-height: 1.4;
+}
+
+.detail-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.detail-section {
+  padding-top: 2px;
+}
+
+.detail-section h3 {
+  margin: 0 0 12px;
+  color: #10274c;
+  font-size: 17px;
+}
+
+.detail-description {
+  margin: 0;
+  color: #566980;
+  line-height: 1.9;
+}
+
+.detail-description + .detail-description {
+  margin-top: 10px;
+}
+
+.detail-tags {
+  margin-bottom: 14px;
+}
+
+.meta-list {
+  display: grid;
+  gap: 10px;
   margin: 0;
 }
 
-.code-grid {
+.meta-list div {
   display: grid;
+  grid-template-columns: 86px minmax(0, 1fr);
   gap: 12px;
 }
 
-.code-block {
+.meta-list dt {
+  color: #7a89a0;
+}
+
+.meta-list dd {
   min-width: 0;
-  border: 1px solid var(--color-border);
+  margin: 0;
+  color: #30445f;
+  overflow-wrap: anywhere;
+}
+
+.meta-list a {
+  color: var(--color-primary);
+}
+
+.info-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.info-block {
+  padding: 14px;
+  border: 1px solid #dce6f1;
   border-radius: 8px;
-  overflow: hidden;
   background: #fbfdff;
 }
 
-.code-title {
-  padding: 10px 12px;
-  border-bottom: 1px solid var(--color-border);
+.info-block strong {
+  display: block;
+  margin-bottom: 8px;
   color: #10274c;
-  font-weight: 700;
 }
 
-pre {
-  max-height: 260px;
+.info-block ul {
   margin: 0;
-  padding: 12px;
-  overflow: auto;
+  padding-left: 18px;
+  color: #566980;
+  line-height: 1.8;
+}
+
+.metric-note {
+  margin: 10px 0 0;
+  color: #7a89a0;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.config-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.config-card {
+  display: grid;
+  gap: 6px;
+  padding: 14px;
+  border: 1px solid #dce6f1;
+  border-radius: 10px;
+  background: #fbfdff;
+}
+
+.config-card span {
+  color: #7a89a0;
+  font-size: 12px;
+}
+
+.config-card strong {
   color: #172033;
+  font-size: 18px;
+}
+
+.schema-block {
+  max-height: 300px;
+  margin: 0;
+  padding: 16px;
+  overflow: auto;
+  border: 1px solid #d8e3f0;
+  border-radius: 10px;
+  color: #33445d;
+  background: #f7faff;
   font-family: Consolas, "Courier New", monospace;
   font-size: 12px;
-  line-height: 1.7;
+  line-height: 1.75;
   white-space: pre-wrap;
   word-break: break-word;
 }
 
-.drawer-actions {
-  justify-content: flex-end;
-  padding-top: 6px;
-}
-
-.api-result {
-  display: grid;
-  gap: 14px;
-}
-
-.key-box {
-  padding: 12px;
-  border: 1px solid var(--color-border);
-  border-radius: 8px;
-  background: #f8fbff;
-}
-
-.key-box code {
-  min-width: 0;
-  overflow-wrap: anywhere;
-  color: #10274c;
-}
-
-@media (max-width: 1200px) {
-  .overview-grid,
+@media (max-width: 1280px) {
   .model-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
 @media (max-width: 760px) {
-  .overview-grid,
+  .marketplace-toolbar {
+    position: static;
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .filter-toggle,
+  .model-search {
+    width: 100%;
+    max-width: none;
+  }
+
   .model-grid,
-  .card-actions {
+  .config-grid {
     grid-template-columns: 1fr;
   }
 
-  .filter-item {
-    grid-template-columns: 1fr;
+  .model-card {
+    min-height: 230px;
   }
 }
 </style>
