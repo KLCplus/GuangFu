@@ -616,6 +616,7 @@ CREATE TABLE agent_session (
     archived TINYINT(1) NOT NULL DEFAULT 0 COMMENT '是否归档',
     pinned TINYINT(1) NOT NULL DEFAULT 0 COMMENT '是否固定',
     status VARCHAR(32) NOT NULL DEFAULT 'ACTIVE' COMMENT '状态：ACTIVE，CLOSED',
+    deleted TINYINT(1) NOT NULL DEFAULT 0 COMMENT '逻辑删除',
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
 
@@ -656,8 +657,10 @@ CREATE TABLE agent_tool_call (
     tool_call_id BIGINT PRIMARY KEY AUTO_INCREMENT COMMENT '工具调用ID',
     session_id BIGINT NOT NULL COMMENT '会话ID',
     message_id BIGINT DEFAULT NULL COMMENT '触发消息ID',
+    user_id BIGINT NOT NULL COMMENT '用户ID',
     client_tool_call_id VARCHAR(64) NOT NULL COMMENT '前端展示用工具调用ID',
     tool_name VARCHAR(128) NOT NULL COMMENT '工具名称',
+    display_name VARCHAR(128) DEFAULT NULL COMMENT '工具展示名称',
     arguments_json JSON DEFAULT NULL COMMENT '工具参数',
     result_json JSON DEFAULT NULL COMMENT '工具结果',
     status VARCHAR(32) NOT NULL DEFAULT 'PENDING' COMMENT '状态：PENDING，AWAITING_APPROVAL，SUCCESS，FAILED',
@@ -669,10 +672,13 @@ CREATE TABLE agent_tool_call (
     UNIQUE KEY uk_agent_tool_client_id (client_tool_call_id),
     KEY idx_agent_tool_session (session_id, created_at),
     KEY idx_agent_tool_message (message_id),
+    KEY idx_agent_tool_user (user_id),
     KEY idx_agent_tool_status (status),
 
     CONSTRAINT fk_agent_tool_session
         FOREIGN KEY (session_id) REFERENCES agent_session(session_id),
+    CONSTRAINT fk_agent_tool_user
+        FOREIGN KEY (user_id) REFERENCES sys_user(user_id),
     CONSTRAINT fk_agent_tool_message
         FOREIGN KEY (message_id) REFERENCES agent_message(message_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Agent工具调用表';
@@ -686,6 +692,7 @@ CREATE TABLE agent_approval (
     session_id BIGINT NOT NULL COMMENT '会话ID',
     tool_call_id BIGINT NOT NULL COMMENT '工具调用ID',
     user_id BIGINT NOT NULL COMMENT '用户ID',
+    tool_name VARCHAR(128) NOT NULL COMMENT '工具名称',
     status VARCHAR(32) NOT NULL DEFAULT 'PENDING' COMMENT '状态：PENDING，APPROVED，REJECTED，EXPIRED',
     reason VARCHAR(512) DEFAULT NULL COMMENT '确认原因',
     arguments_json JSON DEFAULT NULL COMMENT '待执行参数',

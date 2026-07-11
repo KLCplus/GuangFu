@@ -21,5 +21,6 @@ stop_pid_file() {
 
 stop_pid_file "backend" "$runtime_dir/backend.pid"
 stop_pid_file "frontend" "$runtime_dir/frontend.pid"
+rm -f "$runtime_dir/backend.env"
 
 echo "Stopped local project processes."

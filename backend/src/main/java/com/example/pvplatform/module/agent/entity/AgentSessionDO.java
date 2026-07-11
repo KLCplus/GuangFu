@@ -17,6 +17,7 @@ public class AgentSessionDO {
     private Boolean archived;
     private Boolean pinned;
     private String status;
+    private Boolean deleted;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 }

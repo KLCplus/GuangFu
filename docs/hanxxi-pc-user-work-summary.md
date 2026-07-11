@@ -578,7 +578,7 @@ mysql -uroot -p --default-character-set=utf8mb4 pv_platform < .\backend\src\main
 
 ```powershell
 cd backend
-powershell -ExecutionPolicy Bypass -File .\run-local.ps1
+./start-local.sh --backend-only
 ```
 
 4. 启动前端。
@@ -603,4 +603,4 @@ http://127.0.0.1:5173/profile
 - 本次模型广场改造完成后，`web-frontend` 执行 `npm run build` 通过（Vue TypeScript 检查和 Vite 生产构建均成功）。
 - 本次 API 管理页面重构完成后再次执行 `npm run build`，Vue TypeScript 检查、ECharts 页面编译和 Vite 生产构建均成功。
 - 构建仅出现依赖包 pure annotation 和现有大 chunk 的警告，没有编译错误。
-- 后端编译曾执行 `run-local.ps1 -DskipTests compile` 通过。
+- 后端编译曾执行 `mvn -DskipTests compile` 通过。

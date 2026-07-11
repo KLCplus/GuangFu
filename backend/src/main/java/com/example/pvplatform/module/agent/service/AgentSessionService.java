@@ -28,6 +28,7 @@ public class AgentSessionService {
         row.setArchived(false);
         row.setPinned(false);
         row.setStatus("ACTIVE");
+        row.setDeleted(false);
         row.setCreatedAt(LocalDateTime.now());
         row.setUpdatedAt(row.getCreatedAt());
         sessionMapper.insert(row);
@@ -41,7 +42,8 @@ public class AgentSessionService {
         Long userId = SecurityUtils.requireCurrentUserId();
         AgentSessionDO row = sessionMapper.selectOne(Wrappers.<AgentSessionDO>lambdaQuery()
             .eq(AgentSessionDO::getSessionId, sessionId)
-            .eq(AgentSessionDO::getUserId, userId));
+            .eq(AgentSessionDO::getUserId, userId)
+            .eq(AgentSessionDO::getDeleted, false));
         if (row == null) {
             throw new BusinessException(404, "Agent 会话不存在");
         }
@@ -56,7 +58,7 @@ public class AgentSessionService {
         return requireOwned(dto.sessionId());
     }
 
-    public PageResult<AgentSessionDTO> list(int pageNum, int pageSize, Boolean archived) {
+    public PageResult<AgentSessionDTO> list(int pageNum, int pageSize, Boolean archived, Boolean pinned, String keyword) {
         if (pageNum < 1 || pageSize < 1 || pageSize > 100) {
             throw new BusinessException(400, "分页参数不合法");
         }
@@ -64,10 +66,53 @@ public class AgentSessionService {
         Page<AgentSessionDO> page = sessionMapper.selectPage(new Page<>(pageNum, pageSize),
             Wrappers.<AgentSessionDO>lambdaQuery()
                 .eq(AgentSessionDO::getUserId, userId)
+                .eq(AgentSessionDO::getDeleted, false)
                 .eq(archived != null, AgentSessionDO::getArchived, archived)
+                .eq(pinned != null, AgentSessionDO::getPinned, pinned)
+                .like(keyword != null && !keyword.isBlank(), AgentSessionDO::getTitle, keyword == null ? null : keyword.trim())
                 .orderByDesc(AgentSessionDO::getPinned)
                 .orderByDesc(AgentSessionDO::getUpdatedAt));
         return new PageResult<>(page.getTotal(), pageNum, pageSize, page.getRecords().stream().map(this::toDTO).toList());
+    }
+
+    public AgentSessionDTO archive(Long sessionId, boolean archived) {
+        return updateFlags(sessionId, archived, null, null);
+    }
+
+    public AgentSessionDTO pin(Long sessionId, boolean pinned) {
+        return updateFlags(sessionId, null, pinned, null);
+    }
+
+    public AgentSessionDTO rename(Long sessionId, String title) {
+        if (title == null || title.isBlank()) {
+            throw new BusinessException(400, "会话标题不能为空");
+        }
+        return updateFlags(sessionId, null, null, title.trim());
+    }
+
+    public void delete(Long sessionId) {
+        requireOwned(sessionId);
+        AgentSessionDO update = new AgentSessionDO();
+        update.setSessionId(sessionId);
+        update.setDeleted(true);
+        update.setUpdatedAt(LocalDateTime.now());
+        sessionMapper.updateById(update);
+    }
+
+    private AgentSessionDTO updateFlags(Long sessionId, Boolean archived, Boolean pinned, String title) {
+        AgentSessionDO current = requireOwned(sessionId);
+        AgentSessionDO update = new AgentSessionDO();
+        update.setSessionId(sessionId);
+        if (archived != null) update.setArchived(archived);
+        if (pinned != null) update.setPinned(pinned);
+        if (title != null) update.setTitle(title);
+        update.setUpdatedAt(LocalDateTime.now());
+        sessionMapper.updateById(update);
+        if (archived != null) current.setArchived(archived);
+        if (pinned != null) current.setPinned(pinned);
+        if (title != null) current.setTitle(title);
+        current.setUpdatedAt(update.getUpdatedAt());
+        return toDTO(current);
     }
 
     public void touch(Long sessionId) {

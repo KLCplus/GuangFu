@@ -1233,7 +1233,7 @@ PUT /api/notifications/read-all
 后端接口已经按当前代码整理完毕，可以进入前端联调。联调前需要确认：
 
 1. MySQL 已启动，并已初始化表结构和基础角色数据。
-2. 后端使用 `backend/run-local.ps1` 或等价环境变量启动。
+2. 后端使用根目录 `./start-local.sh --backend-only` 启动。
 3. `JWT_SECRET`、`MYSQL_PASSWORD` 已配置。
 4. 预测功能需要模型服务 `MODEL_SERVICE_BASE_URL` 可访问。
 5. QWeather 功能需要 `WEATHER_PROVIDER=QWEATHER`、JWT 凭证和电站经纬度。

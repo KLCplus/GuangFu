@@ -70,3 +70,49 @@ CREATE TABLE IF NOT EXISTS agent_approval (
     CONSTRAINT fk_agent_approval_tool FOREIGN KEY (tool_call_id) REFERENCES agent_tool_call(tool_call_id),
     CONSTRAINT fk_agent_approval_user FOREIGN KEY (user_id) REFERENCES sys_user(user_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Agent用户确认表';
+
+
+-- Phase 2 additions. Compatible with MySQL versions that do not support ADD COLUMN IF NOT EXISTS.
+DROP PROCEDURE IF EXISTS add_agent_column_if_missing;
+DELIMITER //
+CREATE PROCEDURE add_agent_column_if_missing(
+    IN p_table_name VARCHAR(64),
+    IN p_column_name VARCHAR(64),
+    IN p_alter_sql TEXT
+)
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM information_schema.COLUMNS
+        WHERE TABLE_SCHEMA = DATABASE()
+          AND TABLE_NAME = p_table_name
+          AND COLUMN_NAME = p_column_name
+    ) THEN
+        SET @agent_alter_sql = p_alter_sql;
+        PREPARE agent_alter_stmt FROM @agent_alter_sql;
+        EXECUTE agent_alter_stmt;
+        DEALLOCATE PREPARE agent_alter_stmt;
+    END IF;
+END//
+DELIMITER ;
+
+CALL add_agent_column_if_missing('agent_session', 'deleted',
+    'ALTER TABLE agent_session ADD COLUMN deleted TINYINT(1) NOT NULL DEFAULT 0 COMMENT ''逻辑删除'' AFTER status');
+CALL add_agent_column_if_missing('agent_tool_call', 'user_id',
+    'ALTER TABLE agent_tool_call ADD COLUMN user_id BIGINT NULL COMMENT ''用户ID'' AFTER message_id');
+CALL add_agent_column_if_missing('agent_tool_call', 'display_name',
+    'ALTER TABLE agent_tool_call ADD COLUMN display_name VARCHAR(128) DEFAULT NULL COMMENT ''工具展示名称'' AFTER tool_name');
+CALL add_agent_column_if_missing('agent_approval', 'tool_name',
+    'ALTER TABLE agent_approval ADD COLUMN tool_name VARCHAR(128) NULL COMMENT ''工具名称'' AFTER user_id');
+
+DROP PROCEDURE IF EXISTS add_agent_column_if_missing;
+
+UPDATE agent_tool_call tc
+JOIN agent_message msg ON tc.message_id = msg.message_id
+SET tc.user_id = msg.user_id
+WHERE tc.user_id IS NULL;
+
+UPDATE agent_approval ap
+JOIN agent_tool_call tc ON ap.tool_call_id = tc.tool_call_id
+SET ap.tool_name = tc.tool_name
+WHERE ap.tool_name IS NULL;

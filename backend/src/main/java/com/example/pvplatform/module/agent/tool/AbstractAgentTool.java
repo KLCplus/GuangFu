@@ -3,6 +3,7 @@ package com.example.pvplatform.module.agent.tool;
 import com.example.pvplatform.common.exception.BusinessException;
 
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 public abstract class AbstractAgentTool implements AgentTool {
@@ -46,6 +47,45 @@ public abstract class AbstractAgentTool implements AgentTool {
             return defaultValue;
         }
         return String.valueOf(value).trim();
+    }
+
+
+    protected List<?> listArg(Map<String, Object> args, String key, boolean required) {
+        Object value = args == null ? null : args.get(key);
+        if (value == null && required) {
+            throw new BusinessException(400, "缺少参数: " + key);
+        }
+        if (value == null) {
+            return List.of();
+        }
+        if (value instanceof List<?> list) {
+            return list;
+        }
+        throw new BusinessException(400, "参数不是有效数组: " + key);
+    }
+
+    protected Map<String, Object> mapArg(Map<String, Object> args, String key, boolean required) {
+        Object value = args == null ? null : args.get(key);
+        if (value == null && required) {
+            throw new BusinessException(400, "缺少参数: " + key);
+        }
+        if (value == null) {
+            return Map.of();
+        }
+        if (value instanceof Map<?, ?> map) {
+            Map<String, Object> result = new LinkedHashMap<>();
+            map.forEach((k, v) -> result.put(String.valueOf(k), v));
+            return result;
+        }
+        throw new BusinessException(400, "参数不是有效对象: " + key);
+    }
+
+    protected void requireAdmin(ToolExecutionContext context) {
+        boolean admin = context != null && context.roles() != null && context.roles().stream()
+            .anyMatch(role -> "ADMIN".equals(role) || "ROLE_ADMIN".equals(role));
+        if (!admin) {
+            throw new BusinessException(403, "需要管理员权限");
+        }
     }
 
     protected Map<String, Object> schema(Object... entries) {

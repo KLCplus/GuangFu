@@ -31,13 +31,69 @@ export interface AgentSession {
   updatedAt?: string
 }
 
+export interface AgentToolCallRecord {
+  toolCallId: number
+  sessionId: number
+  messageId?: number
+  clientToolCallId?: string
+  toolName: string
+  displayName?: string
+  arguments?: Record<string, unknown>
+  result?: Record<string, unknown>
+  status: string
+  errorMessage?: string
+  durationMs?: number
+  createdAt?: string
+}
+
+export interface AgentApprovalRecord {
+  approvalId: number
+  sessionId: number
+  toolCallId: number
+  toolName?: string
+  reason?: string
+  arguments?: Record<string, unknown>
+  status: string
+  comment?: string
+  decidedAt?: string
+  createdAt?: string
+}
+
+export interface AgentMessageRecord {
+  messageId: number
+  sessionId: number
+  role: 'user' | 'assistant' | 'tool' | 'system'
+  content: string
+  metadata?: Record<string, unknown>
+  toolCalls?: AgentToolCallRecord[]
+  approvals?: AgentApprovalRecord[]
+  createdAt?: string
+}
+
 export interface AgentSseEnvelope {
   event: string
   data: Record<string, unknown>
 }
 
+export interface AgentSessionQuery {
+  archived?: boolean
+  pinned?: boolean
+  keyword?: string
+  page?: number
+  size?: number
+}
+
 export const createAgentSession = (title?: string) => request.post<AgentSession>('/agent/sessions', { title })
-export const getAgentSessions = () => request.get<{ records: AgentSession[]; total: number }>('/agent/sessions')
+export const getAgentSessions = (params: AgentSessionQuery = {}) =>
+  request.get<{ records: AgentSession[]; total: number }>('/agent/sessions', { params })
+export const getAgentSessionMessages = (sessionId: number) => request.get<AgentMessageRecord[]>(`/agent/sessions/${sessionId}/messages`)
+export const getAgentSessionToolCalls = (sessionId: number) => request.get<AgentToolCallRecord[]>(`/agent/sessions/${sessionId}/tool-calls`)
+export const archiveAgentSession = (sessionId: number) => request.post<AgentSession>(`/agent/sessions/${sessionId}/archive`)
+export const unarchiveAgentSession = (sessionId: number) => request.post<AgentSession>(`/agent/sessions/${sessionId}/unarchive`)
+export const pinAgentSession = (sessionId: number) => request.post<AgentSession>(`/agent/sessions/${sessionId}/pin`)
+export const unpinAgentSession = (sessionId: number) => request.post<AgentSession>(`/agent/sessions/${sessionId}/unpin`)
+export const renameAgentSession = (sessionId: number, title: string) => request.put<AgentSession>(`/agent/sessions/${sessionId}`, { title })
+export const deleteAgentSession = (sessionId: number) => request.delete<{ deleted: boolean }>(`/agent/sessions/${sessionId}`)
 export const getAgentTools = () => request.get<AgentToolInfo[]>('/agent/tools')
 export const approveAgentApproval = (approvalId: number, approved: boolean, comment?: string) =>
   request.post(`/agent/approvals/${approvalId}/approve`, { approved, comment })

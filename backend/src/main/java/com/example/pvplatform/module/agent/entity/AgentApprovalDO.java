@@ -15,6 +15,7 @@ public class AgentApprovalDO {
     private Long sessionId;
     private Long toolCallId;
     private Long userId;
+    private String toolName;
     private String status;
     private String reason;
     private String argumentsJson;

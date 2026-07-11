@@ -11,5 +11,6 @@ public enum ToolCategory {
     NEWS,
     ADMIN,
     CLOUD,
-    WALLET
+    WALLET,
+    MARKETPLACE
 }

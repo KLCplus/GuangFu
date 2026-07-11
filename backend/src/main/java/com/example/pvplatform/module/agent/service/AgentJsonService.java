@@ -24,13 +24,18 @@ public class AgentJsonService {
     }
 
     public Map<String, Object> map(String json) {
+        Object value = value(json);
+        return value instanceof Map<?, ?> map ? (Map<String, Object>) map : Map.of();
+    }
+
+    public Object value(String json) {
         if (json == null || json.isBlank()) {
-            return Map.of();
+            return null;
         }
         try {
-            return objectMapper.readValue(json, new TypeReference<Map<String, Object>>() {});
+            return objectMapper.readValue(json, Object.class);
         } catch (Exception exception) {
-            return Map.of();
+            return json;
         }
     }
 }

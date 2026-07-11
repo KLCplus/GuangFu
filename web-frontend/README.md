@@ -11,8 +11,8 @@ npm run dev -- --host 127.0.0.1 --port 5173 --strictPort
 
 也可以从项目根目录运行：
 
-```powershell
-powershell -ExecutionPolicy Bypass -File .\start-local.ps1 -FrontendOnly
+```bash
+./start-local.sh --frontend-only
 ```
 
 生产构建：

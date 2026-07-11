@@ -131,9 +131,19 @@ public class AgentOrchestratorService {
             progress.send(emitter, "plan", Map.of("steps", decision.toolCalls().stream().map(AgentToolCallSpec::toolName).toList(), "reason", nullToEmpty(decision.reason())));
             List<Map<String, Object>> loopResults = new ArrayList<>();
             for (AgentToolCallSpec call : decision.toolCalls()) {
-                AgentTool tool = toolRegistry.require(call.toolName());
+                AgentTool tool;
+                try {
+                    tool = toolRegistry.require(call.toolName());
+                } catch (IllegalArgumentException exception) {
+                    ToolExecutionResult missing = ToolExecutionResult.failure("TOOL_NOT_AVAILABLE", exception.getMessage());
+                    Map<String, Object> event = metadata("toolName", call.toolName(), "status", "failed", "summary", exception.getMessage(), "error", exception.getMessage());
+                    toolEvents.add(event);
+                    progress.send(emitter, "tool_result", event);
+                    loopResults.add(Map.of("toolName", call.toolName(), "arguments", call.arguments() == null ? Map.of() : call.arguments(), "result", missing));
+                    continue;
+                }
                 Map<String, Object> args = call.arguments() == null ? Map.of() : call.arguments();
-                AgentToolCallDO row = toolService.createPending(session.getSessionId(), userMessage.getMessageId(), tool.name(), args);
+                AgentToolCallDO row = toolService.createPending(session.getSessionId(), userMessage.getMessageId(), tool, args);
                 if (tool.requiresApproval() && !Boolean.FALSE.equals(request.requireApproval())) {
                     toolService.markAwaitingApproval(row);
                     AgentApprovalDO approval = approvalService.create(session.getSessionId(), row,

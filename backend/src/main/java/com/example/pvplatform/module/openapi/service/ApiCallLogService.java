@@ -11,7 +11,9 @@ import com.example.pvplatform.module.openapi.vo.ApiUsageByModelVO;
 import com.example.pvplatform.module.openapi.vo.ApiUsageSummaryVO;
 import com.example.pvplatform.module.openapi.vo.ApiUsageTrendVO;
 import com.example.pvplatform.persistence.entity.ApiCallLogDO;
+import com.example.pvplatform.persistence.entity.ModelInfoDO;
 import com.example.pvplatform.persistence.mapper.ApiCallLogMapper;
+import com.example.pvplatform.persistence.mapper.ModelInfoMapper;
 import com.example.pvplatform.security.SecurityUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -21,17 +23,22 @@ import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
-import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.stream.Collectors;
 
 @Service
 public class ApiCallLogService {
     private static final Logger log = LoggerFactory.getLogger(ApiCallLogService.class);
     private static final int MAX_EXPORT_ROWS = 10000;
     private final ApiCallLogMapper logMapper;
+    private final ModelInfoMapper modelMapper;
 
-    public ApiCallLogService(ApiCallLogMapper logMapper) {
+    public ApiCallLogService(ApiCallLogMapper logMapper, ModelInfoMapper modelMapper) {
         this.logMapper = logMapper;
+        this.modelMapper = modelMapper;
     }
 
     @Async("applicationTaskExecutor")
@@ -119,8 +126,9 @@ public class ApiCallLogService {
             .le(endTime != null, ApiCallLogDO::getRequestTime, endTime)
             .orderByDesc(ApiCallLogDO::getRequestTime);
         Page<ApiCallLogDO> page = logMapper.selectPage(new Page<>(pageNum, pageSize), query);
+        Map<Long, String> modelNames = modelNames(page.getRecords());
         return new PageResult<>(page.getTotal(), pageNum, pageSize,
-            page.getRecords().stream().map(this::toVO).toList());
+            page.getRecords().stream().map(row -> toVO(row, modelNames.get(row.getModelId()))).toList());
     }
 
     // ---- 使用统计 ----
@@ -159,17 +167,32 @@ public class ApiCallLogService {
             .le(endTime != null, ApiCallLogDO::getRequestTime, endTime)
             .orderByDesc(ApiCallLogDO::getRequestTime)
             .last("LIMIT " + MAX_EXPORT_ROWS);
-        return logMapper.selectList(query).stream().map(this::toVO).toList();
+        List<ApiCallLogDO> rows = logMapper.selectList(query);
+        Map<Long, String> modelNames = modelNames(rows);
+        return rows.stream().map(row -> toVO(row, modelNames.get(row.getModelId()))).toList();
     }
 
     // ----
 
-    private ApiCallLogVO toVO(ApiCallLogDO row) {
+    private Map<Long, String> modelNames(List<ApiCallLogDO> rows) {
+        List<Long> modelIds = rows.stream()
+            .map(ApiCallLogDO::getModelId)
+            .filter(Objects::nonNull)
+            .distinct()
+            .toList();
+        if (modelIds.isEmpty()) {
+            return Collections.emptyMap();
+        }
+        return modelMapper.selectBatchIds(modelIds).stream()
+            .collect(Collectors.toMap(ModelInfoDO::getModelId, ModelInfoDO::getModelName, (left, right) -> left));
+    }
+
+    private ApiCallLogVO toVO(ApiCallLogDO row, String modelName) {
         return new ApiCallLogVO(
             row.getLogId(),
             row.getApiKeyId(),
             row.getModelId(),
-            null, // modelName — populated via JOIN in enhanced queries; null here for base queries
+            modelName,
             row.getRequestPath(),
             row.getRequestMethod(),
             row.getRequestIp(),

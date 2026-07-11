@@ -17,7 +17,6 @@
 ```text
 backend/
 ├─ pom.xml
-├─ run-local.ps1             # 后端启动脚本，读取 backend/.env.local
 ├─ ARCHITECTURE.md
 └─ src/main/
    ├─ java/com/example/pvplatform/
@@ -39,27 +38,27 @@ backend/
 
 - `src/main/resources/application.yml`：Spring Boot 属性映射，不放真实密钥。
 - `backend/.env.local`：本机真实配置，已被 `.gitignore` 忽略。
-- `run-local.ps1`：设置本地默认值后读取 `backend/.env.local`，并启动 Maven。
+- 根目录 `start-local.sh`：设置本地默认值后读取 `backend/.env.local`，并启动 Maven。
 
 不要把 env 文件放进 `src/main/java`。
 
 ## 启动
 
-```powershell
-cd C:\Users\99140\Desktop\chengdu\code\pv-power-platform\backend
-powershell -ExecutionPolicy Bypass -File .\run-local.ps1
+```bash
+./start-local.sh --backend-only
 ```
 
 验证 Java/Maven：
 
-```powershell
-powershell -ExecutionPolicy Bypass -File .\run-local.ps1 --version
+```bash
+mvn --version
 ```
 
 编译：
 
-```powershell
-powershell -ExecutionPolicy Bypass -File .\run-local.ps1 -DskipTests compile
+```bash
+cd backend
+mvn -DskipTests compile
 ```
 
 服务地址：
@@ -133,8 +132,9 @@ http://localhost:8080/weather-debug.html
 
 ## 提交前检查
 
-```powershell
-powershell -ExecutionPolicy Bypass -File .\run-local.ps1 -DskipTests compile
+```bash
+cd backend
+mvn -DskipTests compile
 ```
 
 建议按需补跑测试：
