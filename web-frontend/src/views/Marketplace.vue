@@ -1,12 +1,31 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { getModel, getModels } from '../api/model'
 import type { ModelDetail, ModelListItem, ModelType } from '../api/model'
+import { getModelIcon } from '../assets/model-icons/svg'
+import { getModelArchitectures, getModelCapabilities } from '../data/modelFilterTaxonomy'
 
-interface TypeOption {
+interface FilterOption {
   label: string
   value: string
   count: number
+}
+
+interface FilterGroup {
+  key: FilterKey
+  label: string
+  description: string
+  options: FilterOption[]
+  kind: 'primary' | 'more'
+  defaultLimit: number
+}
+
+type FilterKey = 'types' | 'architectures' | 'capabilities' | 'providers' | 'statuses' | 'years'
+
+interface SelectedFilterChip {
+  key: FilterKey | 'keyword'
+  value: string
+  label: string
 }
 
 interface DetailConfigItem {
@@ -18,33 +37,91 @@ const loading = ref(false)
 const loadError = ref('')
 const models = ref<ModelListItem[]>([])
 const keyword = ref('')
-const selectedTypes = ref<string[]>([])
+const SIDEBAR_WIDTH_STORAGE_KEY = 'marketplace-filter-sidebar-width'
+const MIN_SIDEBAR_WIDTH = 260
+const DEFAULT_SIDEBAR_WIDTH = 320
+const MAX_SIDEBAR_WIDTH = 520
+
+const selectedFilters = ref<Record<FilterKey, string[]>>({
+  types: [],
+  architectures: [],
+  capabilities: [],
+  providers: [],
+  statuses: [],
+  years: []
+})
 const filterVisible = ref(false)
+const moreFiltersVisible = ref(false)
+const expandedGroups = ref<Partial<Record<FilterKey, boolean>>>({})
+const marketplaceWorkspace = ref<HTMLElement | null>(null)
+const sidebarWidth = ref(readStoredSidebarWidth())
+
+let resizeStartX = 0
+let resizeStartWidth = DEFAULT_SIDEBAR_WIDTH
+let resizeMaxWidth = MAX_SIDEBAR_WIDTH
+let resizing = false
 
 const detailVisible = ref(false)
 const detailLoading = ref(false)
 const detailError = ref('')
 const selectedModel = ref<ModelDetail | null>(null)
 
-const typeOptions = computed<TypeOption[]>(() => {
-  const counts = new Map<string, number>()
-  models.value.forEach((model) => {
-    const type = cleanText(model.modelType)
-    if (type) counts.set(type, (counts.get(type) ?? 0) + 1)
-  })
+const typeOptions = computed(() => buildOptions(models.value.map((model) => model.modelType), modelTypeLabel))
+const architectureOptions = computed(() =>
+  buildOptions(models.value.flatMap(getModelArchitectures), (value) => value, 2)
+)
+const capabilityOptions = computed(() =>
+  buildOptions(models.value.flatMap(getModelCapabilities), (value) => value, 2)
+)
+const providerOptions = computed(() => buildOptions(models.value.map((model) => model.provider)))
+const statusOptions = computed(() => buildOptions(models.value.map((model) => model.status), statusLabel))
+const yearOptions = computed(() =>
+  buildOptions(models.value.map((model) => (model.releaseYear ? String(model.releaseYear) : '')))
+    .sort((left, right) => Number(right.value) - Number(left.value))
+)
 
-  return Array.from(counts.entries()).map(([value, count]) => ({
-    value,
-    count,
-    label: modelTypeLabel(value)
-  }))
+const filterGroups = computed<FilterGroup[]>(() => {
+  const groups: FilterGroup[] = [
+    { key: 'types', label: '模型类型', description: '按预测任务和输入形态分类', options: typeOptions.value, kind: 'primary', defaultLimit: 99 },
+    { key: 'architectures', label: '架构体系', description: '基于真实家族与 modelCode 规范化归类', options: architectureOptions.value, kind: 'primary', defaultLimit: 6 },
+    { key: 'capabilities', label: '能力标签', description: '由真实标签与 modelCode 归一化生成', options: capabilityOptions.value, kind: 'primary', defaultLimit: 6 },
+    { key: 'providers', label: '来源机构', description: '来自接口 provider 字段', options: providerOptions.value, kind: 'more', defaultLimit: 6 },
+    { key: 'statuses', label: '可用状态', description: '来自接口 status 字段', options: statusOptions.value, kind: 'more', defaultLimit: 6 },
+    { key: 'years', label: '发布年份', description: '来自接口 releaseYear 字段', options: yearOptions.value, kind: 'more', defaultLimit: 6 }
+  ]
+  return groups.filter((group) => group.options.length > 0)
+})
+
+const primaryFilterGroups = computed(() => filterGroups.value.filter((group) => group.kind === 'primary'))
+const moreFilterGroups = computed(() => filterGroups.value.filter((group) => group.kind === 'more'))
+
+const activeFilterCount = computed(() =>
+  Object.values(selectedFilters.value).reduce((total, values) => total + values.length, 0)
+)
+
+const selectedFilterChips = computed<SelectedFilterChip[]>(() => {
+  const chips: SelectedFilterChip[] = []
+  const searchText = keyword.value.trim()
+  if (searchText) chips.push({ key: 'keyword', value: searchText, label: `搜索：${searchText}` })
+  for (const group of filterGroups.value) {
+    for (const value of selectedFilters.value[group.key]) {
+      const option = group.options.find((item) => item.value === value)
+      if (option) chips.push({ key: group.key, value, label: `${group.label}：${option.label}` })
+    }
+  }
+  return chips
 })
 
 const filteredModels = computed(() => {
   const normalizedKeyword = keyword.value.trim().toLocaleLowerCase()
 
   return models.value.filter((model) => {
-    const matchesType = !selectedTypes.value.length || selectedTypes.value.includes(model.modelType)
+    const matchesType = matchesSelected('types', model.modelType)
+    const matchesArchitecture = matchesAnySelected('architectures', getModelArchitectures(model))
+    const matchesCapability = matchesAnySelected('capabilities', getModelCapabilities(model))
+    const matchesProvider = matchesSelected('providers', model.provider)
+    const matchesStatus = matchesSelected('statuses', model.status)
+    const matchesYear = matchesSelected('years', model.releaseYear ? String(model.releaseYear) : '')
     const searchableText = [
       model.modelName,
       model.modelCode,
@@ -59,17 +136,17 @@ const filteredModels = computed(() => {
       .toLocaleLowerCase()
     const matchesKeyword = !normalizedKeyword || searchableText.includes(normalizedKeyword)
 
-    return matchesType && matchesKeyword
+    return matchesType && matchesArchitecture && matchesCapability && matchesProvider && matchesStatus && matchesYear && matchesKeyword
   })
 })
 
-const hasActiveFilters = computed(() => Boolean(keyword.value.trim()) || selectedTypes.value.length > 0)
+const hasActiveFilters = computed(() => Boolean(keyword.value.trim()) || activeFilterCount.value > 0)
 
 const emptyDescription = computed(() => {
   if (!models.value.length) return '接口当前没有返回可展示的模型'
-  if (keyword.value.trim() && selectedTypes.value.length) return '没有匹配当前搜索与类型筛选的模型'
+  if (keyword.value.trim() && activeFilterCount.value) return '没有匹配当前搜索与筛选条件的模型'
   if (keyword.value.trim()) return '没有匹配当前搜索内容的模型'
-  if (selectedTypes.value.length) return '没有匹配当前类型筛选的模型'
+  if (activeFilterCount.value) return '没有匹配当前筛选条件的模型'
   return '暂无可展示的模型'
 })
 
@@ -97,13 +174,16 @@ onMounted(() => {
   void fetchModels()
 })
 
+onBeforeUnmount(() => {
+  stopSidebarResize()
+})
+
 async function fetchModels() {
   loading.value = true
   loadError.value = ''
   try {
     models.value = await getModels()
-    const availableTypes = new Set(models.value.map((model) => model.modelType))
-    selectedTypes.value = selectedTypes.value.filter((type) => availableTypes.has(type))
+    pruneUnavailableFilters()
   } catch (error) {
     models.value = []
     loadError.value = error instanceof Error ? error.message : '模型列表加载失败'
@@ -137,13 +217,139 @@ function closeDetail() {
   detailError.value = ''
 }
 
-function clearTypeFilters() {
-  selectedTypes.value = []
+function clearFilterGroup(key: FilterKey) {
+  selectedFilters.value[key] = []
+}
+
+function removeSelectedFilter(chip: SelectedFilterChip) {
+  if (chip.key === 'keyword') {
+    keyword.value = ''
+    return
+  }
+  selectedFilters.value[chip.key] = selectedFilters.value[chip.key].filter((value) => value !== chip.value)
 }
 
 function clearAllFilters() {
   keyword.value = ''
-  selectedTypes.value = []
+  for (const key of Object.keys(selectedFilters.value) as FilterKey[]) {
+    selectedFilters.value[key] = []
+  }
+}
+
+function matchesSelected(key: FilterKey, value: unknown) {
+  const selected = selectedFilters.value[key]
+  const normalized = cleanText(value)
+  return !selected.length || Boolean(normalized && selected.includes(normalized))
+}
+
+function matchesAnySelected(key: FilterKey, values: string[]) {
+  const selected = selectedFilters.value[key]
+  return !selected.length || values.some((value) => selected.includes(value))
+}
+
+function buildOptions(
+  values: unknown[],
+  labelFormatter: (value: string) => string = (value) => value,
+  minimumCount = 1
+): FilterOption[] {
+  const counts = new Map<string, number>()
+  values.forEach((value) => {
+    const normalized = cleanText(value)
+    if (normalized) counts.set(normalized, (counts.get(normalized) ?? 0) + 1)
+  })
+  return Array.from(counts.entries())
+    .filter(([, count]) => count >= minimumCount)
+    .map(([value, count]) => ({ value, count, label: labelFormatter(value) }))
+    .sort((left, right) => right.count - left.count || left.label.localeCompare(right.label, 'zh-CN'))
+}
+
+function pruneUnavailableFilters() {
+  const available: Record<FilterKey, Set<string>> = {
+    types: new Set(typeOptions.value.map((option) => option.value)),
+    architectures: new Set(architectureOptions.value.map((option) => option.value)),
+    capabilities: new Set(capabilityOptions.value.map((option) => option.value)),
+    providers: new Set(providerOptions.value.map((option) => option.value)),
+    statuses: new Set(statusOptions.value.map((option) => option.value)),
+    years: new Set(yearOptions.value.map((option) => option.value))
+  }
+  for (const key of Object.keys(selectedFilters.value) as FilterKey[]) {
+    selectedFilters.value[key] = selectedFilters.value[key].filter((value) => available[key].has(value))
+  }
+}
+
+function visibleOptions(group: FilterGroup) {
+  if (group.key === 'types' || expandedGroups.value[group.key]) return group.options
+  return group.options.slice(0, group.defaultLimit)
+}
+
+function hasHiddenOptions(group: FilterGroup) {
+  return group.key !== 'types' && group.options.length > group.defaultLimit
+}
+
+function toggleGroupExpanded(key: FilterKey) {
+  expandedGroups.value[key] = !expandedGroups.value[key]
+}
+
+function readStoredSidebarWidth() {
+  try {
+    const rawValue = localStorage.getItem(SIDEBAR_WIDTH_STORAGE_KEY)
+    if (rawValue === null) return DEFAULT_SIDEBAR_WIDTH
+    const stored = Number(rawValue)
+    return Number.isFinite(stored) ? clamp(stored, MIN_SIDEBAR_WIDTH, MAX_SIDEBAR_WIDTH) : DEFAULT_SIDEBAR_WIDTH
+  } catch {
+    return DEFAULT_SIDEBAR_WIDTH
+  }
+}
+
+function storeSidebarWidth() {
+  try {
+    localStorage.setItem(SIDEBAR_WIDTH_STORAGE_KEY, String(sidebarWidth.value))
+  } catch {
+    // 浏览器禁用本地存储时仍保留本次页面内的拖拽结果。
+  }
+}
+
+function startSidebarResize(event: PointerEvent) {
+  if (event.button !== 0 || !marketplaceWorkspace.value) return
+  const workspaceWidth = marketplaceWorkspace.value.getBoundingClientRect().width
+  resizeStartX = event.clientX
+  resizeStartWidth = sidebarWidth.value
+  resizeMaxWidth = Math.max(MIN_SIDEBAR_WIDTH, Math.min(MAX_SIDEBAR_WIDTH, workspaceWidth * 0.45))
+  resizing = true
+  document.body.classList.add('is-resizing-model-filter')
+  window.addEventListener('pointermove', handleSidebarResize)
+  window.addEventListener('pointerup', stopSidebarResize)
+  window.addEventListener('pointercancel', stopSidebarResize)
+  event.preventDefault()
+}
+
+function handleSidebarResize(event: PointerEvent) {
+  if (!resizing) return
+  sidebarWidth.value = Math.round(clamp(resizeStartWidth + event.clientX - resizeStartX, MIN_SIDEBAR_WIDTH, resizeMaxWidth))
+}
+
+function stopSidebarResize() {
+  if (!resizing) return
+  resizing = false
+  storeSidebarWidth()
+  document.body.classList.remove('is-resizing-model-filter')
+  window.removeEventListener('pointermove', handleSidebarResize)
+  window.removeEventListener('pointerup', stopSidebarResize)
+  window.removeEventListener('pointercancel', stopSidebarResize)
+}
+
+function resizeSidebarWithKeyboard(event: KeyboardEvent) {
+  if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
+  const direction = event.key === 'ArrowLeft' ? -1 : 1
+  const workspaceWidth = marketplaceWorkspace.value?.getBoundingClientRect().width ?? MAX_SIDEBAR_WIDTH / 0.45
+  const maxWidth = Math.max(MIN_SIDEBAR_WIDTH, Math.min(MAX_SIDEBAR_WIDTH, workspaceWidth * 0.45))
+  sidebarWidth.value = Math.round(clamp(sidebarWidth.value + direction * 16, MIN_SIDEBAR_WIDTH, maxWidth))
+  storeSidebarWidth()
+  event.preventDefault()
+}
+
+function clamp(value: number, minimum: number, maximum: number) {
+  return Math.min(maximum, Math.max(minimum, value))
 }
 
 function modelTypeLabel(type?: ModelType) {
@@ -156,22 +362,6 @@ function modelTypeLabel(type?: ModelType) {
   }
   const value = cleanText(type)
   return value ? labels[value] ?? value : ''
-}
-
-function modelTypeSymbol(type?: ModelType) {
-  const symbols: Record<string, string> = {
-    NUMERIC: '序',
-    FUSION: '融',
-    MULTIMODAL: '云',
-    IMAGE_TO_NUMERIC: '图',
-    IMAGE: '图'
-  }
-  return symbols[cleanText(type)] ?? '模'
-}
-
-function modelTypeClass(type?: ModelType) {
-  const value = cleanText(type).toLowerCase().replace(/[^a-z0-9_-]/g, '-')
-  return value ? `type-${value}` : 'type-default'
 }
 
 function statusLabel(status?: string) {
@@ -197,10 +387,6 @@ function displayDescription(model: ModelListItem | ModelDetail) {
 
 function hasTextList(value?: string[]) {
   return Array.isArray(value) && value.some((item) => Boolean(cleanText(item)))
-}
-
-function canUse(model: ModelListItem | ModelDetail) {
-  return cleanText(model.status) === 'ONLINE'
 }
 
 function formatMetric(value: unknown, suffix = '') {
@@ -240,7 +426,7 @@ function formatSchema(value?: string | Record<string, unknown>) {
       <el-button class="filter-toggle" plain @click="filterVisible = !filterVisible">
         <span class="filter-icon" aria-hidden="true">☷</span>
         {{ filterVisible ? '隐藏筛选器' : '展开筛选器' }}
-        <span v-if="selectedTypes.length" class="filter-count">{{ selectedTypes.length }}</span>
+        <span v-if="activeFilterCount" class="filter-count">{{ activeFilterCount }}</span>
       </el-button>
 
       <el-input
@@ -248,8 +434,8 @@ function formatSchema(value?: string | Record<string, unknown>) {
         class="model-search"
         clearable
         size="large"
-        placeholder="搜索模型名称"
-        aria-label="搜索模型名称"
+        placeholder="搜索模型名称、标签或来源"
+        aria-label="搜索模型名称、标签或来源"
       >
         <template #prefix>
           <span class="search-icon" aria-hidden="true">⌕</span>
@@ -257,92 +443,195 @@ function formatSchema(value?: string | Record<string, unknown>) {
       </el-input>
     </section>
 
-    <section v-if="loading" class="model-grid" aria-label="正在加载模型">
-      <article v-for="index in 6" :key="index" class="model-card skeleton-card">
-        <el-skeleton animated :rows="4" />
-      </article>
-    </section>
-
-    <section v-else-if="loadError" class="state-panel">
-      <el-empty description="模型列表加载失败" :image-size="88">
-        <p class="state-message">{{ loadError }}</p>
-        <el-button type="primary" @click="fetchModels">重新加载</el-button>
-      </el-empty>
-    </section>
-
-    <section v-else-if="!filteredModels.length" class="state-panel">
-      <el-empty :description="emptyDescription" :image-size="88">
-        <el-button v-if="hasActiveFilters" plain type="primary" @click="clearAllFilters">清空条件</el-button>
-      </el-empty>
-    </section>
-
-    <section v-else class="model-grid" aria-live="polite">
-      <button
-        v-for="model in filteredModels"
-        :key="model.modelId"
-        type="button"
-        class="model-card"
-        :aria-label="`查看 ${model.modelName} 详情`"
-        @click="openDetail(model)"
-      >
-        <span class="card-accent" :class="modelTypeClass(model.modelType)"></span>
-        <span class="card-heading">
-          <span class="model-symbol" :class="modelTypeClass(model.modelType)" aria-hidden="true">
-            {{ modelTypeSymbol(model.modelType) }}
-          </span>
-          <span class="model-heading-copy">
-            <strong>{{ model.modelName }}</strong>
-            <small v-if="cleanText(model.modelCode)">{{ model.modelCode }}</small>
-          </span>
-          <span class="card-arrow" aria-hidden="true">→</span>
-        </span>
-
-        <span v-if="displayDescription(model)" class="model-description">{{ displayDescription(model) }}</span>
-
-        <span v-if="hasTextList(model.tags)" class="tag-row">
-          <span v-for="tag in model.tags" :key="tag" class="tag-chip">{{ tag }}</span>
-        </span>
-
-        <span class="card-footer">
-          <span class="card-footer-tags">
-            <span v-if="modelTypeLabel(model.modelType)" class="model-type-tag">
-              {{ modelTypeLabel(model.modelType) }}
-            </span>
-            <span v-if="statusLabel(model.status)" class="status-pill" :class="`status-${cleanText(model.status).toLowerCase()}`">
-              {{ statusLabel(model.status) }}
-            </span>
-          </span>
-          <span class="detail-hint">{{ canUse(model) ? '查看详情' : '仅展示' }}</span>
-        </span>
-      </button>
-    </section>
-
-    <el-drawer
-      v-model="filterVisible"
-      title="筛选模型"
-      direction="ltr"
-      size="320px"
-      class="marketplace-filter-drawer"
+    <div
+      ref="marketplaceWorkspace"
+      class="marketplace-workspace"
+      :class="{ 'has-filter-sidebar': filterVisible }"
+      :style="{ '--filter-sidebar-width': `${sidebarWidth}px` }"
     >
-      <div class="filter-drawer-content">
-        <div class="filter-section-heading">
+      <aside v-if="filterVisible" class="filter-sidebar" aria-label="模型筛选条件">
+        <div class="filter-sidebar-head">
           <div>
-            <strong>模型类型</strong>
-            <p>可多选，并与模型名称搜索同时生效</p>
+            <strong>筛选模型</strong>
+            <p>组内多选，筛选组之间组合生效</p>
           </div>
-          <el-button v-if="selectedTypes.length" text type="primary" @click="clearTypeFilters">清空</el-button>
+          <el-button v-if="activeFilterCount" text type="primary" @click="clearAllFilters">全部清空</el-button>
         </div>
 
-        <el-checkbox-group v-if="typeOptions.length" v-model="selectedTypes" class="type-filter-list">
-          <el-checkbox v-for="option in typeOptions" :key="option.value" :value="option.value" border>
-            <span>{{ option.label }}</span>
-            <small>{{ option.count }}</small>
-          </el-checkbox>
-        </el-checkbox-group>
-        <el-empty v-else description="暂无可用类型" :image-size="64" />
+        <div class="filter-sidebar-body">
+          <section v-for="group in primaryFilterGroups" :key="group.key" class="filter-group">
+            <div class="filter-section-heading">
+              <div>
+                <strong>{{ group.label }}</strong>
+                <p>{{ group.description }}</p>
+              </div>
+              <el-button
+                v-if="selectedFilters[group.key].length"
+                text
+                type="primary"
+                @click="clearFilterGroup(group.key)"
+              >
+                清空
+              </el-button>
+            </div>
 
+            <el-checkbox-group
+              v-model="selectedFilters[group.key]"
+              class="filter-option-list"
+              :class="{ 'type-option-list': group.key === 'types' }"
+            >
+              <el-checkbox v-for="option in visibleOptions(group)" :key="option.value" :value="option.value" border>
+                <el-tooltip :content="option.label" placement="top" :disabled="option.label.length <= 9">
+                  <span class="filter-option-label">{{ option.label }}</span>
+                </el-tooltip>
+                <small>{{ option.count }}</small>
+              </el-checkbox>
+            </el-checkbox-group>
+
+            <el-button
+              v-if="hasHiddenOptions(group)"
+              class="group-more-button"
+              text
+              type="primary"
+              @click="toggleGroupExpanded(group.key)"
+            >
+              {{ expandedGroups[group.key] ? '收起' : `更多（${group.options.length - group.defaultLimit}）` }}
+            </el-button>
+          </section>
+
+          <section v-if="moreFilterGroups.length" class="more-filter-section">
+            <button type="button" class="more-filter-toggle" @click="moreFiltersVisible = !moreFiltersVisible">
+              <span>更多筛选</span>
+              <small>来源、状态、年份</small>
+              <span class="toggle-arrow" :class="{ expanded: moreFiltersVisible }">⌄</span>
+            </button>
+
+            <div v-if="moreFiltersVisible" class="more-filter-groups">
+              <section v-for="group in moreFilterGroups" :key="group.key" class="filter-group compact-filter-group">
+                <div class="filter-section-heading">
+                  <div>
+                    <strong>{{ group.label }}</strong>
+                    <p>{{ group.description }}</p>
+                  </div>
+                  <el-button
+                    v-if="selectedFilters[group.key].length"
+                    text
+                    type="primary"
+                    @click="clearFilterGroup(group.key)"
+                  >
+                    清空
+                  </el-button>
+                </div>
+
+                <el-checkbox-group v-model="selectedFilters[group.key]" class="filter-option-list">
+                  <el-checkbox v-for="option in visibleOptions(group)" :key="option.value" :value="option.value" border>
+                    <el-tooltip :content="option.label" placement="top" :disabled="option.label.length <= 9">
+                      <span class="filter-option-label">{{ option.label }}</span>
+                    </el-tooltip>
+                    <small>{{ option.count }}</small>
+                  </el-checkbox>
+                </el-checkbox-group>
+
+                <el-button
+                  v-if="hasHiddenOptions(group)"
+                  class="group-more-button"
+                  text
+                  type="primary"
+                  @click="toggleGroupExpanded(group.key)"
+                >
+                  {{ expandedGroups[group.key] ? '收起' : `更多（${group.options.length - group.defaultLimit}）` }}
+                </el-button>
+              </section>
+            </div>
+          </section>
+        </div>
+      </aside>
+
+      <div
+        v-if="filterVisible"
+        class="filter-resizer"
+        role="separator"
+        aria-label="调整筛选栏宽度"
+        aria-orientation="vertical"
+        :aria-valuemin="MIN_SIDEBAR_WIDTH"
+        :aria-valuemax="MAX_SIDEBAR_WIDTH"
+        :aria-valuenow="sidebarWidth"
+        tabindex="0"
+        @pointerdown="startSidebarResize"
+        @keydown="resizeSidebarWithKeyboard"
+      >
+        <span></span>
       </div>
-    </el-drawer>
+
+      <main class="model-results">
+        <div v-if="selectedFilterChips.length" class="selected-filter-bar">
+          <div class="selected-filter-chips">
+            <el-tag
+              v-for="chip in selectedFilterChips"
+              :key="`${chip.key}-${chip.value}`"
+              closable
+              effect="plain"
+              @close="removeSelectedFilter(chip)"
+            >
+              {{ chip.label }}
+            </el-tag>
+          </div>
+          <div class="selected-filter-actions">
+            <span>{{ filteredModels.length }} / {{ models.length }} 个模型</span>
+            <el-button text type="primary" @click="clearAllFilters">清空全部</el-button>
+          </div>
+        </div>
+
+        <section v-if="loading" class="model-grid" aria-label="正在加载模型">
+          <article v-for="index in 6" :key="index" class="model-card skeleton-card">
+            <el-skeleton animated :rows="4" />
+          </article>
+        </section>
+
+        <section v-else-if="loadError" class="state-panel">
+          <el-empty description="模型列表加载失败" :image-size="88">
+            <p class="state-message">{{ loadError }}</p>
+            <el-button type="primary" @click="fetchModels">重新加载</el-button>
+          </el-empty>
+        </section>
+
+        <section v-else-if="!filteredModels.length" class="state-panel">
+          <el-empty :description="emptyDescription" :image-size="88">
+            <el-button v-if="hasActiveFilters" plain type="primary" @click="clearAllFilters">清空条件</el-button>
+          </el-empty>
+        </section>
+
+        <section v-else class="model-grid" aria-live="polite">
+          <button
+            v-for="model in filteredModels"
+            :key="model.modelId"
+            type="button"
+            class="model-card"
+            :aria-label="`查看 ${model.modelName} 详情`"
+            @click="openDetail(model)"
+          >
+            <span class="card-heading">
+              <img
+                class="model-icon"
+                :src="getModelIcon(model.modelCode, model.modelType)"
+                alt=""
+                width="64"
+                height="64"
+              />
+              <span class="model-heading-copy">
+                <strong>{{ model.modelName }}</strong>
+              </span>
+            </span>
+
+            <span v-if="displayDescription(model)" class="model-description">{{ displayDescription(model) }}</span>
+
+            <span v-if="hasTextList(model.tags)" class="tag-row">
+              <span v-for="tag in model.tags" :key="tag" class="tag-chip">{{ tag }}</span>
+            </span>
+          </button>
+        </section>
+      </main>
+    </div>
 
     <el-drawer
       v-model="detailVisible"
@@ -367,9 +656,13 @@ function formatSchema(value?: string | Record<string, unknown>) {
         </el-alert>
 
         <section class="detail-hero">
-          <span class="detail-symbol" :class="modelTypeClass(selectedModel.modelType)" aria-hidden="true">
-            {{ modelTypeSymbol(selectedModel.modelType) }}
-          </span>
+          <img
+            class="detail-icon"
+            :src="getModelIcon(selectedModel.modelCode, selectedModel.modelType)"
+            alt=""
+            width="76"
+            height="76"
+          />
           <div class="detail-heading-copy">
             <p v-if="cleanText(selectedModel.modelCode)" class="detail-code">{{ selectedModel.modelCode }}</p>
             <h2>{{ selectedModel.modelName }}</h2>
@@ -557,9 +850,132 @@ function formatSchema(value?: string | Record<string, unknown>) {
   box-shadow: 0 0 0 3px rgba(29, 111, 220, 0.1);
 }
 
+.marketplace-workspace {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+}
+
+.marketplace-workspace.has-filter-sidebar {
+  grid-template-columns: min(var(--filter-sidebar-width), 45%) 12px minmax(0, 1fr);
+}
+
+.filter-sidebar {
+  position: sticky;
+  top: 64px;
+  min-width: 0;
+  max-height: calc(100vh - 80px);
+  overflow-x: hidden;
+  overflow-y: auto;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  background: #ffffff;
+  box-shadow: 0 8px 24px rgba(20, 65, 120, 0.06);
+  scrollbar-width: thin;
+}
+
+.filter-sidebar-head {
+  position: sticky;
+  z-index: 2;
+  top: 0;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 16px;
+  border-bottom: 1px solid var(--color-border);
+  background: rgba(255, 255, 255, 0.96);
+  backdrop-filter: blur(8px);
+}
+
+.filter-sidebar-head strong {
+  color: #10274c;
+  font-size: 17px;
+}
+
+.filter-sidebar-head p {
+  margin: 5px 0 0;
+  color: var(--color-muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.filter-sidebar-body {
+  display: grid;
+  gap: 24px;
+  padding: 16px;
+}
+
+.filter-resizer {
+  position: sticky;
+  top: 64px;
+  display: grid;
+  width: 12px;
+  height: calc(100vh - 80px);
+  place-items: center;
+  border-radius: 6px;
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.filter-resizer span {
+  width: 3px;
+  height: 48px;
+  border-radius: 2px;
+  background: #c7d5e5;
+  transition: width 160ms ease, background 160ms ease;
+}
+
+.filter-resizer:hover span,
+.filter-resizer:focus-visible span {
+  width: 4px;
+  background: var(--color-primary);
+}
+
+.filter-resizer:focus-visible {
+  outline: 2px solid rgba(29, 111, 220, 0.22);
+  outline-offset: -2px;
+}
+
+.model-results {
+  display: grid;
+  min-width: 0;
+  gap: 16px;
+}
+
+.selected-filter-bar {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 12px 14px;
+  border: 1px solid #d8e3f0;
+  border-radius: 10px;
+  background: #ffffff;
+}
+
+.selected-filter-chips {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.selected-filter-actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 8px;
+  color: var(--color-muted);
+  font-size: 13px;
+}
+
 .model-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  min-width: 0;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
   gap: 16px;
 }
 
@@ -591,77 +1007,18 @@ function formatSchema(value?: string | Record<string, unknown>) {
   transform: translateY(-3px);
 }
 
-.card-accent {
-  position: absolute;
-  top: 0;
-  right: 0;
-  left: 0;
-  height: 3px;
-  background: #78aef4;
-}
-
-.card-accent.type-fusion,
-.model-symbol.type-fusion,
-.detail-symbol.type-fusion {
-  background: #e8f7f2;
-  color: #178563;
-}
-
-.card-accent.type-multimodal,
-.model-symbol.type-multimodal,
-.detail-symbol.type-multimodal {
-  background: #f0ecff;
-  color: #6750c7;
-}
-
-.card-accent.type-image_to_numeric,
-.card-accent.type-image,
-.model-symbol.type-image_to_numeric,
-.model-symbol.type-image,
-.detail-symbol.type-image_to_numeric,
-.detail-symbol.type-image {
-  background: #fff3df;
-  color: #b36b05;
-}
-
-.card-accent.type-fusion,
-.card-accent.type-multimodal,
-.card-accent.type-image_to_numeric,
-.card-accent.type-image {
-  color: transparent;
-}
-
-.card-accent.type-fusion {
-  background: #38b98d;
-}
-
-.card-accent.type-multimodal {
-  background: #8069dd;
-}
-
-.card-accent.type-image_to_numeric,
-.card-accent.type-image {
-  background: #e6a23c;
-}
-
 .card-heading {
   display: flex;
   align-items: center;
   gap: 13px;
 }
 
-.model-symbol,
-.detail-symbol {
-  display: inline-grid;
-  place-items: center;
-  width: 48px;
-  height: 48px;
-  flex: 0 0 48px;
-  border-radius: 12px;
-  color: #1d6fdc;
-  background: #e8f2ff;
-  font-size: 20px;
-  font-weight: 800;
+.model-icon {
+  display: block;
+  width: 64px;
+  height: 64px;
+  flex: 0 0 64px;
+  border-radius: 14px;
 }
 
 .model-heading-copy,
@@ -679,27 +1036,6 @@ function formatSchema(value?: string | Record<string, unknown>) {
   white-space: nowrap;
 }
 
-.model-heading-copy small {
-  display: block;
-  margin-top: 4px;
-  overflow: hidden;
-  color: #7a89a0;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.card-arrow {
-  margin-left: auto;
-  color: #9aabc0;
-  font-size: 20px;
-  transition: color 180ms ease, transform 180ms ease;
-}
-
-.model-card:hover .card-arrow {
-  color: var(--color-primary);
-  transform: translateX(3px);
-}
-
 .model-description {
   display: -webkit-box;
   overflow: hidden;
@@ -709,19 +1045,15 @@ function formatSchema(value?: string | Record<string, unknown>) {
   -webkit-line-clamp: 3;
 }
 
-.card-footer {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  margin-top: auto;
-}
-
 .tag-row {
   display: flex;
   min-width: 0;
   flex-wrap: wrap;
   gap: 8px;
+}
+
+.model-card > .tag-row {
+  margin-top: auto;
 }
 
 .tag-chip {
@@ -738,53 +1070,6 @@ function formatSchema(value?: string | Record<string, unknown>) {
   font-size: 12px;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.card-footer-tags {
-  display: flex;
-  min-width: 0;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.model-type-tag,
-.status-pill {
-  display: inline-flex;
-  max-width: 78%;
-  min-height: 28px;
-  align-items: center;
-  padding: 4px 10px;
-  overflow: hidden;
-  border: 1px solid #cfe0f4;
-  border-radius: 7px;
-  color: #27649f;
-  background: #f2f7fd;
-  font-size: 13px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.status-online {
-  border-color: #b7dfc2;
-  color: #237346;
-  background: #f0fbf3;
-}
-
-.status-offline {
-  border-color: #d9e0ea;
-  color: #65748a;
-  background: #f6f8fb;
-}
-
-.status-testing {
-  border-color: #f1d49b;
-  color: #946200;
-  background: #fff8e8;
-}
-
-.detail-hint {
-  color: #8796aa;
-  font-size: 13px;
 }
 
 .skeleton-card {
@@ -814,16 +1099,20 @@ function formatSchema(value?: string | Record<string, unknown>) {
   text-align: center;
 }
 
-.filter-drawer-content {
-  display: grid;
-  gap: 20px;
-}
-
 .filter-section-heading {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
+}
+
+.filter-group {
+  display: grid;
+  gap: 12px;
+}
+
+.filter-section-heading {
+  padding: 0 2px;
 }
 
 .filter-section-heading strong {
@@ -838,30 +1127,106 @@ function formatSchema(value?: string | Record<string, unknown>) {
   line-height: 1.6;
 }
 
-.type-filter-list {
+.filter-option-list {
   display: grid;
-  gap: 10px;
+  min-width: 0;
+  grid-template-columns: repeat(auto-fill, minmax(112px, 1fr));
+  gap: 8px;
 }
 
-.type-filter-list :deep(.el-checkbox) {
+.filter-option-list.type-option-list {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.filter-option-list :deep(.el-checkbox) {
+  min-width: 0;
   width: 100%;
-  height: 42px;
+  min-height: 42px;
   margin: 0;
-  padding: 0 12px;
+  padding: 8px 12px;
   border-radius: 8px;
 }
 
-.type-filter-list :deep(.el-checkbox__label) {
+.filter-option-list :deep(.el-checkbox__label) {
   display: flex;
   min-width: 0;
   flex: 1;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
+  overflow: hidden;
 }
 
-.type-filter-list small {
+.filter-option-label {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.filter-option-list small {
+  flex: 0 0 auto;
   color: #94a2b5;
+}
+
+.group-more-button {
+  justify-self: start;
+  padding: 0;
+}
+
+.more-filter-section {
+  display: grid;
+  gap: 16px;
+  padding-top: 4px;
+  border-top: 1px solid var(--color-border);
+}
+
+.more-filter-toggle {
+  display: grid;
+  width: 100%;
+  min-width: 0;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 0 0;
+  border: 0;
+  color: #10274c;
+  background: transparent;
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+}
+
+.more-filter-toggle small {
+  overflow: hidden;
+  color: var(--color-muted);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.toggle-arrow {
+  color: #7a89a0;
+  transition: transform 160ms ease;
+}
+
+.toggle-arrow.expanded {
+  transform: rotate(180deg);
+}
+
+.more-filter-groups {
+  display: grid;
+  gap: 22px;
+}
+
+.compact-filter-group .filter-section-heading p {
+  display: none;
+}
+
+:global(body.is-resizing-model-filter) {
+  cursor: col-resize;
+  user-select: none;
 }
 
 .detail-panel {
@@ -880,11 +1245,12 @@ function formatSchema(value?: string | Record<string, unknown>) {
   background: linear-gradient(135deg, #f8fbff 0%, #ffffff 70%);
 }
 
-.detail-symbol {
-  width: 58px;
-  height: 58px;
-  flex-basis: 58px;
-  font-size: 23px;
+.detail-icon {
+  display: block;
+  width: 76px;
+  height: 76px;
+  flex: 0 0 76px;
+  border-radius: 16px;
 }
 
 .detail-code,
@@ -1035,9 +1401,20 @@ function formatSchema(value?: string | Record<string, unknown>) {
   word-break: break-word;
 }
 
-@media (max-width: 1280px) {
-  .model-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+@media (max-width: 1000px) {
+  .marketplace-workspace.has-filter-sidebar {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 16px;
+  }
+
+  .filter-sidebar {
+    position: static;
+    width: 100%;
+    max-height: none;
+  }
+
+  .filter-resizer {
+    display: none;
   }
 }
 
@@ -1057,6 +1434,16 @@ function formatSchema(value?: string | Record<string, unknown>) {
   .model-grid,
   .config-grid {
     grid-template-columns: 1fr;
+  }
+
+  .selected-filter-bar,
+  .selected-filter-actions {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .filter-sidebar-body {
+    padding: 14px;
   }
 
   .model-card {

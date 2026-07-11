@@ -50,7 +50,7 @@ export default defineConfig({
       allow: [webRoot, projectRoot]
     },
     proxy: {
-      '/api': {
+      '^/api/': {
         target: backendUrl,
         changeOrigin: true
       },
