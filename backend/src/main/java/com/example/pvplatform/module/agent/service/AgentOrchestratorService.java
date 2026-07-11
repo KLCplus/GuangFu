@@ -35,12 +35,13 @@ public class AgentOrchestratorService {
     private final LlmPromptBuilder promptBuilder;
     private final AgentProgressService progress;
     private final AgentJsonService jsonService;
+    private final SlashCommandParser slashCommandParser;
 
     public AgentOrchestratorService(AgentSessionService sessionService, AgentMessageService messageService,
                                     AgentToolService toolService, AgentApprovalService approvalService,
                                     AgentToolRegistry toolRegistry, AgentLlmClient llmClient,
                                     LlmPromptBuilder promptBuilder, AgentProgressService progress,
-                                    AgentJsonService jsonService) {
+                                    AgentJsonService jsonService, SlashCommandParser slashCommandParser) {
         this.sessionService = sessionService;
         this.messageService = messageService;
         this.toolService = toolService;
@@ -50,6 +51,7 @@ public class AgentOrchestratorService {
         this.promptBuilder = promptBuilder;
         this.progress = progress;
         this.jsonService = jsonService;
+        this.slashCommandParser = slashCommandParser;
     }
 
     public void chat(AgentChatRequest request, SseEmitter emitter) {
@@ -66,11 +68,21 @@ public class AgentOrchestratorService {
             progress.send(emitter, "thinking", Map.of("text", "正在理解任务并选择工具..."));
 
             List<AgentTool> tools = toolRegistry.enabledTools(request.allowedTools());
+            AgentToolIntent intent = slashCommandParser.parse(request.message(), request.context(), request.preferredTool(), request.toolArguments());
+            progress.send(emitter, "intent_resolved", intentPayload(intent));
+            if (intent.needsQuestion()) {
+                AgentMessageDO assistant = messageService.save(session.getSessionId(), "assistant", intent.question(), metadata("type", "ask_user", "reason", intent.reason(), "intent", intentPayload(intent)));
+                progress.send(emitter, "final", finalPayload(assistant, intent.question(), List.of()));
+                sessionService.touch(session.getSessionId());
+                return;
+            }
             String systemPrompt = promptBuilder.build(user, request.context(), tools);
             List<Map<String, Object>> llmMessages = new ArrayList<>();
             appendHistory(session.getSessionId(), llmMessages);
-            llmMessages.add(Map.of("role", "user", "content", request.message() == null ? "" : request.message()));
-            runDecisionLoop(session, userMessage, request, emitter, user, systemPrompt, llmMessages, tools);
+            String normalizedMessage = intent.matched() && intent.normalizedMessage() != null && !intent.normalizedMessage().isBlank()
+                ? intent.normalizedMessage() : (request.message() == null ? "" : request.message());
+            llmMessages.add(Map.of("role", "user", "content", normalizedMessage));
+            runDecisionLoop(session, userMessage, request, emitter, user, systemPrompt, llmMessages, tools, intent);
         } catch (BusinessException exception) {
             progress.error(emitter, "AGENT_BUSINESS_ERROR", exception.getMessage(), exception.getMessage(), true);
         } catch (Exception exception) {
@@ -110,10 +122,26 @@ public class AgentOrchestratorService {
 
     private void runDecisionLoop(AgentSessionDO session, AgentMessageDO userMessage, AgentChatRequest request,
                                  SseEmitter emitter, SecurityUser user, String systemPrompt,
-                                 List<Map<String, Object>> llmMessages, List<AgentTool> tools) {
+                                 List<Map<String, Object>> llmMessages, List<AgentTool> tools, AgentToolIntent intent) {
         List<Object> toolEvents = new ArrayList<>();
         for (int i = 0; i < MAX_TOOL_LOOPS; i++) {
-            AgentLlmDecision decision = llmClient.decide(systemPrompt, llmMessages);
+            AgentLlmDecision decision;
+            try {
+                List<AgentToolCallSpec> initialCalls = i == 0 ? initialToolCalls(request, intent) : List.of();
+                decision = !initialCalls.isEmpty()
+                    ? new AgentLlmDecision("tool_call", intent.reason(), initialCalls, "", "", "", null)
+                    : llmClient.decide(systemPrompt, llmMessages);
+            } catch (BusinessException exception) {
+                if (!toolEvents.isEmpty()) {
+                    String answer = "已完成真实工具调用，但 LLM 总结不可用：" + exception.getMessage() + "\n\n" + summarizeToolEvents(toolEvents);
+                    AgentMessageDO assistant = messageService.save(session.getSessionId(), "assistant", answer, metadata("type", "final", "reason", "LLM_UNAVAILABLE_AFTER_TOOLS"));
+                    progress.send(emitter, "final", finalPayload(assistant, answer, toolEvents));
+                    sessionService.touch(session.getSessionId());
+                    return;
+                }
+                throw exception;
+            }
+            progress.send(emitter, "llm_decision", decisionPayload(decision, i == 0 && intent.matched() ? intent.source() : "llm"));
             if (decision.isAskUser()) {
                 String question = decision.question() == null || decision.question().isBlank() ? "请补充必要参数。" : decision.question();
                 AgentMessageDO assistant = messageService.save(session.getSessionId(), "assistant", question, metadata("type", "ask_user", "reason", nullToEmpty(decision.reason())));
@@ -121,12 +149,30 @@ public class AgentOrchestratorService {
                 sessionService.touch(session.getSessionId());
                 return;
             }
-            if (!decision.isToolCall()) {
-                String answer = decision.answer() == null || decision.answer().isBlank() ? "我没有得到可执行的结论。" : decision.answer();
-                AgentMessageDO assistant = messageService.save(session.getSessionId(), "assistant", answer, metadata("type", "final", "reason", nullToEmpty(decision.reason())));
-                progress.send(emitter, "final", finalPayload(assistant, answer, toolEvents));
-                sessionService.touch(session.getSessionId());
-                return;
+            if (!decision.isToolCall() && !decision.isApprovalRequest()) {
+                if (toolEvents.isEmpty() && intent.businessRelated()) {
+                    AgentToolIntent forced = intent.matched() ? intent : slashCommandParser.natural(request.message(), request.context());
+                    if (forced.matched() && !forced.needsQuestion()) {
+                        progress.send(emitter, "final_intercepted", Map.of(
+                            "reason", "业务问题 final 被拦截，强制进入工具调用",
+                            "toolName", forced.toolName(),
+                            "arguments", forced.arguments()
+                        ));
+                        decision = new AgentLlmDecision("tool_call", "业务问题必须调用工具，已由后端兜底选择工具", List.of(new AgentToolCallSpec(forced.toolName(), forced.arguments())), "", "", decision.rawOutput(), decision.parseError());
+                    } else {
+                        String question = forced.needsQuestion() ? forced.question() : "请补充要查询的业务对象，例如电站 ID、任务 ID 或报告 ID。";
+                        AgentMessageDO assistant = messageService.save(session.getSessionId(), "assistant", question, metadata("type", "ask_user", "reason", "业务问题缺少关键参数"));
+                        progress.send(emitter, "final", finalPayload(assistant, question, toolEvents));
+                        sessionService.touch(session.getSessionId());
+                        return;
+                    }
+                } else {
+                    String answer = decision.answer() == null || decision.answer().isBlank() ? "我没有得到可执行的结论。" : decision.answer();
+                    AgentMessageDO assistant = messageService.save(session.getSessionId(), "assistant", answer, metadata("type", "final", "reason", nullToEmpty(decision.reason())));
+                    progress.send(emitter, "final", finalPayload(assistant, answer, toolEvents));
+                    sessionService.touch(session.getSessionId());
+                    return;
+                }
             }
             progress.send(emitter, "plan", Map.of("steps", decision.toolCalls().stream().map(AgentToolCallSpec::toolName).toList(), "reason", nullToEmpty(decision.reason())));
             List<Map<String, Object>> loopResults = new ArrayList<>();
@@ -183,6 +229,75 @@ public class AgentOrchestratorService {
         }
     }
 
+    private List<AgentToolCallSpec> initialToolCalls(AgentChatRequest request, AgentToolIntent intent) {
+        if (intent == null || !intent.matched()) {
+            return List.of();
+        }
+        List<AgentToolCallSpec> comprehensive = comprehensiveAnalysisCalls(request, intent);
+        if (!comprehensive.isEmpty()) {
+            return comprehensive;
+        }
+        return List.of(new AgentToolCallSpec(intent.toolName(), intent.arguments()));
+    }
+
+    private List<AgentToolCallSpec> comprehensiveAnalysisCalls(AgentChatRequest request, AgentToolIntent intent) {
+        String message = request.message() == null ? "" : request.message().toLowerCase(Locale.ROOT);
+        if (message.startsWith("/") || !(message.contains("分析") || message.contains("波动") || message.contains("原因") || message.contains("综合"))) {
+            return List.of();
+        }
+        boolean wantsWeather = message.contains("天气") || message.contains("weather");
+        boolean wantsPrediction = message.contains("预测") || message.contains("prediction") || message.contains("功率") || message.contains("发电");
+        if (!wantsWeather && !wantsPrediction) {
+            return List.of();
+        }
+        Object stationId = intent.arguments() == null ? null : intent.arguments().get("stationId");
+        if (stationId == null) {
+            return List.of();
+        }
+        Map<String, Object> stationArgs = Map.of("stationId", stationId);
+        List<AgentToolCallSpec> calls = new ArrayList<>();
+        calls.add(new AgentToolCallSpec("station.detail", stationArgs));
+        if (wantsWeather) {
+            calls.add(new AgentToolCallSpec("weather.current", stationArgs));
+        }
+        Object taskId = intent.arguments().get("taskId");
+        if (taskId != null) {
+            calls.add(new AgentToolCallSpec("prediction.detail", Map.of("taskId", taskId)));
+        } else if (wantsPrediction) {
+            calls.add(new AgentToolCallSpec("prediction.list", stationArgs));
+        }
+        return calls;
+    }
+
+    private Map<String, Object> intentPayload(AgentToolIntent intent) {
+        if (intent == null) {
+            return Map.of("matched", false);
+        }
+        return metadata(
+            "matched", intent.matched(),
+            "source", nullToEmpty(intent.source()),
+            "toolName", nullToEmpty(intent.toolName()),
+            "arguments", intent.arguments() == null ? Map.of() : intent.arguments(),
+            "normalizedMessage", nullToEmpty(intent.normalizedMessage()),
+            "question", nullToEmpty(intent.question()),
+            "reason", nullToEmpty(intent.reason()),
+            "businessRelated", intent.businessRelated()
+        );
+    }
+
+    private Map<String, Object> decisionPayload(AgentLlmDecision decision, String source) {
+        return metadata(
+            "source", nullToEmpty(source),
+            "type", decision == null ? "" : nullToEmpty(decision.type()),
+            "reason", decision == null ? "" : nullToEmpty(decision.reason()),
+            "toolCalls", decision == null || decision.toolCalls() == null ? List.of() : decision.toolCalls(),
+            "answerPreview", decision == null ? "" : truncate(decision.answer(), 500),
+            "question", decision == null ? "" : nullToEmpty(decision.question()),
+            "rawOutput", decision == null ? "" : truncate(decision.rawOutput(), 2000),
+            "parseError", decision == null ? "" : nullToEmpty(decision.parseError())
+        );
+    }
+
     private Map<String, Object> resultPayload(AgentToolCallDO row, AgentTool tool, ToolExecutionResult result) {
         return new LinkedHashMap<>(Map.of(
             "toolCallId", row.getClientToolCallId(),
@@ -213,7 +328,33 @@ public class AgentOrchestratorService {
         return result.summary() == null || result.summary().isBlank() ? jsonService.json(result.data()) : result.summary();
     }
 
+    private String summarizeToolEvents(List<Object> toolEvents) {
+        return toolEvents.stream()
+            .map(item -> {
+                if (item instanceof Map<?, ?> map) {
+                    Object nameValue = map.containsKey("displayName") ? map.get("displayName") : map.get("toolName");
+                    Object summaryValue = map.containsKey("summary") ? map.get("summary") : map.get("error");
+                    String name = String.valueOf(nameValue == null ? "工具" : nameValue);
+                    String status = String.valueOf(map.get("status") == null ? "" : map.get("status"));
+                    String summary = String.valueOf(summaryValue == null ? "" : summaryValue);
+                    return "- " + name + " [" + status + "] " + summary;
+                }
+                return "- " + String.valueOf(item);
+            })
+            .toList()
+            .stream()
+            .reduce((a, b) -> a + "\n" + b)
+            .orElse("工具已返回结果。");
+    }
+
     private String nullToEmpty(String value) {
         return value == null ? "" : value;
+    }
+
+    private String truncate(String value, int limit) {
+        if (value == null || value.isBlank()) {
+            return "";
+        }
+        return value.length() <= limit ? value : value.substring(0, limit) + "...";
     }
 }

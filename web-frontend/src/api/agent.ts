@@ -6,6 +6,8 @@ export interface AgentChatRequest {
   context?: Record<string, unknown>
   mode?: string
   allowedTools?: string[]
+  preferredTool?: string
+  toolArguments?: Record<string, unknown>
   requireApproval?: boolean
   approvalId?: number | null
 }

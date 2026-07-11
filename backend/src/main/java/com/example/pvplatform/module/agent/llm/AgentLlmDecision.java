@@ -7,9 +7,12 @@ public record AgentLlmDecision(
     String reason,
     List<AgentToolCallSpec> toolCalls,
     String answer,
-    String question
+    String question,
+    String rawOutput,
+    String parseError
 ) {
     public boolean isToolCall() { return "tool_call".equals(type) && toolCalls != null && !toolCalls.isEmpty(); }
+    public boolean isApprovalRequest() { return "approval_request".equals(type) && toolCalls != null && !toolCalls.isEmpty(); }
     public boolean isFinal() { return "final".equals(type); }
     public boolean isAskUser() { return "ask_user".equals(type); }
 }

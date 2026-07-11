@@ -43,10 +43,10 @@ public class LlmToolCallParser {
                 type = "ask_user";
                 question = question.isBlank() ? "我需要更多参数才能调用工具。" : question;
             }
-            return new AgentLlmDecision(type, reason, calls, answer, question);
+            return new AgentLlmDecision(type, reason, calls, answer, question, content, null);
         } catch (Exception exception) {
             return new AgentLlmDecision("final", "模型输出不是合法 JSON", List.of(),
-                content == null || content.isBlank() ? "模型没有返回可解析内容。" : content, "");
+                content == null || content.isBlank() ? "模型没有返回可解析内容。" : content, "", content, exception.getMessage());
         }
     }
 
