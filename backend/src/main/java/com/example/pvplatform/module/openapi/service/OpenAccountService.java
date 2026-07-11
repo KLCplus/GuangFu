@@ -6,34 +6,52 @@ import com.example.pvplatform.module.openapi.vo.*;
 import com.example.pvplatform.persistence.entity.ApiCallLogDO;
 import com.example.pvplatform.persistence.entity.ApiKeyDO;
 import com.example.pvplatform.persistence.entity.ModelInfoDO;
+import com.example.pvplatform.persistence.entity.OpenRechargeOrderDO;
+import com.example.pvplatform.persistence.entity.OpenWalletAccountDO;
+import com.example.pvplatform.persistence.entity.OpenWalletRecordDO;
 import com.example.pvplatform.persistence.mapper.ApiCallLogMapper;
 import com.example.pvplatform.persistence.mapper.ApiKeyMapper;
 import com.example.pvplatform.persistence.mapper.ModelInfoMapper;
+import com.example.pvplatform.persistence.mapper.OpenRechargeOrderMapper;
+import com.example.pvplatform.persistence.mapper.OpenWalletAccountMapper;
+import com.example.pvplatform.persistence.mapper.OpenWalletRecordMapper;
 import com.example.pvplatform.security.SecurityUtils;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
 @Service
 public class OpenAccountService {
-    private static final BigDecimal UNIT_PRICE = new BigDecimal("0.01");
+    private static final BigDecimal API_CALL_PRICE = new BigDecimal("0.01");
+    private static final String CURRENCY = "CNY";
     private final ApiKeyMapper apiKeyMapper;
     private final ApiCallLogMapper callLogMapper;
     private final ModelInfoMapper modelMapper;
+    private final OpenWalletAccountMapper walletAccountMapper;
+    private final OpenWalletRecordMapper walletRecordMapper;
+    private final OpenRechargeOrderMapper rechargeOrderMapper;
 
     public OpenAccountService(ApiKeyMapper apiKeyMapper, ApiCallLogMapper callLogMapper,
-                              ModelInfoMapper modelMapper) {
+                              ModelInfoMapper modelMapper, OpenWalletAccountMapper walletAccountMapper,
+                              OpenWalletRecordMapper walletRecordMapper,
+                              OpenRechargeOrderMapper rechargeOrderMapper) {
         this.apiKeyMapper = apiKeyMapper;
         this.callLogMapper = callLogMapper;
         this.modelMapper = modelMapper;
+        this.walletAccountMapper = walletAccountMapper;
+        this.walletRecordMapper = walletRecordMapper;
+        this.rechargeOrderMapper = rechargeOrderMapper;
     }
 
     public MarketplaceTrialVO requestTrial(Long modelId) {
@@ -68,19 +86,69 @@ public class OpenAccountService {
         }).toList();
     }
 
+    @Transactional
     public WalletVO wallet() {
         Long userId = SecurityUtils.requireCurrentUserId();
-        LocalDateTime monthStart = LocalDate.now().withDayOfMonth(1).atStartOfDay();
-        List<ApiCallLogDO> monthLogs = callLogMapper.selectList(Wrappers.<ApiCallLogDO>lambdaQuery()
-            .eq(ApiCallLogDO::getUserId, userId)
-            .ge(ApiCallLogDO::getRequestTime, monthStart)
-            .orderByDesc(ApiCallLogDO::getRequestTime));
-        BigDecimal monthlyCost = UNIT_PRICE.multiply(BigDecimal.valueOf(monthLogs.size()))
-            .setScale(2, RoundingMode.HALF_UP);
-        List<WalletRecordVO> records = monthLogs.stream().limit(20).map(log -> new WalletRecordVO(
-            log.getLogId(), "CONSUME", UNIT_PRICE.negate(), "开放 API 调用扣费", log.getRequestTime()
-        )).toList();
-        return new WalletVO(BigDecimal.ZERO.setScale(2), BigDecimal.ZERO.setScale(2), monthlyCost, "CNY", records);
+        OpenWalletAccountDO account = ensureAccount(userId);
+        return wallet(account);
+    }
+
+    @Transactional
+    public RechargeOrderVO recharge(java.math.BigDecimal amount, String channel) {
+        Long userId = SecurityUtils.requireCurrentUserId();
+        BigDecimal normalized = normalizeAmount(amount);
+        OpenWalletAccountDO account = ensureAccount(userId);
+        String safeChannel = channel == null || channel.isBlank() ? "MOCK" : channel.trim().toUpperCase();
+        LocalDateTime now = LocalDateTime.now();
+
+        OpenRechargeOrderDO order = new OpenRechargeOrderDO();
+        order.setOrderNo(nextOrderNo());
+        order.setUserId(userId);
+        order.setAccountId(account.getAccountId());
+        order.setAmount(normalized);
+        order.setCurrency(CURRENCY);
+        order.setChannel(safeChannel);
+        order.setStatus("PAID");
+        order.setPaidAt(now);
+        order.setCreatedAt(now);
+        order.setUpdatedAt(now);
+        rechargeOrderMapper.insert(order);
+
+        account.setBalance(account.getBalance().add(normalized).setScale(2, RoundingMode.HALF_UP));
+        account.setUpdatedAt(now);
+        walletAccountMapper.updateById(account);
+        insertRecord(account, order.getOrderNo(), "RECHARGE", normalized, "账户充值", safeChannel + " 模拟支付成功", now);
+
+        return toRechargeOrderVO(order);
+    }
+
+    @Transactional
+    public void requireApiCallBalance(Long userId) {
+        if (userId == null) {
+            return;
+        }
+        OpenWalletAccountDO account = ensureAccount(userId);
+        if (account.getBalance().compareTo(API_CALL_PRICE) < 0) {
+            throw new BusinessException(402, "钱包余额不足，请先充值");
+        }
+    }
+
+    @Transactional
+    public void chargeApiCall(Long userId, Long apiKeyId, Long modelId) {
+        if (userId == null) {
+            return;
+        }
+        OpenWalletAccountDO account = ensureAccount(userId);
+        if (account.getBalance().compareTo(API_CALL_PRICE) < 0) {
+            throw new BusinessException(402, "钱包余额不足，请先充值");
+        }
+        LocalDateTime now = LocalDateTime.now();
+        account.setBalance(account.getBalance().subtract(API_CALL_PRICE).setScale(2, RoundingMode.HALF_UP));
+        account.setUpdatedAt(now);
+        walletAccountMapper.updateById(account);
+        String title = modelId == null ? "开放 API 调用扣费" : "开放 API 调用扣费：模型 #" + modelId;
+        String remark = apiKeyId == null ? null : "apiKeyId=" + apiKeyId;
+        insertRecord(account, null, "CONSUME", API_CALL_PRICE.negate(), title, remark, now);
     }
 
     public List<OpenPlanVO> plans() {
@@ -93,6 +161,84 @@ public class OpenAccountService {
 
     public OpenAccountOverviewVO overview() {
         return new OpenAccountOverviewVO(wallet(), entitlements(), plans());
+    }
+
+    private WalletVO wallet(OpenWalletAccountDO account) {
+        LocalDateTime monthStart = LocalDate.now().withDayOfMonth(1).atStartOfDay();
+        List<OpenWalletRecordDO> records = walletRecordMapper.selectList(Wrappers.<OpenWalletRecordDO>lambdaQuery()
+            .eq(OpenWalletRecordDO::getAccountId, account.getAccountId())
+            .orderByDesc(OpenWalletRecordDO::getCreatedAt)
+            .last("LIMIT 20"));
+        List<OpenWalletRecordDO> monthConsumes = walletRecordMapper.selectList(Wrappers.<OpenWalletRecordDO>lambdaQuery()
+            .eq(OpenWalletRecordDO::getAccountId, account.getAccountId())
+            .eq(OpenWalletRecordDO::getType, "CONSUME")
+            .ge(OpenWalletRecordDO::getCreatedAt, monthStart));
+        BigDecimal monthlyCost = monthConsumes.stream()
+            .map(OpenWalletRecordDO::getAmount)
+            .filter(Objects::nonNull)
+            .map(BigDecimal::abs)
+            .reduce(BigDecimal.ZERO, BigDecimal::add)
+            .setScale(2, RoundingMode.HALF_UP);
+        return new WalletVO(account.getBalance(), account.getFrozenBalance(), monthlyCost,
+            account.getCurrency(), records.stream().map(this::toWalletRecordVO).toList());
+    }
+
+    private OpenWalletAccountDO ensureAccount(Long userId) {
+        OpenWalletAccountDO existing = walletAccountMapper.selectOne(Wrappers.<OpenWalletAccountDO>lambdaQuery()
+            .eq(OpenWalletAccountDO::getUserId, userId).last("LIMIT 1"));
+        if (existing != null) {
+            existing.setBalance(normalizeAmount(existing.getBalance()));
+            existing.setFrozenBalance(normalizeAmount(existing.getFrozenBalance()));
+            return existing;
+        }
+        LocalDateTime now = LocalDateTime.now();
+        OpenWalletAccountDO account = new OpenWalletAccountDO();
+        account.setUserId(userId);
+        account.setBalance(BigDecimal.ZERO.setScale(2));
+        account.setFrozenBalance(BigDecimal.ZERO.setScale(2));
+        account.setCurrency(CURRENCY);
+        account.setStatus("ACTIVE");
+        account.setCreatedAt(now);
+        account.setUpdatedAt(now);
+        walletAccountMapper.insert(account);
+        return account;
+    }
+
+    private void insertRecord(OpenWalletAccountDO account, String orderNo, String type, BigDecimal amount,
+                              String title, String remark, LocalDateTime now) {
+        OpenWalletRecordDO record = new OpenWalletRecordDO();
+        record.setUserId(account.getUserId());
+        record.setAccountId(account.getAccountId());
+        record.setOrderNo(orderNo);
+        record.setType(type);
+        record.setAmount(amount.setScale(2, RoundingMode.HALF_UP));
+        record.setBalanceAfter(account.getBalance().setScale(2, RoundingMode.HALF_UP));
+        record.setTitle(title);
+        record.setRemark(remark);
+        record.setCreatedAt(now);
+        walletRecordMapper.insert(record);
+    }
+
+    private BigDecimal normalizeAmount(BigDecimal amount) {
+        if (amount == null) {
+            return BigDecimal.ZERO.setScale(2);
+        }
+        return amount.setScale(2, RoundingMode.HALF_UP);
+    }
+
+    private String nextOrderNo() {
+        return "R" + LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMddHHmmss"))
+            + UUID.randomUUID().toString().replace("-", "").substring(0, 8).toUpperCase();
+    }
+
+    private WalletRecordVO toWalletRecordVO(OpenWalletRecordDO row) {
+        return new WalletRecordVO(row.getRecordId(), row.getOrderNo(), row.getType(), row.getAmount(),
+            row.getBalanceAfter(), row.getTitle(), row.getRemark(), row.getCreatedAt());
+    }
+
+    private RechargeOrderVO toRechargeOrderVO(OpenRechargeOrderDO row) {
+        return new RechargeOrderVO(row.getOrderId(), row.getOrderNo(), row.getAmount(), row.getCurrency(),
+            row.getChannel(), row.getStatus(), row.getPaidAt(), row.getCreatedAt());
     }
 
     private List<ApiKeyDO> ownKeys(Long userId) {

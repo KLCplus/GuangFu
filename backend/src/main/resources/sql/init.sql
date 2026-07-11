@@ -10,6 +10,9 @@ DROP TABLE IF EXISTS user_notification;
 DROP TABLE IF EXISTS news;
 DROP TABLE IF EXISTS file_resource;
 DROP TABLE IF EXISTS api_call_log;
+DROP TABLE IF EXISTS open_wallet_record;
+DROP TABLE IF EXISTS open_recharge_order;
+DROP TABLE IF EXISTS open_wallet_account;
 DROP TABLE IF EXISTS api_key;
 DROP TABLE IF EXISTS agent_approval;
 DROP TABLE IF EXISTS agent_tool_call;
@@ -741,9 +744,84 @@ CREATE TABLE api_key (
         FOREIGN KEY (user_id) REFERENCES sys_user(user_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='API Key表';
 
+-- =========================================================
+-- 19. 开放平台钱包账户表
+-- =========================================================
+CREATE TABLE open_wallet_account (
+    account_id BIGINT PRIMARY KEY AUTO_INCREMENT COMMENT '钱包账户ID',
+    user_id BIGINT NOT NULL COMMENT '所属用户ID',
+    balance DECIMAL(18, 2) NOT NULL DEFAULT 0.00 COMMENT '可用余额',
+    frozen_balance DECIMAL(18, 2) NOT NULL DEFAULT 0.00 COMMENT '冻结余额',
+    currency VARCHAR(16) NOT NULL DEFAULT 'CNY' COMMENT '币种',
+    status VARCHAR(32) NOT NULL DEFAULT 'ACTIVE' COMMENT '状态：ACTIVE启用，DISABLED禁用',
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+
+    UNIQUE KEY uk_wallet_user (user_id),
+    KEY idx_wallet_status (status),
+
+    CONSTRAINT fk_wallet_user
+        FOREIGN KEY (user_id) REFERENCES sys_user(user_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='开放平台钱包账户表';
+
 
 -- =========================================================
--- 19. API 调用日志表
+-- 20. 开放平台充值订单表
+-- =========================================================
+CREATE TABLE open_recharge_order (
+    order_id BIGINT PRIMARY KEY AUTO_INCREMENT COMMENT '充值订单ID',
+    order_no VARCHAR(64) NOT NULL COMMENT '充值订单号',
+    user_id BIGINT NOT NULL COMMENT '所属用户ID',
+    account_id BIGINT NOT NULL COMMENT '钱包账户ID',
+    amount DECIMAL(18, 2) NOT NULL COMMENT '充值金额',
+    currency VARCHAR(16) NOT NULL DEFAULT 'CNY' COMMENT '币种',
+    channel VARCHAR(32) NOT NULL DEFAULT 'MOCK' COMMENT '支付渠道：MOCK/ALIPAY/WECHAT/BANK',
+    status VARCHAR(32) NOT NULL DEFAULT 'PENDING' COMMENT '状态：PENDING待支付，PAID已支付，CLOSED已关闭',
+    paid_at DATETIME DEFAULT NULL COMMENT '支付完成时间',
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+
+    UNIQUE KEY uk_recharge_order_no (order_no),
+    KEY idx_recharge_user_time (user_id, created_at),
+    KEY idx_recharge_account (account_id),
+    KEY idx_recharge_status (status),
+
+    CONSTRAINT fk_recharge_user
+        FOREIGN KEY (user_id) REFERENCES sys_user(user_id),
+    CONSTRAINT fk_recharge_account
+        FOREIGN KEY (account_id) REFERENCES open_wallet_account(account_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='开放平台充值订单表';
+
+
+-- =========================================================
+-- 21. 开放平台钱包流水表
+-- =========================================================
+CREATE TABLE open_wallet_record (
+    record_id BIGINT PRIMARY KEY AUTO_INCREMENT COMMENT '钱包流水ID',
+    user_id BIGINT NOT NULL COMMENT '所属用户ID',
+    account_id BIGINT NOT NULL COMMENT '钱包账户ID',
+    order_no VARCHAR(64) DEFAULT NULL COMMENT '关联订单号',
+    type VARCHAR(32) NOT NULL COMMENT '流水类型：RECHARGE充值，CONSUME消费，REFUND退款，ADJUST调整',
+    amount DECIMAL(18, 2) NOT NULL COMMENT '变动金额，收入为正，支出为负',
+    balance_after DECIMAL(18, 2) NOT NULL COMMENT '变动后余额',
+    title VARCHAR(128) NOT NULL COMMENT '流水标题',
+    remark VARCHAR(255) DEFAULT NULL COMMENT '备注',
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+
+    KEY idx_wallet_record_user_time (user_id, created_at),
+    KEY idx_wallet_record_account_time (account_id, created_at),
+    KEY idx_wallet_record_order (order_no),
+    KEY idx_wallet_record_type (type),
+
+    CONSTRAINT fk_wallet_record_user
+        FOREIGN KEY (user_id) REFERENCES sys_user(user_id),
+    CONSTRAINT fk_wallet_record_account
+        FOREIGN KEY (account_id) REFERENCES open_wallet_account(account_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='开放平台钱包流水表';
+
+
+-- =========================================================
+-- 22. API 调用日志表
 -- =========================================================
 CREATE TABLE api_call_log (
     log_id BIGINT PRIMARY KEY AUTO_INCREMENT COMMENT '调用日志ID',

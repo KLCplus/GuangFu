@@ -15,6 +15,7 @@ import {
   getUsageSummary,
   getUsageTrend,
   getOpenWallet,
+  rechargeWallet,
   resetOpenApiKey,
   updateApiKeyName,
   updateApiKeyStatus
@@ -27,6 +28,7 @@ import type {
   ApiUsageByModelItem,
   ApiUsageSummary,
   ApiUsageTrendItem,
+  RechargeOrder,
   Wallet
 } from '../api/open'
 
@@ -59,6 +61,8 @@ const modelStatsError = ref('')
 const keyStatsError = ref('')
 const walletError = ref('')
 const walletLoading = ref(false)
+const rechargeDialogVisible = ref(false)
+const rechargeLoading = ref(false)
 
 const apiKeys = ref<ApiKey[]>([])
 const models = ref<ModelListItem[]>([])
@@ -79,6 +83,8 @@ const resultDialogVisible = ref(false)
 const createdKey = ref<ApiKey | null>(null)
 const editKeyDialogVisible = ref(false)
 const editKeyForm = reactive({ keyName: '', apiKeyId: 0 })
+const rechargeForm = reactive({ amount: 100, channel: 'MOCK' as 'MOCK' | 'ALIPAY' | 'WECHAT' | 'BANK' })
+const lastRechargeOrder = ref<RechargeOrder | null>(null)
 
 const createForm = reactive<ApiKeyForm>({
   keyName: '',
@@ -231,6 +237,7 @@ const statsCoverageText = computed(() => {
 
 const walletAmount = computed(() => wallet.value?.balance ?? null)
 const walletMonthlyCost = computed(() => wallet.value?.monthlyCost ?? null)
+const walletRecords = computed(() => wallet.value?.records ?? [])
 const hasTrendData = computed(() => trendApiData.value.length > 0)
 const hasModelStats = computed(() => modelApiData.value.length > 0)
 const hasKeyStats = computed(() => keyApiData.value.length > 0)
@@ -287,6 +294,25 @@ async function loadWallet() {
     walletError.value = errorMessage(error, '余额信息加载失败')
   } finally {
     walletLoading.value = false
+  }
+}
+
+async function submitRecharge() {
+  const amount = Number(rechargeForm.amount)
+  if (!Number.isFinite(amount) || amount < 1) {
+    ElMessage.warning('充值金额不能小于 1 元')
+    return
+  }
+  rechargeLoading.value = true
+  try {
+    lastRechargeOrder.value = await rechargeWallet({ amount, channel: rechargeForm.channel })
+    ElMessage.success('充值成功，余额已入账')
+    rechargeDialogVisible.value = false
+    await loadWallet()
+  } catch (error) {
+    ElMessage.error(errorMessage(error, '充值失败'))
+  } finally {
+    rechargeLoading.value = false
   }
 }
 
@@ -732,6 +758,24 @@ function formatDate(value?: string) {
   return value.replace('T', ' ')
 }
 
+function formatMoney(value?: number | null) {
+  return value == null ? '—' : `¥${value.toFixed(2)}`
+}
+
+function walletRecordTypeLabel(type?: string) {
+  if (type === 'RECHARGE') return '充值'
+  if (type === 'CONSUME') return '消费'
+  if (type === 'REFUND') return '退款'
+  if (type === 'ADJUST') return '调整'
+  return type || '流水'
+}
+
+function walletRecordTagType(type?: string) {
+  if (type === 'RECHARGE' || type === 'REFUND') return 'success'
+  if (type === 'CONSUME') return 'warning'
+  return 'info'
+}
+
 function errorMessage(error: unknown, fallback: string) {
   return error instanceof Error ? error.message : fallback
 }
@@ -827,9 +871,9 @@ async function copyText(value: string) {
         <div>
           <p class="section-kicker">Account balance</p>
           <h2>余额与消费</h2>
-          <p>当前为开放平台账户视图，仅展示人民币。充值能力尚未开放。</p>
+          <p>当前为开放平台账户视图，仅展示人民币。充值成功后实时入账，开放 API 调用成功后自动扣费。</p>
         </div>
-        <el-button type="primary" disabled>去充值（暂未开放）</el-button>
+        <el-button type="primary" @click="rechargeDialogVisible = true">去充值</el-button>
       </div>
       <el-alert v-if="walletError" :title="walletError" type="error" show-icon :closable="false">
         <template #default>
@@ -839,16 +883,40 @@ async function copyText(value: string) {
       <div class="wallet-grid">
         <article>
           <span>可用余额</span>
-          <strong>{{ walletAmount == null ? '—' : `¥${walletAmount.toFixed(2)}` }}</strong>
-          <small>来自 GET /api/open/wallet</small>
+          <strong>{{ formatMoney(walletAmount) }}</strong>
+          <small>来自钱包账户表</small>
         </article>
         <article>
           <span>本月消费金额</span>
-          <strong>{{ walletMonthlyCost == null ? '—' : `¥${walletMonthlyCost.toFixed(2)}` }}</strong>
-          <small>当前由后端按本月调用日志临时计算</small>
+          <strong>{{ formatMoney(walletMonthlyCost) }}</strong>
+          <small>来自本月消费流水聚合</small>
         </article>
       </div>
-      <p class="wallet-disclaimer">当前后端未建立真实钱包、充值订单和支付流水；余额固定为 0，本月消费不代表正式账单。</p>
+      <div class="wallet-records">
+        <div class="wallet-records-heading">
+          <h3>最近流水</h3>
+          <span>{{ walletRecords.length }} 条</span>
+        </div>
+        <el-table :data="walletRecords" size="small" empty-text="暂无钱包流水">
+          <el-table-column label="时间" min-width="160">
+            <template #default="{ row }">{{ formatDate(row.createdAt) }}</template>
+          </el-table-column>
+          <el-table-column label="类型" width="90">
+            <template #default="{ row }">
+              <el-tag :type="walletRecordTagType(row.type)" effect="light">{{ walletRecordTypeLabel(row.type) }}</el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column prop="title" label="说明" min-width="180" show-overflow-tooltip />
+          <el-table-column label="金额" width="120">
+            <template #default="{ row }">{{ formatMoney(row.amount) }}</template>
+          </el-table-column>
+          <el-table-column label="余额" width="120">
+            <template #default="{ row }">{{ formatMoney(row.balanceAfter) }}</template>
+          </el-table-column>
+          <el-table-column prop="orderNo" label="订单号" min-width="180" show-overflow-tooltip />
+        </el-table>
+      </div>
+      <p class="wallet-disclaimer">当前充值接口为本地联调模拟支付：后端会创建充值订单、写入充值流水并更新钱包余额；后续接入真实支付渠道时复用订单和流水表。</p>
     </section>
 
     <section class="usage-section">
@@ -1011,6 +1079,34 @@ async function copyText(value: string) {
         </div>
       </section>
     </section>
+
+    <el-dialog v-model="rechargeDialogVisible" title="钱包充值" width="440px">
+      <el-form label-position="top" @submit.prevent>
+        <el-form-item label="充值金额" required>
+          <el-input-number
+            v-model="rechargeForm.amount"
+            :min="1"
+            :max="100000"
+            :step="50"
+            controls-position="right"
+            style="width: 220px"
+          />
+        </el-form-item>
+        <el-form-item label="支付渠道">
+          <el-select v-model="rechargeForm.channel" style="width: 220px">
+            <el-option label="模拟支付" value="MOCK" />
+            <el-option label="支付宝" value="ALIPAY" />
+            <el-option label="微信支付" value="WECHAT" />
+            <el-option label="银行转账" value="BANK" />
+          </el-select>
+          <p class="form-tip">当前环境会模拟支付成功并立即入账。</p>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="rechargeDialogVisible = false">取消</el-button>
+        <el-button type="primary" :loading="rechargeLoading" @click="submitRecharge">确认充值</el-button>
+      </template>
+    </el-dialog>
 
     <el-dialog v-model="createDialogVisible" title="创建 API Key" width="480px" @closed="resetCreateForm">
       <el-form label-position="top" @submit.prevent>
@@ -1199,6 +1295,28 @@ async function copyText(value: string) {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 14px;
+}
+
+.wallet-records {
+  display: grid;
+  gap: 10px;
+}
+
+.wallet-records-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.wallet-records-heading h3 {
+  margin: 0;
+  font-size: 16px;
+}
+
+.wallet-records-heading span {
+  color: var(--color-text-muted);
+  font-size: 13px;
 }
 
 .wallet-grid article {

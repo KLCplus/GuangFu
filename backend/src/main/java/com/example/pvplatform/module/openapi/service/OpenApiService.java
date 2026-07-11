@@ -34,18 +34,21 @@ public class OpenApiService {
     private final PredictionPersistenceService persistenceService;
     private final PredictionExecutionService executionService;
     private final ApiCallLogService callLogService;
+    private final OpenAccountService openAccountService;
 
     public OpenApiService(ModelInfoMapper modelMapper, PowerStationMapper stationMapper,
                           UserStationPermissionMapper permissionMapper,
                           PredictionPersistenceService persistenceService,
                           PredictionExecutionService executionService,
-                          ApiCallLogService callLogService) {
+                          ApiCallLogService callLogService,
+                          OpenAccountService openAccountService) {
         this.modelMapper = modelMapper;
         this.stationMapper = stationMapper;
         this.permissionMapper = permissionMapper;
         this.persistenceService = persistenceService;
         this.executionService = executionService;
         this.callLogService = callLogService;
+        this.openAccountService = openAccountService;
     }
 
     public OpenPredictVO predict(OpenPredictRequest request, HttpServletRequest httpRequest) {
@@ -66,6 +69,7 @@ public class OpenApiService {
             validateStation(request.stationId(), principal.userId());
             List<ModelInputFrame> frames = convertAndValidate(request.input(), model);
             validateImages(request.inputImages(), frames);
+            openAccountService.requireApiCallBalance(principal.userId());
             String start = frames.get(0).time().format(FORMATTER);
             String end = frames.get(frames.size() - 1).time().format(FORMATTER);
             task = persistenceService.createTaskWithSnapshotsForUser(principal.userId(),
@@ -74,6 +78,7 @@ public class OpenApiService {
             ModelPredictResponse.Data data = executionService.execute(model, frames, request.inputImages());
             persistenceService.saveResultsAndMarkSuccess(task.getTaskId(), data,
                 executionService.getLastInputTime(frames));
+            openAccountService.chargeApiCall(principal.userId(), principal.apiKeyId(), model.getModelId());
             return new OpenPredictVO(task.getTaskId(), task.getTaskNo(), "SUCCESS",
                 data.modelName(), data.predictions(), data.costTime());
         } catch (BusinessException e) {

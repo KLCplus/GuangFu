@@ -1008,13 +1008,38 @@ POST /api/open/trials
 }
 ```
 
-权益、钱包、套餐和开放账户总览：
+权益、钱包、充值、套餐和开放账户总览：
 
 ```http
 GET /api/open/entitlements
 GET /api/open/wallet
+POST /api/open/wallet/recharge
 GET /api/open/plans
 GET /api/open/overview
+```
+
+充值请求：
+
+```json
+{
+  "amount": 100.00,
+  "channel": "MOCK"
+}
+```
+
+充值响应：
+
+```json
+{
+  "orderId": 1,
+  "orderNo": "R202607111930001A2B3C4D",
+  "amount": 100.00,
+  "currency": "CNY",
+  "channel": "MOCK",
+  "status": "PAID",
+  "paidAt": "2026-07-11 19:30:00",
+  "createdAt": "2026-07-11 19:30:00"
+}
 ```
 
 `/api/open/overview` 返回：
@@ -1022,18 +1047,29 @@ GET /api/open/overview
 ```json
 {
   "wallet": {
-    "balance": 0.00,
+    "balance": 100.00,
     "frozenBalance": 0.00,
-    "monthlyCost": 12.30,
+    "monthlyCost": 0.05,
     "currency": "CNY",
-    "records": []
+    "records": [
+      {
+        "recordId": 1,
+        "orderNo": "R202607111930001A2B3C4D",
+        "type": "RECHARGE",
+        "amount": 100.00,
+        "balanceAfter": 100.00,
+        "title": "账户充值",
+        "remark": "MOCK 模拟支付成功",
+        "createdAt": "2026-07-11 19:30:00"
+      }
+    ]
   },
   "apiEntitlements": [],
   "plans": []
 }
 ```
 
-当前版本不新增钱包充值/订单表，钱包月消费和权益已用量基于当前用户 API 调用日志聚合；套餐列表为后端固定配置，用于前端展示和后续购买接口衔接。
+当前版本已新增 `open_wallet_account`、`open_recharge_order`、`open_wallet_record` 三张表。`/api/open/wallet` 返回真实账户余额、冻结余额、最近流水和本月消费流水聚合；`/api/open/wallet/recharge` 在本地联调环境创建充值订单并模拟支付成功入账。开放 API 预测调用成功后按 0.01 元写入消费流水并扣减余额，余额不足时返回 402。套餐列表仍为后端固定配置，用于前端展示和后续购买接口衔接。
 
 ### 14.2 调用日志查询（增强）
 

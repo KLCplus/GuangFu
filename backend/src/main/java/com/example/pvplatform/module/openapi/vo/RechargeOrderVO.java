@@ -3,13 +3,13 @@ package com.example.pvplatform.module.openapi.vo;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
-public record WalletRecordVO(
-    Long recordId,
+public record RechargeOrderVO(
+    Long orderId,
     String orderNo,
-    String type,
     BigDecimal amount,
-    BigDecimal balanceAfter,
-    String title,
-    String remark,
+    String currency,
+    String channel,
+    String status,
+    LocalDateTime paidAt,
     LocalDateTime createdAt
 ) {}

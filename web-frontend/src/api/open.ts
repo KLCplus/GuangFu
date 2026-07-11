@@ -170,9 +170,12 @@ export interface ApiEntitlement {
 
 export interface WalletRecord {
   recordId: number
+  orderNo?: string
   type: string
   amount: number
+  balanceAfter?: number
   title: string
+  remark?: string
   createdAt: DateTimeString
 }
 
@@ -182,6 +185,22 @@ export interface Wallet {
   monthlyCost: number
   currency: string
   records?: WalletRecord[]
+}
+
+export interface WalletRechargePayload {
+  amount: number
+  channel?: 'MOCK' | 'ALIPAY' | 'WECHAT' | 'BANK'
+}
+
+export interface RechargeOrder {
+  orderId: number
+  orderNo: string
+  amount: number
+  currency: string
+  channel: string
+  status: string
+  paidAt?: DateTimeString
+  createdAt?: DateTimeString
 }
 
 export interface OpenPlan {
@@ -255,6 +274,7 @@ export const requestMarketplaceTrialApi = (data: MarketplaceTrialPayload) =>
   request.post<MarketplaceTrialResult>('/open/trials', data)
 export const getOpenEntitlements = () => request.get<ApiEntitlement[]>('/open/entitlements')
 export const getOpenWallet = () => request.get<Wallet>('/open/wallet')
+export const rechargeWallet = (data: WalletRechargePayload) => request.post<RechargeOrder>('/open/wallet/recharge', data)
 export const getOpenPlans = () => request.get<OpenPlan[]>('/open/plans')
 export const getOpenOverview = () => request.get<OpenAccountOverview>('/open/overview')
 export const openPredict = (apiKey: string, data: OpenPredictPayload) =>

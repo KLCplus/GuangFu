@@ -6,6 +6,7 @@ import com.example.pvplatform.module.openapi.dto.ApiKeyNameRequest;
 import com.example.pvplatform.module.openapi.dto.ApiKeyStatusRequest;
 import com.example.pvplatform.module.openapi.dto.MarketplaceTrialRequest;
 import com.example.pvplatform.module.openapi.dto.OpenPredictRequest;
+import com.example.pvplatform.module.openapi.dto.WalletRechargeRequest;
 import com.example.pvplatform.module.openapi.service.ApiCallLogService;
 import com.example.pvplatform.module.openapi.service.ApiKeyService;
 import com.example.pvplatform.module.openapi.service.OpenAccountService;
@@ -145,6 +146,11 @@ public class OpenApiController {
     @GetMapping("/api/open/wallet")
     public Result<?> wallet() {
         return Result.success(openAccountService.wallet());
+    }
+
+    @PostMapping("/api/open/wallet/recharge")
+    public Result<?> recharge(@Valid @RequestBody WalletRechargeRequest request) {
+        return Result.success(openAccountService.recharge(request.amount(), request.channel()));
     }
 
     @GetMapping("/api/open/plans")
