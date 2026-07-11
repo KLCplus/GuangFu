@@ -8,7 +8,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 @Configuration
-@MapperScan("com.example.pvplatform.persistence.mapper")
+@MapperScan({"com.example.pvplatform.persistence.mapper", "com.example.pvplatform.module.agent.mapper"})
 public class DatabaseConfig {
     @Bean
     MybatisPlusInterceptor mybatisPlusInterceptor() {

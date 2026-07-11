@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.jsontype.impl.LaissezFaireSubTypeValidator
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.cache.Cache;
 import org.springframework.cache.annotation.CachingConfigurer;
 import org.springframework.cache.interceptor.CacheErrorHandler;
@@ -22,6 +23,7 @@ public class CacheConfig implements CachingConfigurer {
     private static final Logger log = LoggerFactory.getLogger(CacheConfig.class);
 
     @Bean
+    @ConditionalOnProperty(name = "redis.enabled", havingValue = "true")
     public RedisCacheConfiguration redisCacheConfiguration(
             ObjectMapper objectMapper,
             @Value("${spring.cache.redis.time-to-live:600000}") long ttlMillis) {
