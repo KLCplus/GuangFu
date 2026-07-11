@@ -71,6 +71,8 @@ public class PvOutputLivePageSyncService {
         station.setLastSyncTime(fetchedAt);
         station.setLastSyncStatus("SUCCESS");
         station.setLastSyncError(null);
+        // 公开实时页不提供经纬度: 新插入的电站经纬度为 NULL, 更新时保留已有坐标
+        // MyBatis-Plus 默认 NOT_NULL 策略: null 字段不会写入 UPDATE 语句, 已有经纬度不会被覆盖
         if (station.getId() == null) {
             stationMapper.insert(station);
             return stationMapper.selectOne(Wrappers.<ExternalPvStationDO>lambdaQuery()

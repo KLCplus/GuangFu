@@ -2,8 +2,9 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import * as echarts from 'echarts'
-import { loadPvOutputHistory, loadPvOutputLatestStatus, loadPvOutputStations } from '../api/pvoutput'
+import { loadPvOutputHistory, loadPvOutputLatestStatus, loadPvOutputStations, getPvOutputCurrentWeather, getPvOutputForecast } from '../api/pvoutput'
 import type { PvOutputStation, PvOutputStatus } from '../api/pvoutput'
+import type { CurrentWeather, WeatherForecastItem } from '../api/weather'
 
 const loading = ref(false)
 const statusLoading = ref(false)
@@ -12,6 +13,8 @@ const selectedStationId = ref<number>()
 const latestStatus = ref<PvOutputStatus | null>(null)
 const historyRows = ref<PvOutputStatus[]>([])
 const chartRef = ref<HTMLDivElement | null>(null)
+const weather = ref<CurrentWeather | null>(null)
+const forecasts = ref<WeatherForecastItem[]>([])
 let chart: echarts.ECharts | null = null
 
 const selectedStation = computed(() => stations.value.find((item) => item.id === selectedStationId.value) ?? stations.value[0])
@@ -51,15 +54,19 @@ async function fetchStatus() {
   try {
     const end = new Date()
     const start = new Date(end.getTime() - 7 * 24 * 60 * 60 * 1000)
-    const [latest, history] = await Promise.all([
+    const [latest, history, weatherResult, forecastResult] = await Promise.allSettled([
       loadPvOutputLatestStatus(station.id),
       loadPvOutputHistory(station.id, {
         startTime: formatLocalDateTime(start),
         endTime: formatLocalDateTime(end)
-      })
+      }),
+      getPvOutputCurrentWeather(station.id),
+      getPvOutputForecast(station.id)
     ])
-    latestStatus.value = latest
-    historyRows.value = history
+    latestStatus.value = latest.status === 'fulfilled' ? latest.value : null
+    historyRows.value = history.status === 'fulfilled' ? history.value : []
+    weather.value = weatherResult.status === 'fulfilled' ? weatherResult.value : null
+    forecasts.value = forecastResult.status === 'fulfilled' ? forecastResult.value : []
     await nextTick()
     renderChart()
   } catch (error) {
@@ -192,6 +199,30 @@ function message(error: unknown, fallback: string) {
           <el-descriptions-item label="电压">{{ latestStatus.voltageV ?? '-' }} V</el-descriptions-item>
         </el-descriptions>
         <el-empty v-else description="暂无入库状态数据，配置 API Key 后可由定时任务或管理端手动同步" />
+
+        <div v-if="weather" class="weather-mini">
+          <div class="weather-mini-header">
+            <span>🌤 当地天气</span>
+            <small>{{ weather.source }} · {{ weather.cached ? '缓存' : '实时' }}</small>
+          </div>
+          <div class="weather-mini-main">
+            <strong>{{ weather.weather }}</strong>
+            <em>{{ weather.temperature }}°C</em>
+          </div>
+          <div class="weather-mini-meta">
+            <span>湿度 {{ weather.humidity }}%</span>
+            <span>{{ weather.windDirection }} {{ weather.windPower }}</span>
+            <span>风速 {{ weather.windSpeed }} m/s</span>
+          </div>
+          <div v-if="forecasts.length" class="weather-mini-forecast">
+            <div v-for="item in forecasts.slice(0, 3)" :key="item.date" class="forecast-chip">
+              <small>{{ item.date.slice(5) }}</small>
+              <strong>{{ item.dayWeather }}</strong>
+              <em>{{ item.nightTemp }}-{{ item.dayTemp }}°C</em>
+            </div>
+          </div>
+        </div>
+
         <div ref="chartRef" class="power-chart" />
       </div>
     </section>
@@ -296,6 +327,90 @@ function message(error: unknown, fallback: string) {
   width: 100%;
   height: 360px;
   margin-top: 18px;
+}
+
+.weather-mini {
+  margin-top: 18px;
+  padding: 16px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: linear-gradient(135deg, #e8f4fd 0%, #f0f7ff 100%);
+}
+
+.weather-mini-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.weather-mini-header span {
+  font-weight: 600;
+  color: #10274c;
+}
+
+.weather-mini-header small {
+  color: var(--color-muted);
+}
+
+.weather-mini-main {
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+  margin-bottom: 12px;
+}
+
+.weather-mini-main strong {
+  font-size: 24px;
+  color: #10274c;
+}
+
+.weather-mini-main em {
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--color-primary);
+  font-style: normal;
+}
+
+.weather-mini-meta {
+  display: flex;
+  gap: 18px;
+  color: var(--color-muted);
+  font-size: 13px;
+  margin-bottom: 12px;
+}
+
+.weather-mini-forecast {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+.forecast-chip {
+  display: grid;
+  gap: 2px;
+  padding: 8px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.72);
+  text-align: center;
+}
+
+.forecast-chip small {
+  color: var(--color-muted);
+  font-size: 12px;
+}
+
+.forecast-chip strong {
+  font-size: 14px;
+  color: #10274c;
+}
+
+.forecast-chip em {
+  font-size: 12px;
+  color: var(--color-muted);
+  font-style: normal;
 }
 
 @media (max-width: 1100px) {

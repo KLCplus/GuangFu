@@ -1,23 +1,33 @@
 package com.example.pvplatform.module.pvoutput.controller;
 
 import com.example.pvplatform.common.Result;
+import com.example.pvplatform.common.exception.BusinessException;
 import com.example.pvplatform.module.pvoutput.dto.PvOutputStationSaveRequest;
 import com.example.pvplatform.module.pvoutput.service.PvOutputStationService;
 import com.example.pvplatform.module.pvoutput.service.PvOutputSyncService;
+import com.example.pvplatform.module.weather.service.WeatherService;
+import com.example.pvplatform.module.weather.vo.CurrentWeatherVO;
+import com.example.pvplatform.module.weather.vo.WeatherForecastVO;
+import com.example.pvplatform.persistence.entity.ExternalPvStationDO;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 @RestController
 @RequestMapping("/api/pvoutput/stations")
 public class PvOutputController {
     private final PvOutputStationService stationService;
     private final PvOutputSyncService syncService;
+    private final WeatherService weatherService;
 
-    public PvOutputController(PvOutputStationService stationService, PvOutputSyncService syncService) {
+    public PvOutputController(PvOutputStationService stationService,
+                            PvOutputSyncService syncService,
+                            WeatherService weatherService) {
         this.stationService = stationService;
         this.syncService = syncService;
+        this.weatherService = weatherService;
     }
 
     @GetMapping("/search")
@@ -70,5 +80,25 @@ public class PvOutputController {
                              @RequestParam(required = false)
                              @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime endTime) {
         return Result.success(stationService.history(id, startTime, endTime));
+    }
+
+    @GetMapping("/{id}/weather/current")
+    public Result<CurrentWeatherVO> weatherCurrent(@PathVariable Long id) {
+        ExternalPvStationDO station = stationService.requireStation(id);
+        if (station.getLatitude() == null || station.getLongitude() == null) {
+            throw new BusinessException(400, "该公开电站未配置经纬度，无法获取天气");
+        }
+        return Result.success(weatherService.currentByCoordinates(
+            station.getLongitude().doubleValue(), station.getLatitude().doubleValue()));
+    }
+
+    @GetMapping("/{id}/weather/forecast")
+    public Result<List<WeatherForecastVO>> weatherForecast(@PathVariable Long id) {
+        ExternalPvStationDO station = stationService.requireStation(id);
+        if (station.getLatitude() == null || station.getLongitude() == null) {
+            throw new BusinessException(400, "该公开电站未配置经纬度，无法获取天气");
+        }
+        return Result.success(weatherService.forecastByCoordinates(
+            station.getLongitude().doubleValue(), station.getLatitude().doubleValue()));
     }
 }

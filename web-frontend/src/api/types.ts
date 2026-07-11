@@ -279,6 +279,10 @@ export interface StationListItem {
   capacity: number
   /** 电站状态 */
   status: StationStatus
+  /** 经度 */
+  longitude?: number
+  /** 纬度 */
+  latitude?: number
 }
 
 /** 电站详情 */

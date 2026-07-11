@@ -678,6 +678,34 @@ GET /api/pvoutput/stations/{id}/status?startTime=2026-07-01T00:00:00&endTime=202
 
 历史状态按 `sampleTime` 升序返回；不传时间默认最近 7 天。前端功率曲线使用 `sampleTime` 作为 x 轴，`powerGenerationW` 作为 y 轴。
 
+### 8.7 公开电站天气
+
+```http
+GET /api/pvoutput/stations/{id}/weather/current
+GET /api/pvoutput/stations/{id}/weather/forecast
+```
+
+公开电站必须有 `latitude` 和 `longitude`，后端按坐标调用天气服务。响应格式与主电站天气接口一致（参见第 7 节）。
+
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "stationId": null,
+    "weather": "晴",
+    "temperature": 32.0,
+    "humidity": 60.0,
+    "windDirection": "东南风",
+    "windPower": "3级",
+    "windSpeed": 2.5,
+    "reportTime": "2026-07-06 10:30:00",
+    "source": "QWEATHER",
+    "cached": false
+  }
+}
+```
+
 ## 9. 模型
 
 ```http

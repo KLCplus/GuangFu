@@ -15,6 +15,8 @@ interface StationOption {
   capacity: number
   status: string
   address: string
+  longitude: number
+  latitude: number
 }
 
 interface WeatherSnapshot {
@@ -178,7 +180,9 @@ async function loadStations() {
       city: item.city,
       capacity: item.capacity,
       status: item.status,
-      address: item.address
+      address: item.address,
+      longitude: item.longitude ?? 0,
+      latitude: item.latitude ?? 0
     }))
     selectedStationId.value = overview.selectedStationId ?? stations.value[0]?.stationId
     applyDashboardOverview(overview)
@@ -251,7 +255,9 @@ async function loadStationsFallback() {
       city: item.city,
       capacity: item.capacity,
       status: item.status,
-      address: item.address
+      address: item.address,
+      longitude: item.longitude ?? 0,
+      latitude: item.latitude ?? 0
     }))
     dataSource.value = records === mockStations ? '演示数据' : '实时接口'
   } catch {
@@ -261,7 +267,9 @@ async function loadStationsFallback() {
       city: item.city,
       capacity: item.capacity,
       status: item.status,
-      address: item.address
+      address: item.address,
+      longitude: item.longitude ?? 0,
+      latitude: item.latitude ?? 0
     }))
     dataSource.value = '演示数据'
   }
@@ -276,7 +284,9 @@ function applyDashboardOverview(overview: Awaited<ReturnType<typeof getDashboard
       city: item.city,
       capacity: item.capacity,
       status: item.status,
-      address: item.address
+      address: item.address,
+      longitude: item.longitude ?? 0,
+      latitude: item.latitude ?? 0
     }))
   }
   selectedStationId.value = overview.selectedStationId ?? selectedStationId.value
