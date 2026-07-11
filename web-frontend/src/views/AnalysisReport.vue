@@ -21,7 +21,26 @@ import { getModel, getModels } from '../api/model'
 import { getNews, getNewsList } from '../api/news'
 import { getNotifications, getUnreadCount } from '../api/notification'
 import { getProfile } from '../api/user'
-import { approveAgentApproval, getAgentTools, streamAgentChat, type AgentToolInfo, type AgentSseEnvelope } from '../api/agent'
+import {
+  approveAgentApproval,
+  archiveAgentSession,
+  createAgentSession,
+  deleteAgentSession,
+  getAgentSessionMessages,
+  getAgentSessions,
+  getAgentSessionToolCalls,
+  getAgentTools,
+  pinAgentSession,
+  renameAgentSession,
+  streamAgentChat,
+  unarchiveAgentSession,
+  unpinAgentSession,
+  type AgentMessageRecord,
+  type AgentSession,
+  type AgentToolCallRecord,
+  type AgentToolInfo,
+  type AgentSseEnvelope
+} from '../api/agent'
 
 type MessageRole = 'user' | 'agent' | 'system' | 'tool'
 type MessageType = 'text' | 'error' | 'report' | 'status' | 'approval'
@@ -92,6 +111,7 @@ const userStore = useUserStore()
 
 const activeTab = ref('context')
 const reports = ref<AnalysisReportListItem[]>([])
+const agentSessions = ref<AgentSession[]>([])
 const currentReport = ref<AnalysisReportDetail | null>(null)
 const selectedReportId = ref<number | null>(null)
 const loadingHistory = ref(false)
@@ -102,6 +122,7 @@ const detailError = ref('')
 const debugRecords = ref<DebugRecord[]>([])
 const agentSessionId = ref<number | null>(null)
 const agentTools = ref<AgentToolInfo[]>([])
+const recentToolCalls = ref<AgentToolCallRecord[]>([])
 const leftCollapsed = ref(false)
 const rightCollapsed = ref(false)
 const showArchived = ref(false)
@@ -228,6 +249,12 @@ const currentSuggestions = computed(() => {
 
 const currentModelName = computed(() => firstText(currentReport.value?.modelName, parsedReportJson(currentReport.value).modelName, '未返回'))
 const currentGeneratedAt = computed(() => currentReport.value ? getReportTime(currentReport.value) : '-')
+
+
+const pinnedSessions = computed(() => agentSessions.value.filter((session) => session.pinned && !session.archived))
+const recentSessions = computed(() => agentSessions.value.filter((session) => !session.pinned && !session.archived))
+const archivedSessions = computed(() => agentSessions.value.filter((session) => session.archived))
+const activeSessionTitle = computed(() => agentSessions.value.find((item) => item.sessionId === agentSessionId.value)?.title || '新会话')
 
 const reportDebugMeta = computed(() => {
   const report = currentReport.value
@@ -613,6 +640,113 @@ function addMessage(message: Omit<ChatMessage, 'id' | 'time'>) {
   })
 }
 
+function formatHistoryTime(value?: string) {
+  if (!value) return nowTime()
+  const parsed = new Date(value)
+  if (Number.isNaN(parsed.getTime())) return value
+  return parsed.toLocaleString('zh-CN', {
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit'
+  })
+}
+
+function toolResultPayload(tool: AgentToolCallRecord) {
+  const result = recordValue(tool.result)
+  return {
+    toolCallId: tool.clientToolCallId,
+    toolName: tool.toolName,
+    displayName: tool.displayName || tool.toolName,
+    status: tool.status === 'SUCCESS' ? 'success' : tool.status === 'FAILED' ? 'failed' : tool.status.toLowerCase(),
+    summary: firstText(result.summary, tool.errorMessage, tool.status),
+    error: firstText(tool.errorMessage, result.errorMessage),
+    durationMs: tool.durationMs ?? 0,
+    dataPreview: result.data ?? result.raw ?? result
+  }
+}
+
+function mapHistoryMessage(record: AgentMessageRecord): ChatMessage {
+  const role: MessageRole = record.role === 'assistant' ? 'agent' : record.role === 'user' ? 'user' : record.role === 'tool' ? 'tool' : 'system'
+  const metadata = recordValue(record.metadata)
+  let type: MessageType = metadata.approvalId || metadata.toolName ? 'approval' : 'text'
+  const firstApproval = record.approvals?.[0]
+  if (firstApproval && firstApproval.status === 'PENDING') {
+    type = 'approval'
+    metadata.approval = {
+      approvalId: firstApproval.approvalId,
+      toolCallId: firstApproval.toolCallId,
+      toolName: firstApproval.toolName,
+      displayName: firstApproval.toolName,
+      reason: firstApproval.reason,
+      arguments: firstApproval.arguments,
+      status: firstApproval.status
+    }
+  }
+  const firstTool = record.toolCalls?.[0]
+  if (firstTool && firstTool.status !== 'AWAITING_APPROVAL') {
+    metadata.toolResult = toolResultPayload(firstTool)
+    if (role === 'agent') type = firstTool.status === 'FAILED' ? 'error' : 'text'
+  }
+  return {
+    id: record.messageId,
+    role,
+    type,
+    content: record.content || (type === 'approval' ? '需要确认操作' : ''),
+    metadata,
+    time: formatHistoryTime(record.createdAt)
+  }
+}
+
+async function loadAgentSessions() {
+  loadingHistory.value = true
+  historyError.value = ''
+  try {
+    const result = await getAgentSessions({ page: 1, size: 50 })
+    agentSessions.value = result.records || []
+    return true
+  } catch (error) {
+    agentSessions.value = []
+    historyError.value = `会话加载失败：${humanError(error)}`
+    activeTab.value = 'debug'
+    return false
+  } finally {
+    loadingHistory.value = false
+  }
+}
+
+async function loadAgentMessages(sessionId: number) {
+  loadingDetail.value = true
+  detailError.value = ''
+  try {
+    agentSessionId.value = sessionId
+    selectedReportId.value = null
+    const history = await getAgentSessionMessages(sessionId)
+    messages.value = history.length > 0 ? history.map(mapHistoryMessage) : [createSystemMessage()]
+    recentToolCalls.value = await getAgentSessionToolCalls(sessionId)
+  } catch (error) {
+    detailError.value = `会话消息加载失败：${humanError(error)}`
+    addMessage({ role: 'agent', type: 'error', content: detailError.value })
+  } finally {
+    loadingDetail.value = false
+  }
+}
+
+async function createNewAgentSession() {
+  const session = await createAgentSession('新的 Agent 会话')
+  await loadAgentSessions()
+  agentSessionId.value = session.sessionId
+  currentReport.value = null
+  selectedReportId.value = null
+  detailError.value = ''
+  composerText.value = ''
+  showSlashMenu.value = false
+  messages.value = [createSystemMessage()]
+  executionSteps.value = baseSteps()
+  focusComposer()
+}
+
 function focusComposer() {
   nextTick(() => composerRef.value?.focus())
 }
@@ -717,10 +851,10 @@ function buildUserTask(payload: CreateAnalysisReportRequest) {
 
 function agentContext() {
   return {
-    stationId: form.stationId,
-    taskId: form.taskId,
+    conversationMode: 'independent_agent',
     includeWeather: form.includeWeather,
     includePrediction: form.includePrediction,
+    reportTitlePreference: form.title || null,
     currentReportId: currentReportId.value
   }
 }
@@ -829,6 +963,8 @@ async function runAgentChat(message: string, approvalId?: number | null) {
     addMessage({ role: 'agent', type: 'error', content: `Agent 请求失败：${message}` })
   } finally {
     running.value = false
+    void loadAgentSessions()
+    if (agentSessionId.value) void getAgentSessionToolCalls(agentSessionId.value).then((items) => { recentToolCalls.value = items }).catch(() => undefined)
   }
 }
 
@@ -1181,8 +1317,8 @@ function applyCommand(command: SlashCommand) {
 
 async function submitComposer() {
   const text = composerText.value.trim()
-  if (!text && !form.stationId) {
-    ElMessage.warning('请输入任务或电站 ID')
+  if (!text) {
+    ElMessage.warning('请输入要交给 Agent 的问题或任务')
     return
   }
   const { command, args } = commandParts(text)
@@ -1191,9 +1327,8 @@ async function submitComposer() {
     await runToolCommand(found, args)
     return
   }
-  const fallback = text || `分析 ${form.stationId} 号电站，结合当前上下文给出结论`
   composerText.value = ''
-  await runAgentChat(fallback)
+  await runAgentChat(text)
 }
 
 function onComposerKeydown(event: KeyboardEvent) {
@@ -1259,6 +1394,59 @@ async function hideSession(report: AnalysisReportListItem) {
   }
 }
 
+function getSessionTime(session: AgentSession) {
+  return firstText(session.updatedAt, session.createdAt) || '无时间'
+}
+
+async function togglePinSession(session: AgentSession) {
+  session.pinned ? await unpinAgentSession(session.sessionId) : await pinAgentSession(session.sessionId)
+  await loadAgentSessions()
+}
+
+async function toggleArchiveSession(session: AgentSession) {
+  session.archived ? await unarchiveAgentSession(session.sessionId) : await archiveAgentSession(session.sessionId)
+  await loadAgentSessions()
+}
+
+async function renameAgentSessionTitle(session: AgentSession) {
+  try {
+    const value = await ElMessageBox.prompt('会话标题', '重命名', {
+      inputValue: session.title,
+      confirmButtonText: '保存',
+      cancelButtonText: '取消'
+    })
+    const text = firstText(value.value)
+    if (text) {
+      await renameAgentSession(session.sessionId, text)
+      await loadAgentSessions()
+    }
+  } catch {
+    // user cancelled
+  }
+}
+
+async function deleteAgentSessionById(session: AgentSession) {
+  try {
+    await ElMessageBox.confirm('删除后会话不会再显示，历史消息保留在数据库中。', '删除会话', {
+      confirmButtonText: '删除',
+      cancelButtonText: '取消',
+      type: 'warning'
+    })
+    await deleteAgentSession(session.sessionId)
+    if (agentSessionId.value === session.sessionId) newSession()
+    await loadAgentSessions()
+  } catch {
+    // user cancelled
+  }
+}
+
+async function handleSessionCommand(command: string, session: AgentSession) {
+  if (command === 'pin') await togglePinSession(session)
+  if (command === 'archive') await toggleArchiveSession(session)
+  if (command === 'rename') await renameAgentSessionTitle(session)
+  if (command === 'delete') await deleteAgentSessionById(session)
+}
+
 async function copyReport() {
   if (!copyText.value) {
     ElMessage.warning('暂无可复制的报告正文')
@@ -1296,7 +1484,7 @@ function logout() {
 
 onMounted(() => {
   void loadAgentTools()
-  void loadReports()
+  void loadAgentSessions()
 })
 </script>
 
@@ -1310,7 +1498,7 @@ onMounted(() => {
         <button class="icon-button" type="button" @click="leftCollapsed = !leftCollapsed">
           {{ leftCollapsed ? '>' : '<' }}
         </button>
-        <button v-if="!leftCollapsed" class="new-chat" type="button" @click="newSession">新建</button>
+        <button v-if="!leftCollapsed" class="new-chat" type="button" @click="createNewAgentSession">新建</button>
       </div>
 
       <template v-if="!leftCollapsed">
@@ -1322,22 +1510,22 @@ onMounted(() => {
         <el-alert v-if="historyError" class="inline-alert" type="error" :title="historyError" show-icon />
 
         <div v-loading="loadingHistory" class="sessions">
-          <div v-if="pinnedReports.length > 0" class="session-group">
+          <div v-if="pinnedSessions.length > 0" class="session-group">
             <p class="group-label">固定</p>
             <button
-              v-for="report in pinnedReports"
-              :key="`pin-${reportIdOf(report)}`"
+              v-for="session in pinnedSessions"
+              :key="`pin-${session.sessionId}`"
               class="session-item"
-              :class="{ active: reportIdOf(report) === selectedReportId }"
+              :class="{ active: session.sessionId === agentSessionId }"
               type="button"
-              @click="reportIdOf(report) && loadReportDetail(reportIdOf(report) as number)"
+              @click="loadAgentMessages(session.sessionId)"
             >
-              <span class="status-dot" :class="statusClass(report.status)"></span>
+              <span class="status-dot" :class="statusClass(session.status)"></span>
               <span class="session-text">
-                <strong>{{ getReportTitle(report) }}</strong>
-                <small>{{ getReportTime(report) }}</small>
+                <strong>{{ session.title }}</strong>
+                <small>{{ getSessionTime(session) }}</small>
               </span>
-              <el-dropdown trigger="click" @command="(cmd: string) => cmd === 'pin' ? togglePin(report) : cmd === 'archive' ? toggleArchive(report) : cmd === 'rename' ? renameSession(report) : hideSession(report)">
+              <el-dropdown trigger="click" @command="(cmd: string) => handleSessionCommand(cmd, session)">
                 <span class="more-button" @click.stop>...</span>
                 <template #dropdown>
                   <el-dropdown-menu>
@@ -1353,22 +1541,22 @@ onMounted(() => {
 
           <div class="session-group">
             <p class="group-label">最近</p>
-            <el-empty v-if="!loadingHistory && recentReports.length === 0 && !historyError" description="暂无会话" />
+            <el-empty v-if="!loadingHistory && recentSessions.length === 0 && !historyError" description="暂无会话" />
             <button
-              v-for="report in recentReports"
-              :key="`recent-${reportIdOf(report) ?? getReportTitle(report)}`"
+              v-for="session in recentSessions"
+              :key="`recent-${session.sessionId}`"
               class="session-item"
-              :class="{ active: reportIdOf(report) === selectedReportId }"
+              :class="{ active: session.sessionId === agentSessionId }"
               type="button"
-              :disabled="!reportIdOf(report)"
-              @click="reportIdOf(report) && loadReportDetail(reportIdOf(report) as number)"
+              
+              @click="loadAgentMessages(session.sessionId)"
             >
-              <span class="status-dot" :class="statusClass(report.status)"></span>
+              <span class="status-dot" :class="statusClass(session.status)"></span>
               <span class="session-text">
-                <strong>{{ getReportTitle(report) }}</strong>
-                <small>{{ getReportTime(report) }} · {{ statusText(report.status) }}</small>
+                <strong>{{ session.title }}</strong>
+                <small>{{ getSessionTime(session) }} · {{ statusText(session.status) }}</small>
               </span>
-              <el-dropdown trigger="click" @command="(cmd: string) => cmd === 'pin' ? togglePin(report) : cmd === 'archive' ? toggleArchive(report) : cmd === 'rename' ? renameSession(report) : hideSession(report)">
+              <el-dropdown trigger="click" @command="(cmd: string) => handleSessionCommand(cmd, session)">
                 <span class="more-button" @click.stop>...</span>
                 <template #dropdown>
                   <el-dropdown-menu>
@@ -1384,24 +1572,33 @@ onMounted(() => {
 
           <div class="archive-line">
             <button type="button" @click="showArchived = !showArchived">
-              已归档 <span>{{ archivedReports.length }}</span>
+              已归档 <span>{{ archivedSessions.length }}</span>
             </button>
           </div>
 
           <div v-if="showArchived" class="session-group archived">
             <button
-              v-for="report in archivedReports"
-              :key="`archived-${reportIdOf(report)}`"
+              v-for="session in archivedSessions"
+              :key="`archived-${session.sessionId}`"
               class="session-item"
               type="button"
-              @click="reportIdOf(report) && loadReportDetail(reportIdOf(report) as number)"
+              @click="loadAgentMessages(session.sessionId)"
             >
               <span class="status-dot muted"></span>
               <span class="session-text">
-                <strong>{{ getReportTitle(report) }}</strong>
-                <small>{{ getReportTime(report) }}</small>
+                <strong>{{ session.title }}</strong>
+                <small>{{ getSessionTime(session) }}</small>
               </span>
-              <button class="restore-button" type="button" @click.stop="toggleArchive(report)">恢复</button>
+              <el-dropdown trigger="click" @command="(cmd: string) => handleSessionCommand(cmd, session)">
+                <span class="more-button" @click.stop>...</span>
+                <template #dropdown>
+                  <el-dropdown-menu>
+                    <el-dropdown-item command="archive">恢复</el-dropdown-item>
+                    <el-dropdown-item command="rename">重命名</el-dropdown-item>
+                    <el-dropdown-item command="delete">删除</el-dropdown-item>
+                  </el-dropdown-menu>
+                </template>
+              </el-dropdown>
             </button>
           </div>
         </div>
@@ -1413,8 +1610,8 @@ onMounted(() => {
         <div class="agent-title">
           <span class="agent-mark">AI</span>
           <div>
-            <h1>综合分析 Agent</h1>
-            <p>光伏平台智能工作台</p>
+            <h1>光伏 Agent</h1>
+            <p>独立 AI 对话工作台</p>
           </div>
         </div>
         <div class="header-actions">
@@ -1520,10 +1717,10 @@ onMounted(() => {
         </div>
 
         <div class="context-pills">
-          <button type="button" @click="activeTab = 'context'; rightCollapsed = false">station {{ form.stationId ?? '-' }}</button>
-          <button type="button" @click="activeTab = 'context'; rightCollapsed = false">task {{ form.taskId ?? '-' }}</button>
-          <button :class="{ on: form.includeWeather }" type="button" @click="form.includeWeather = !form.includeWeather">天气</button>
-          <button :class="{ on: form.includePrediction }" type="button" @click="form.includePrediction = !form.includePrediction">预测</button>
+          <button type="button" @click="activeTab = 'context'; rightCollapsed = false">独立会话 {{ agentSessionId ?? '-' }}</button>
+          <button type="button" @click="activeTab = 'tools'; rightCollapsed = false">工具由 Agent 按对话选择</button>
+          <button :class="{ on: form.includeWeather }" type="button" @click="form.includeWeather = !form.includeWeather">报告含天气</button>
+          <button :class="{ on: form.includePrediction }" type="button" @click="form.includePrediction = !form.includePrediction">报告含预测</button>
         </div>
 
         <div class="composer">
@@ -1562,34 +1759,26 @@ onMounted(() => {
 
         <el-tabs v-model="activeTab" class="inspector-tabs">
           <el-tab-pane label="上下文" name="context">
-            <div class="mini-form">
-              <label>
-                <span>stationId</span>
-                <el-input-number v-model="form.stationId" :min="1" :precision="0" controls-position="right" />
-              </label>
-              <label>
-                <span>taskId</span>
-                <el-input-number v-model="form.taskId" :min="1" :precision="0" controls-position="right" />
-              </label>
+            <div class="context-list standalone">
+              <p><span>模式</span><strong>独立 AI 对话</strong></p>
+              <p><span>sessionId</span><strong>{{ agentSessionId ?? '-' }}</strong></p>
+              <p><span>会话</span><strong>{{ activeSessionTitle }}</strong></p>
+              <p><span>用户</span><strong>{{ username }}</strong></p>
+              <p><span>reportId</span><strong>{{ currentReportId ?? '-' }}</strong></p>
+            </div>
+            <div class="mini-form agent-options">
               <label class="wide">
-                <span>title</span>
-                <el-input v-model.trim="form.title" placeholder="自动生成" clearable />
+                <span>报告标题偏好</span>
+                <el-input v-model.trim="form.title" placeholder="可选，生成报告时由 Agent 参考" clearable />
               </label>
               <div class="switches">
-                <el-switch v-model="form.includeWeather" active-text="天气" />
-                <el-switch v-model="form.includePrediction" active-text="预测" />
+                <el-switch v-model="form.includeWeather" active-text="报告含天气" />
+                <el-switch v-model="form.includePrediction" active-text="报告含预测" />
               </div>
             </div>
-
-            <div class="context-list">
-              <p><span>reportId</span><strong>{{ currentReportId ?? '-' }}</strong></p>
-              <p><span>会话</span><strong>{{ selectedReportId ? currentTitle : '新会话' }}</strong></p>
-              <p><span>用户</span><strong>{{ username }}</strong></p>
-            </div>
-
             <div class="side-actions">
-              <el-button type="primary" :loading="running" :disabled="!form.stationId || running" @click="runAnalysis">运行</el-button>
-              <el-button :loading="loadingHistory" @click="loadReports">刷新</el-button>
+              <el-button :loading="loadingHistory" @click="loadAgentSessions">刷新会话</el-button>
+              <el-button @click="activeTab = 'tools'">查看工具</el-button>
             </div>
           </el-tab-pane>
 
@@ -1672,6 +1861,25 @@ onMounted(() => {
               <p><span>rawResponse</span><strong>{{ reportDebugMeta.hasRawResponse ? '存在' : '不存在' }}</strong></p>
               <p><span>promptSnapshot</span><strong>{{ reportDebugMeta.hasPromptSnapshot ? '存在' : '不存在' }}</strong></p>
               <p><span>contextSnapshot</span><strong>{{ reportDebugMeta.hasContextSnapshot ? '存在' : '不存在' }}</strong></p>
+              <p><span>sessionId</span><strong>{{ agentSessionId ?? '-' }}</strong></p>
+              <p><span>toolCalls</span><strong>{{ recentToolCalls.length }}</strong></p>
+            </div>
+            <div v-if="recentToolCalls.length > 0" class="debug-list compact">
+              <article v-for="tool in recentToolCalls.slice(0, 5)" :key="tool.toolCallId" class="debug-record">
+                <div>
+                  <strong>{{ tool.displayName || tool.toolName }}</strong>
+                  <el-tag size="small" :type="tool.status === 'SUCCESS' ? 'success' : tool.status === 'FAILED' ? 'danger' : 'warning'">{{ tool.status }}</el-tag>
+                </div>
+                <p>{{ tool.toolName }} · {{ tool.durationMs ?? 0 }} ms</p>
+                <details>
+                  <summary>arguments</summary>
+                  <pre>{{ formatAgentPayload(tool.arguments) }}</pre>
+                </details>
+                <details>
+                  <summary>result</summary>
+                  <pre>{{ formatAgentPayload(tool.result) }}</pre>
+                </details>
+              </article>
             </div>
             <details v-if="currentReport?.rawResponse" class="raw-response">
               <summary>原始响应</summary>
@@ -1727,11 +1935,17 @@ onMounted(() => {
 }
 
 .agent-workbench.right-collapsed {
-  grid-template-columns: 248px minmax(620px, 1fr) 54px;
+  grid-template-columns: 248px minmax(620px, 1fr) 0;
 }
 
 .agent-workbench.left-collapsed.right-collapsed {
-  grid-template-columns: 56px minmax(620px, 1fr) 54px;
+  grid-template-columns: 56px minmax(620px, 1fr) 0;
+}
+
+.agent-workbench.right-collapsed .inspector {
+  padding: 0;
+  overflow: hidden;
+  box-shadow: none;
 }
 
 button {
@@ -2408,15 +2622,7 @@ button {
 }
 
 .floating-open {
-  position: absolute;
-  inset: 12px auto auto 8px;
-  writing-mode: vertical-rl;
-  border: 0;
-  border-radius: 12px;
-  padding: 10px 6px;
-  background: rgba(23, 32, 51, 0.06);
-  color: #59687d;
-  cursor: pointer;
+  display: none;
 }
 
 .inspector-tabs :deep(.el-tabs__header) {
@@ -2437,6 +2643,14 @@ button {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 10px;
+}
+
+.agent-options {
+  margin-top: 12px;
+}
+
+.context-list.standalone {
+  margin-top: 0;
 }
 
 .mini-form label {

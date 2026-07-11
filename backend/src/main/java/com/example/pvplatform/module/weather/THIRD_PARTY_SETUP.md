@@ -70,7 +70,7 @@ JWT：
 启动后端：
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\start-local.ps1
+./start-local.sh
 ```
 
 登录获取 JWT：

@@ -5,7 +5,7 @@
 ## 当前状态
 
 - 后端主要业务接口已经按当前代码整理到 [docs/back_front_api.md](docs/back_front_api.md)。
-- 配置入口已经收敛到 `backend/.env.local`、`start-local.sh` 和 `start-local.ps1`。
+- 配置入口已经收敛到 `backend/.env.local` 和根目录 `start-local.sh`。
 - 天气模块已接入 QWeather JWT 模式，并提供 `weather-debug.html` 调试页。
 - Redis 已作为可选缓存/分布式状态层接入，本地开发可使用内存降级。
 - PC 用户端已接入看板聚合、模型广场、API 管理、云图预测代理、新闻通知、我的页面等接口；模型服务可按需单独启动。
@@ -57,31 +57,20 @@ pv-power-platform/
 ./stop-local.sh
 ```
 
-### 1. Windows / PowerShell 一键启动
+### 1. 常用参数
 
-如果只是做前后端联调，可以先启动本机 MySQL，然后运行根目录脚本。脚本会补齐 `backend/.env.local`，并使用 `LOCAL` 天气，不需要任何第三方私钥。默认只启动后端和前端，避免模型服务/Python 环境影响日常开发：
+脚本会优先停止上次由本项目脚本启动的后台进程，然后固定使用 `backend/.env.local` 中的端口启动。默认端口为：后端 `8080`、前端 `5173`。
 
-```powershell
-powershell -ExecutionPolicy Bypass -File .\start-local.ps1
-```
-
-常用参数：
-
-```powershell
+```bash
 # 只启动后端
-powershell -ExecutionPolicy Bypass -File .\start-local.ps1 -BackendOnly
+./start-local.sh --backend-only
 
 # 只启动前端
-powershell -ExecutionPolicy Bypass -File .\start-local.ps1 -FrontendOnly
+./start-local.sh --frontend-only
 
-# 前后端加模型服务一起启动
-powershell -ExecutionPolicy Bypass -File .\start-local.ps1 -WithModel
-
-# 停止上次由 start-local.ps1 启动的本项目进程
-powershell -ExecutionPolicy Bypass -File .\stop-local.ps1
+# 启用 Redis 缓存
+./start-local.sh --with-redis
 ```
-
-脚本会优先停止上次由本项目脚本启动的后台进程和本地配置端口上的旧进程，然后固定使用 `backend/.env.local` 中的端口启动。默认端口为：后端 `8080`、前端 `5173`、模型服务 `9000`。
 
 真实 QWeather、GitHub OAuth、阿里云人脸、邮箱发送等第三方能力只需要改 `backend/.env.local`。QWeather 私钥文件放到 `backend/secrets/ed25519-private.pem`。
 
@@ -89,8 +78,8 @@ powershell -ExecutionPolicy Bypass -File .\stop-local.ps1
 
 请使用本机 MySQL 8，确认 `3306` 端口已监听，然后按需初始化数据库：
 
-```powershell
-notepad backend\.env.local
+```bash
+${EDITOR:-vi} backend/.env.local
 ```
 
 数据库名默认是 `pv_platform`。初始化脚本位于：
@@ -113,15 +102,6 @@ pip install -r requirements.txt
 uvicorn app.main:app --host 127.0.0.1 --port 9000
 ```
 
-PowerShell：
-
-```powershell
-cd model-service
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-pip install -r requirements.txt
-uvicorn app.main:app --host 127.0.0.1 --port 9000
-```
 
 检查：
 
@@ -136,9 +116,8 @@ http://localhost:9000/docs
 
 一键启动：
 
-```powershell
-cd backend
-powershell -ExecutionPolicy Bypass -File .\run-local.ps1
+```bash
+./start-local.sh --backend-only
 ```
 
 检查：
@@ -150,14 +129,14 @@ http://localhost:8080/weather-debug.html
 
 快速验证：
 
-```powershell
-powershell -ExecutionPolicy Bypass -File .\run-local.ps1 --version
-powershell -ExecutionPolicy Bypass -File .\run-local.ps1 -DskipTests compile
+```bash
+cd backend
+mvn -DskipTests compile
 ```
 
 ### 5. Web 前端
 
-```powershell
+```bash
 cd web-frontend
 npm install
 npm run dev -- --host 127.0.0.1 --port 5173 --strictPort
@@ -182,7 +161,7 @@ http://localhost:5173
 ## 联调前置条件
 
 1. MySQL 已启动并初始化基础数据。
-2. 后端通过 `backend/run-local.ps1` 或等价环境变量启动。
+2. 后端通过根目录 `./start-local.sh --backend-only` 启动。
 3. `JWT_SECRET`、`MYSQL_PASSWORD` 已配置。
 4. 预测和云图预测需要模型服务 `MODEL_SERVICE_BASE_URL` 可访问；普通前后端页面可不启动模型服务。
 5. QWeather 需要 `WEATHER_PROVIDER=QWEATHER`、JWT 凭证、私钥路径和电站经纬度。

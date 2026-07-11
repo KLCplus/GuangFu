@@ -38,16 +38,60 @@ public class AgentController {
     }
 
     @GetMapping("/sessions")
-    public Result<?> sessions(@RequestParam(defaultValue = "1") int pageNum,
-                              @RequestParam(defaultValue = "20") int pageSize,
-                              @RequestParam(required = false) Boolean archived) {
-        return Result.success(sessionService.list(pageNum, pageSize, archived));
+    public Result<?> sessions(@RequestParam(required = false) Integer page,
+                              @RequestParam(required = false) Integer size,
+                              @RequestParam(required = false) Integer pageNum,
+                              @RequestParam(required = false) Integer pageSize,
+                              @RequestParam(required = false) Boolean archived,
+                              @RequestParam(required = false) Boolean pinned,
+                              @RequestParam(required = false) String keyword) {
+        int actualPage = page != null ? page : (pageNum == null ? 1 : pageNum);
+        int actualSize = size != null ? size : (pageSize == null ? 20 : pageSize);
+        return Result.success(sessionService.list(actualPage, actualSize, archived, pinned, keyword));
     }
 
     @GetMapping("/sessions/{sessionId}/messages")
     public Result<?> messages(@PathVariable Long sessionId) {
         sessionService.requireOwned(sessionId);
-        return Result.success(messageService.list(sessionId));
+        return Result.success(messageService.listWithDetails(sessionId));
+    }
+
+    @GetMapping("/sessions/{sessionId}/tool-calls")
+    public Result<?> toolCalls(@PathVariable Long sessionId) {
+        sessionService.requireOwned(sessionId);
+        return Result.success(messageService.listToolCalls(sessionId));
+    }
+
+    @PostMapping("/sessions/{sessionId}/archive")
+    public Result<?> archive(@PathVariable Long sessionId) {
+        return Result.success(sessionService.archive(sessionId, true));
+    }
+
+    @PostMapping("/sessions/{sessionId}/unarchive")
+    public Result<?> unarchive(@PathVariable Long sessionId) {
+        return Result.success(sessionService.archive(sessionId, false));
+    }
+
+    @PostMapping("/sessions/{sessionId}/pin")
+    public Result<?> pin(@PathVariable Long sessionId) {
+        return Result.success(sessionService.pin(sessionId, true));
+    }
+
+    @PostMapping("/sessions/{sessionId}/unpin")
+    public Result<?> unpin(@PathVariable Long sessionId) {
+        return Result.success(sessionService.pin(sessionId, false));
+    }
+
+    @PutMapping("/sessions/{sessionId}")
+    public Result<?> rename(@PathVariable Long sessionId, @RequestBody Map<String, Object> body) {
+        Object title = body == null ? null : body.get("title");
+        return Result.success(sessionService.rename(sessionId, title == null ? null : String.valueOf(title)));
+    }
+
+    @DeleteMapping("/sessions/{sessionId}")
+    public Result<?> delete(@PathVariable Long sessionId) {
+        sessionService.delete(sessionId);
+        return Result.success(Map.of("deleted", true));
     }
 
     @GetMapping("/tools")

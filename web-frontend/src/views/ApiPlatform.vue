@@ -478,7 +478,7 @@ async function handleExport() {
       ElMessage.warning('当前筛选条件下无数据可导出')
       return
     }
-    const headers = ['时间', 'API Key ID', '模型', '接口', '方法', '状态', 'HTTP', '耗时(ms)', '错误信息', 'Token(输入)', 'Token(输出)', 'Token(总计)']
+    const headers = ['时间', 'API Key ID', '模型', '接口', '方法', '状态', 'HTTP', '耗时(ms)', '错误信息', '输入帧数', '输出点数', '总用量']
     const rows = logs.map((log) => [
       formatDate(log.requestTime ?? log.createdAt),
       log.apiKeyId ?? '',
@@ -816,15 +816,15 @@ async function copyText(value: string) {
           <small>{{ card.note }}</small>
         </article>
         <article class="summary-card token-card" :class="tokenSummary.hasData ? 'tone-blue' : 'unavailable-card'">
-          <span>Token 使用量</span>
+          <span>模型调用用量</span>
           <div class="token-values">
-            <div class="token-row"><em>输入</em><strong>{{ tokenSummary.input }}</strong></div>
-            <div class="token-row"><em>输出</em><strong>{{ tokenSummary.output }}</strong></div>
+            <div class="token-row"><em>输入帧</em><strong>{{ tokenSummary.input }}</strong></div>
+            <div class="token-row"><em>输出点</em><strong>{{ tokenSummary.output }}</strong></div>
             <div class="token-row"><em>总计</em><strong>{{ tokenSummary.total }}</strong></div>
           </div>
-          <small v-if="tokenSummary.hasData">后端聚合统计</small>
-          <small v-else>调用日志暂未返回 Token 字段</small>
-          <el-tag v-if="!tokenSummary.hasData" size="small" type="info" effect="plain">暂未接通</el-tag>
+          <small v-if="tokenSummary.hasData">后端按输入帧和输出点聚合</small>
+          <small v-else>当前筛选范围暂无用量数据</small>
+          <el-tag v-if="!tokenSummary.hasData" size="small" type="info" effect="plain">暂无数据</el-tag>
         </article>
       </div>
 

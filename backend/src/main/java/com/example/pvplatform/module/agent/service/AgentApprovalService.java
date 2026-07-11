@@ -30,6 +30,7 @@ public class AgentApprovalService {
         row.setSessionId(sessionId);
         row.setToolCallId(toolCall.getToolCallId());
         row.setUserId(SecurityUtils.requireCurrentUserId());
+        row.setToolName(toolCall.getToolName());
         row.setStatus("PENDING");
         row.setReason(reason);
         row.setArgumentsJson(toolCall.getArgumentsJson());

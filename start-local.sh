@@ -57,6 +57,60 @@ read_env_value() {
   awk -F= -v key="$name" '$1 == key {print substr($0, index($0, "=") + 1); exit}' "$env_file" | tr -d '\r'
 }
 
+export_env_file() {
+  local file="$1"
+  [[ -f "$file" ]] || return 0
+
+  while IFS= read -r raw_line || [[ -n "$raw_line" ]]; do
+    local line="${raw_line#"${raw_line%%[![:space:]]*}"}"
+    line="${line%"${line##*[![:space:]]}"}"
+    [[ -z "$line" || "$line" == \#* ]] && continue
+    [[ "$line" == *"="* ]] || continue
+
+    local name="${line%%=*}"
+    local value="${line#*=}"
+    name="${name%"${name##*[![:space:]]}"}"
+    value="${value#"${value%%[![:space:]]*}"}"
+    value="${value%"${value##*[![:space:]]}"}"
+
+    if [[ "${value:0:1}" == '"' && "${value: -1}" == '"' ]]; then
+      value="${value:1:${#value}-2}"
+    elif [[ "${value:0:1}" == "'" && "${value: -1}" == "'" ]]; then
+      value="${value:1:${#value}-2}"
+    fi
+
+    export "$name=$value"
+  done < "$file"
+}
+
+write_env_exports() {
+  local source_file="$1"
+  local target_file="$2"
+  : > "$target_file"
+  [[ -f "$source_file" ]] || return 0
+
+  while IFS= read -r raw_line || [[ -n "$raw_line" ]]; do
+    local line="${raw_line#"${raw_line%%[![:space:]]*}"}"
+    line="${line%"${line##*[![:space:]]}"}"
+    [[ -z "$line" || "$line" == \#* ]] && continue
+    [[ "$line" == *"="* ]] || continue
+
+    local name="${line%%=*}"
+    local value="${line#*=}"
+    name="${name%"${name##*[![:space:]]}"}"
+    value="${value#"${value%%[![:space:]]*}"}"
+    value="${value%"${value##*[![:space:]]}"}"
+
+    if [[ "${value:0:1}" == '"' && "${value: -1}" == '"' ]]; then
+      value="${value:1:${#value}-2}"
+    elif [[ "${value:0:1}" == "'" && "${value: -1}" == "'" ]]; then
+      value="${value:1:${#value}-2}"
+    fi
+
+    printf 'export %s=%q\n' "$name" "$value" >> "$target_file"
+  done < "$source_file"
+}
+
 upsert_env_value() {
   local name="$1"
   local value="$2"
@@ -95,11 +149,11 @@ ENV
   upsert_env_value FRONTEND_PORT "5173"
   upsert_env_value MODEL_SERVICE_BASE_URL "http://127.0.0.1:9000"
   upsert_env_value WEATHER_PROVIDER "LOCAL"
-  upsert_env_value ANALYSIS_LLM_ENABLED "false"
+  upsert_env_value ANALYSIS_LLM_ENABLED "true"
   upsert_env_value FACE_PROVIDER "local"
   upsert_env_value OAUTH_GITHUB_ENABLED "false"
   upsert_env_value MAIL_ENABLED "false"
-  upsert_env_value PVOUTPUT_ENABLED "true"
+  upsert_env_value PVOUTPUT_ENABLED "false"
   upsert_env_value SECURITY_DEBUG_OPEN "true"
   upsert_env_value REDIS_HOST "127.0.0.1"
   upsert_env_value REDIS_PORT "6379"
@@ -192,8 +246,10 @@ start_redis_if_needed() {
 }
 
 start_backend() {
-  chmod +x "$backend_dir/run-local.sh"
-  nohup bash -c 'cd "$1" && exec ./run-local.sh spring-boot:run' _ "$backend_dir" > "$log_dir/backend.log" 2>&1 < /dev/null &
+  mkdir -p "$backend_dir/.m2/repository" "$backend_dir/data/faces" "$backend_dir/data/avatars" "$backend_dir/data/pv-imports"
+  local backend_env="$runtime_dir/backend.env"
+  write_env_exports "$env_file" "$backend_env"
+  setsid bash -c 'source "$1" && cd "$2" && exec mvn "-Dmaven.repo.local=$3" spring-boot:run' _ "$backend_env" "$backend_dir" "$backend_dir/.m2/repository" > "$log_dir/backend.log" 2>&1 < /dev/null &
   echo $! > "$runtime_dir/backend.pid"
   echo "Backend starting, log: $log_dir/backend.log"
 }
@@ -210,12 +266,13 @@ start_frontend() {
   local frontend_host frontend_port
   frontend_host="$(read_env_value FRONTEND_HOST)"
   frontend_port="$(read_env_value FRONTEND_PORT)"
-  nohup bash -c 'cd "$1" && exec npm run dev -- --host "$2" --port "$3" --strictPort' _ "$frontend_dir" "$frontend_host" "$frontend_port" > "$log_dir/frontend.log" 2>&1 < /dev/null &
+  setsid bash -c 'cd "$1" && exec npm run dev -- --host "$2" --port "$3" --strictPort' _ "$frontend_dir" "$frontend_host" "$frontend_port" > "$log_dir/frontend.log" 2>&1 < /dev/null &
   echo $! > "$runtime_dir/frontend.pid"
   echo "Frontend starting, log: $log_dir/frontend.log"
 }
 
 ensure_env_defaults
+export_env_file "$env_file"
 stop_previous
 start_redis_if_needed
 

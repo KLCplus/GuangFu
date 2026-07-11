@@ -3,8 +3,10 @@ package com.example.pvplatform.module.agent.tool.impl;
 import com.example.pvplatform.module.agent.tool.*;
 import com.example.pvplatform.module.analysis.dto.AnalysisRequest;
 import com.example.pvplatform.module.analysis.service.AnalysisService;
+import com.example.pvplatform.module.analysis.vo.AnalysisReportVO;
 import org.springframework.stereotype.Component;
 
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 @Component
@@ -28,7 +30,21 @@ public class ReportGenerateTool extends AbstractAgentTool {
             boolean includeWeather = boolArg(arguments, "includeWeather", true);
             boolean includePrediction = boolArg(arguments, "includePrediction", true);
             AnalysisRequest request = new AnalysisRequest(stationId, taskId, title, "由 Agent 根据用户确认生成", includeWeather, includePrediction);
-            return ToolExecutionResult.success(analysisService.report(request), "综合分析报告已生成并保存");
+            AnalysisReportVO report = analysisService.report(request);
+            Map<String, Object> safeReport = new LinkedHashMap<>();
+            safeReport.put("reportId", report.reportId());
+            safeReport.put("id", report.id());
+            safeReport.put("stationId", report.stationId());
+            safeReport.put("taskId", report.taskId());
+            safeReport.put("title", report.title());
+            safeReport.put("summary", report.summary());
+            safeReport.put("riskLevel", report.riskLevel());
+            safeReport.put("status", report.status());
+            safeReport.put("includeWeather", report.includeWeather());
+            safeReport.put("includePrediction", report.includePrediction());
+            safeReport.put("modelName", report.modelName());
+            safeReport.put("createdAt", report.createdAt());
+            return ToolExecutionResult.success(safeReport, "综合分析报告已生成并保存，reportId=" + report.reportId());
         });
     }
 }

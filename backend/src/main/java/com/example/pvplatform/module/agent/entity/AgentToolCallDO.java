@@ -14,8 +14,10 @@ public class AgentToolCallDO {
     private Long toolCallId;
     private Long sessionId;
     private Long messageId;
+    private Long userId;
     private String clientToolCallId;
     private String toolName;
+    private String displayName;
     private String argumentsJson;
     private String resultJson;
     private String status;
