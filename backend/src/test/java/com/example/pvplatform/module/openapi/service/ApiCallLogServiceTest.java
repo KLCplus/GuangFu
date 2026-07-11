@@ -2,6 +2,7 @@ package com.example.pvplatform.module.openapi.service;
 
 import com.baomidou.mybatisplus.core.conditions.Wrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.example.pvplatform.module.openapi.vo.ApiUsageSummaryVO;
 import com.example.pvplatform.persistence.entity.ApiCallLogDO;
 import com.example.pvplatform.persistence.entity.ModelInfoDO;
 import com.example.pvplatform.persistence.mapper.ApiCallLogMapper;
@@ -59,5 +60,19 @@ class ApiCallLogServiceTest {
         assertEquals(60L, row.getInputTokens());
         assertEquals(24L, row.getOutputTokens());
         assertEquals(84L, row.getTotalTokens());
+    }
+
+    @Test
+    void returnsZeroSummaryWhenMapperHasNoAggregateRow() {
+        when(logMapper.selectUsageSummary(7L, null, null, null, null)).thenReturn(null);
+
+        ApiUsageSummaryVO summary = service.getUsageSummary(7L, null, null, null, null);
+
+        assertEquals(0, summary.totalCalls());
+        assertEquals(0, summary.successCalls());
+        assertEquals(0, summary.failedCalls());
+        assertEquals(0, summary.inputTokens());
+        assertEquals(0, summary.outputTokens());
+        assertEquals(0, summary.totalTokens());
     }
 }

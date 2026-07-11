@@ -631,3 +631,52 @@ http://127.0.0.1:5173/profile
 - 本次 API 管理页面重构完成后再次执行 `npm run build`，Vue TypeScript 检查、ECharts 页面编译和 Vite 生产构建均成功。
 - 构建仅出现依赖包 pure annotation 和现有大 chunk 的警告，没有编译错误。
 - 后端编译曾执行 `mvn -DskipTests compile` 通过。
+
+## U-05 API 管理联调完善（2026-07-11）
+
+### 本次修改范围
+
+- 前端页面：`web-frontend/src/views/ApiPlatform.vue`。
+- 后端兼容迁移：`backend/src/main/java/com/example/pvplatform/config/ApiUsageSchemaMigration.java`。
+- 后端空数据处理：`backend/src/main/java/com/example/pvplatform/module/openapi/service/ApiCallLogService.java`。
+- 数据库增量脚本：`backend/src/main/resources/sql/api_usage_migration.sql`。
+- 配置：`backend/src/main/resources/application.yml`，允许通过 `API_USAGE_SCHEMA_MIGRATION_ENABLED` 控制增量迁移，默认启用。
+
+### 已接入真实后端的功能
+
+- API Key 列表、创建、名称修改、启停、重新生成、删除继续复用 `web-frontend/src/api/open.ts`：`GET /api/open/keys`、`POST /api/open/apply-key`、`PUT /api/open/keys/{apiKeyId}/name`、`PUT /api/open/keys/{apiKeyId}/status`、`POST /api/open/keys/{apiKeyId}/reset`、`DELETE /api/open/keys/{apiKeyId}`。
+- 使用统计继续使用真实聚合接口：`GET /api/open/usage/summary`、`GET /api/open/usage/trend`、`GET /api/open/usage/by-model`、`GET /api/open/usage/by-key`、`GET /api/open/call-logs`、`GET /api/open/call-logs/export`。
+- 余额区域接入 `GET /api/open/wallet`，没有使用 `src/data/mock.ts` 中的模拟余额。
+
+### 数据库与统计 500 修复
+
+统计接口原先因本地旧版 `api_call_log` 缺少 `input_tokens`、`output_tokens`、`total_tokens` 而返回 500。新增启动迁移会查询 `information_schema`，只添加缺失列及 `idx_call_user_time`、`idx_call_user_model`、`idx_call_user_key` 三个索引；已存在时跳过，不执行 `init.sql`，不删除或重建业务表。手工迁移脚本也已改为可重复执行。
+
+汇总接口在无日志时返回全 0 对象，趋势、按模型、按 Key 返回空数组，调用日志返回 `total=0, records=[]`，空数据不作为异常处理。
+
+### 前端错误隔离与图表状态
+
+- 四个统计请求由 `Promise.all` 改为 `Promise.allSettled`：单个接口失败只影响对应卡片或图表，其余真实数据继续展示。
+- 趋势折线图、模型占比环形图、API Key 柱状图分别依据自己的返回数组展示，不再统一依赖调用日志总数。
+- 每个图表分别展示加载失败、真实空数据或真实图表；数据出现后在 `nextTick` 中初始化并执行 `resize`，避免隐藏容器初始化导致尺寸为 0。
+- 调用日志保留独立错误提示和空列表状态，不使用假日志兜底。
+
+### 余额、充值与 Token 的真实程度
+
+- `/api/open/wallet` 是真实后端接口，但当前不是完整钱包系统：`balance` 和 `frozenBalance` 固定返回 0，本月消费按本月 API 调用日志数量乘以 0.01 元临时计算，流水由调用日志临时映射。
+- 页面明确说明上述限制；“去充值”保持禁用并标记“暂未开放”。目前没有钱包持久化表、充值订单、支付接口或支付回调。
+- 用量字段、DO、VO、统计 SQL 和写入链路已经闭合。`OpenApiService` 将真实请求输入帧数和预测输出点数写入现有 `inputTokens`、`outputTokens`、`totalTokens` 字段；这些字段表示本项目模型调用用量，不冒充大语言模型 tokenizer Token。
+- API 管理当前未使用 API Key、统计、余额或 Token 业务假数据。
+
+### 后续仍需补齐
+
+- 若未来接入按模型服务原生计量的计费单位，需要另行明确字段语义和计费规则，不能把输入帧/输出点直接解释为大语言模型 Token。
+- 正式充值需要钱包账户表、余额流水表、充值订单、支付发起/查询/回调和幂等入账流程；完成前前端充值入口不能启用。
+
+### 验证结果
+
+- `web-frontend` 执行 `npm run build` 成功，Vue TypeScript 检查和 Vite 生产构建通过。
+- `backend` 执行 `run-local.ps1 -DskipTests compile` 成功。
+- API 管理相关 `ApiCallLogServiceTest`、`ApiKeyServiceTest`、`ApiQuotaServiceTest` 共 6 个测试全部通过。
+- 全量后端测试共执行 64 个：0 个断言失败、1 个错误、1 个跳过；唯一错误来自既有 `PhaseFourServiceTest` 缺少 DeepSeek API Key，与本次 API 管理修改无关。
+- 本机检查时 MySQL、后端和前端均未运行，因此没有用真实登录态完成 HTTP 运行联调；应用下次连接现有 MySQL 启动时会自动执行幂等迁移。
