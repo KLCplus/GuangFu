@@ -85,6 +85,19 @@ public class ApiKeyService {
         updateStatus(id, status, SecurityUtils.requireCurrentUserId());
     }
 
+    public ApiKeyVO updateOwnName(Long id, String keyName) {
+        ApiKeyDO row = apiKeyMapper.selectOne(Wrappers.<ApiKeyDO>lambdaQuery()
+            .eq(ApiKeyDO::getApiKeyId, id)
+            .eq(ApiKeyDO::getUserId, SecurityUtils.requireCurrentUserId()).last("LIMIT 1"));
+        if (row == null) {
+            throw new BusinessException(404, "API Key 不存在");
+        }
+        row.setKeyName(keyName.trim());
+        row.setUpdatedAt(LocalDateTime.now());
+        apiKeyMapper.updateById(row);
+        return toVO(row, null);
+    }
+
     public void updateAnyStatus(Long id, String status) {
         updateStatus(id, status, null);
     }

@@ -7,29 +7,30 @@ import type { ModelListItem } from '../api/model'
 import {
   applyApiKey,
   deleteApiKey,
+  exportCallLogs,
   getApiKeys,
   getCallLogs,
+  getUsageByKey,
+  getUsageByModel,
+  getUsageSummary,
+  getUsageTrend,
   resetOpenApiKey,
+  updateApiKeyName,
   updateApiKeyStatus
 } from '../api/open'
-import type { ApiCallLog, ApiKey, ApiKeyApplyPayload } from '../api/open'
+import type {
+  ApiCallLog,
+  ApiKey,
+  ApiKeyApplyPayload,
+  ApiUsageByKeyItem,
+  ApiUsageByModelItem,
+  ApiUsageSummary,
+  ApiUsageTrendItem
+} from '../api/open'
 
 interface ApiKeyForm {
   keyName: string
   expireDays: number
-}
-
-interface NormalizedCallLog {
-  logId: number
-  apiKeyId?: number
-  modelId?: number
-  path: string
-  method: string
-  requestTime: string
-  status: string
-  statusCode?: number
-  costTime: number
-  errorMessage?: string
 }
 
 interface DistributionItem {
@@ -37,26 +38,38 @@ interface DistributionItem {
   value: number
 }
 
-const MAX_STATS_LOGS = 1000
-const STATS_PAGE_SIZE = 100
+// ---- state ----
 
 const keysLoading = ref(false)
 const statsLoading = ref(false)
+const logsLoading = ref(false)
+const exporting = ref(false)
 const refreshing = ref(false)
 const actionLoadingId = ref<number | null>(null)
 const createLoading = ref(false)
+const editLoading = ref(false)
 const keyError = ref('')
 const statsError = ref('')
+const logsError = ref('')
 
 const apiKeys = ref<ApiKey[]>([])
 const models = ref<ModelListItem[]>([])
-const statsLogs = ref<NormalizedCallLog[]>([])
-const statsSourceTotal = ref(0)
-const statsTruncated = ref(false)
+
+// backend aggregation data
+const summaryData = ref<ApiUsageSummary | null>(null)
+const trendApiData = ref<ApiUsageTrendItem[]>([])
+const modelApiData = ref<ApiUsageByModelItem[]>([])
+const keyApiData = ref<ApiUsageByKeyItem[]>([])
+
+// server-side paginated call logs
+const callLogRecords = ref<ApiCallLog[]>([])
+const callLogTotal = ref(0)
 
 const createDialogVisible = ref(false)
 const resultDialogVisible = ref(false)
 const createdKey = ref<ApiKey | null>(null)
+const editKeyDialogVisible = ref(false)
+const editKeyForm = reactive({ keyName: '', apiKeyId: 0 })
 
 const createForm = reactive<ApiKeyForm>({
   keyName: '',
@@ -86,113 +99,127 @@ const timeOptions = [
   { label: '近 7 天', value: 7 },
   { label: '近 30 天', value: 30 },
   { label: '近 90 天', value: 90 },
-  { label: '已读取全部', value: 0 }
+  { label: '全部时间', value: 0 }
 ]
 
 const modelNameMap = computed(() => new Map(models.value.map((model) => [model.modelId, model.modelName])))
 const keyNameMap = computed(() => new Map(apiKeys.value.map((key) => [key.apiKeyId, key.keyName])))
 
 const modelOptions = computed(() => {
-  const ids = new Set(statsLogs.value.map((log) => log.modelId).filter((id): id is number => id != null))
-  return Array.from(ids).map((modelId) => ({
-    value: modelId,
-    label: modelName(modelId)
+  if (modelApiData.value.length) {
+    return modelApiData.value
+      .filter((item) => item.modelId != null)
+      .map((item) => ({ value: item.modelId!, label: item.modelName }))
+  }
+  // fallback: derive from models list
+  return models.value.map((model) => ({ value: model.modelId, label: model.modelName }))
+})
+
+// ---- time range helpers ----
+
+function filterStartTime(): string | undefined {
+  if (!filters.days) return undefined
+  const date = new Date()
+  date.setHours(0, 0, 0, 0)
+  date.setDate(date.getDate() - (filters.days - 1))
+  return formatDateTime(date)
+}
+
+function formatDateTime(date: Date): string {
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`
+}
+
+function filterParams() {
+  return {
+    startTime: filterStartTime(),
+    apiKeyId: filters.apiKeyId,
+    modelId: filters.modelId
+  }
+}
+
+// ---- computed from backend data ----
+
+const summaryCards = computed(() => {
+  const s = summaryData.value
+  if (!s) {
+    return [
+      { label: '总调用次数', value: '—', note: '正在加载统计数据…', tone: 'blue' },
+      { label: '成功调用', value: '—', note: '', tone: 'green' },
+      { label: '失败调用', value: '—', note: '', tone: 'red' },
+      { label: '平均响应时间', value: '—', note: '', tone: 'purple' }
+    ]
+  }
+  return [
+    {
+      label: '总调用次数',
+      value: formatNumber(s.totalCalls),
+      note: '后端聚合统计',
+      tone: 'blue' as const
+    },
+    {
+      label: '成功调用',
+      value: formatNumber(s.successCalls),
+      note: `成功率 ${s.successRate}%`,
+      tone: 'green' as const
+    },
+    {
+      label: '失败调用',
+      value: formatNumber(s.failedCalls),
+      note: 'HTTP 或业务状态判定失败',
+      tone: 'red' as const
+    },
+    {
+      label: '平均响应时间',
+      value: `${formatNumber(s.avgCostTimeMs)} ms`,
+      note: '调用日志 costTimeMs 平均值',
+      tone: 'purple' as const
+    }
+  ]
+})
+
+const tokenSummary = computed(() => {
+  const s = summaryData.value
+  if (!s) return { input: '—', output: '—', total: '—', hasData: false }
+  const hasData = s.inputTokens > 0 || s.outputTokens > 0 || s.totalTokens > 0
+  return {
+    input: formatNumber(s.inputTokens),
+    output: formatNumber(s.outputTokens),
+    total: formatNumber(s.totalTokens),
+    hasData
+  }
+})
+
+const trendData = computed(() => {
+  return trendApiData.value.map((item) => ({
+    date: item.timeBucket,
+    success: item.successCalls,
+    failed: item.failedCalls
   }))
 })
 
-const filteredLogs = computed(() => {
-  const cutoff = filters.days ? startOfDaysAgo(filters.days - 1) : null
-  return statsLogs.value.filter((log) => {
-    if (filters.apiKeyId != null && log.apiKeyId !== filters.apiKeyId) return false
-    if (filters.modelId != null && log.modelId !== filters.modelId) return false
-    if (filters.status && normalizeLogStatus(log) !== filters.status) return false
-    if (cutoff) {
-      const requestTime = parseDate(log.requestTime)
-      if (!requestTime || requestTime < cutoff) return false
-    }
-    return true
-  })
+const modelDistribution = computed<DistributionItem[]>(() => {
+  return modelApiData.value.map((item) => ({
+    name: item.modelName || (item.modelId == null ? '未记录模型' : `模型 #${item.modelId}`),
+    value: item.totalCalls
+  }))
 })
 
-const summary = computed(() => {
-  const logs = filteredLogs.value
-  const successCalls = logs.filter(isSuccessfulLog).length
-  const failedCalls = logs.length - successCalls
-  const totalLatency = logs.reduce((sum, log) => sum + log.costTime, 0)
-  return {
-    totalCalls: logs.length,
-    successCalls,
-    failedCalls,
-    successRate: logs.length ? Number(((successCalls / logs.length) * 100).toFixed(1)) : 0,
-    avgLatency: logs.length ? Math.round(totalLatency / logs.length) : 0
-  }
-})
-
-const summaryCards = computed(() => [
-  {
-    label: '总调用次数',
-    value: formatNumber(summary.value.totalCalls),
-    note: '基于当前已读取日志与筛选条件',
-    tone: 'blue'
-  },
-  {
-    label: '成功调用',
-    value: formatNumber(summary.value.successCalls),
-    note: `成功率 ${summary.value.successRate}%`,
-    tone: 'green'
-  },
-  {
-    label: '失败调用',
-    value: formatNumber(summary.value.failedCalls),
-    note: 'HTTP 或业务状态判定失败',
-    tone: 'red'
-  },
-  {
-    label: '平均响应时间',
-    value: `${formatNumber(summary.value.avgLatency)} ms`,
-    note: '调用日志 costTimeMs 平均值',
-    tone: 'purple'
-  }
-])
-
-const trendData = computed(() => {
-  const grouped = new Map<string, { success: number; failed: number }>()
-  filteredLogs.value.forEach((log) => {
-    const day = log.requestTime.slice(0, 10)
-    if (!day) return
-    const item = grouped.get(day) ?? { success: 0, failed: 0 }
-    if (isSuccessfulLog(log)) item.success += 1
-    else item.failed += 1
-    grouped.set(day, item)
-  })
-  return Array.from(grouped.entries())
-    .sort(([left], [right]) => left.localeCompare(right))
-    .map(([date, value]) => ({ date, ...value }))
-})
-
-const modelDistribution = computed<DistributionItem[]>(() => groupDistribution(
-  filteredLogs.value,
-  (log) => log.modelId == null ? '未记录模型' : modelName(log.modelId)
-))
-
-const keyDistribution = computed<DistributionItem[]>(() => groupDistribution(
-  filteredLogs.value,
-  (log) => log.apiKeyId == null ? '未记录 Key' : keyName(log.apiKeyId)
-))
-
-const visibleLogs = computed(() => {
-  const start = (logPage.pageNum - 1) * logPage.pageSize
-  return filteredLogs.value.slice(start, start + logPage.pageSize)
+const keyDistribution = computed<DistributionItem[]>(() => {
+  return keyApiData.value.map((item) => ({
+    name: item.keyName || (item.apiKeyId == null ? '未记录 Key' : `Key #${item.apiKeyId}`),
+    value: item.totalCalls
+  }))
 })
 
 const statsCoverageText = computed(() => {
-  if (statsLoading.value) return '正在读取调用日志…'
-  if (statsError.value) return '调用日志读取失败，当前无法生成统计。'
-  if (statsTruncated.value) {
-    return `后端共有 ${formatNumber(statsSourceTotal.value)} 条日志，当前读取最近 ${formatNumber(statsLogs.value.length)} 条进行前端聚合。`
-  }
-  return `已读取后端返回的全部 ${formatNumber(statsLogs.value.length)} 条调用日志。`
+  if (statsLoading.value) return '正在从后端加载统计数据…'
+  if (statsError.value) return '统计数据加载失败，请重试。'
+  const total = summaryData.value?.totalCalls ?? 0
+  return `统计数据由后端聚合，当前筛选范围内共 ${formatNumber(total)} 条调用记录。`
 })
+
+// ---- lifecycle ----
 
 onMounted(() => {
   window.addEventListener('resize', resizeCharts)
@@ -210,18 +237,28 @@ watch(
   () => [filters.days, filters.apiKeyId, filters.modelId, filters.status],
   () => {
     logPage.pageNum = 1
+    void loadStats()
+    void loadCallLogs()
   }
 )
 
-watch(filteredLogs, () => {
+watch(logPage, () => {
+  void loadCallLogs()
+})
+
+watch([trendApiData, modelApiData, keyApiData], () => {
   void nextTick(renderCharts)
 })
 
+// ---- data loading ----
+
 async function loadPage() {
   refreshing.value = true
-  await Promise.all([loadKeys(), loadStatsLogs(), loadModels()])
+  await Promise.all([loadKeys(), loadModels()])
+  await loadStats()
+  await loadCallLogs()
   refreshing.value = false
-  await nextTick(renderCharts)
+  void nextTick(renderCharts)
 }
 
 async function loadKeys() {
@@ -245,33 +282,56 @@ async function loadModels() {
   }
 }
 
-async function loadStatsLogs() {
+async function loadStats() {
   statsLoading.value = true
   statsError.value = ''
   try {
-    const firstPage = await getCallLogs({ pageNum: 1, pageSize: STATS_PAGE_SIZE })
-    const targetCount = Math.min(firstPage.total, MAX_STATS_LOGS)
-    const pageCount = Math.ceil(targetCount / STATS_PAGE_SIZE)
-    const remainingPages = pageCount > 1
-      ? await Promise.all(
-          Array.from({ length: pageCount - 1 }, (_, index) =>
-            getCallLogs({ pageNum: index + 2, pageSize: STATS_PAGE_SIZE })
-          )
-        )
-      : []
-    const records = [firstPage, ...remainingPages].flatMap((page) => page.records).slice(0, targetCount)
-    statsLogs.value = records.map(normalizeCallLog)
-    statsSourceTotal.value = firstPage.total
-    statsTruncated.value = firstPage.total > statsLogs.value.length
+    const params = filterParams()
+    const [summaryResult, trendResult, modelResult, keyResult] = await Promise.all([
+      getUsageSummary(params),
+      getUsageTrend(params),
+      getUsageByModel(params),
+      getUsageByKey(params)
+    ])
+    summaryData.value = summaryResult
+    trendApiData.value = trendResult
+    modelApiData.value = modelResult
+    keyApiData.value = keyResult
   } catch (error) {
-    statsLogs.value = []
-    statsSourceTotal.value = 0
-    statsTruncated.value = false
-    statsError.value = errorMessage(error, '调用日志加载失败')
+    summaryData.value = null
+    trendApiData.value = []
+    modelApiData.value = []
+    keyApiData.value = []
+    statsError.value = errorMessage(error, '统计数据加载失败')
   } finally {
     statsLoading.value = false
   }
 }
+
+async function loadCallLogs() {
+  logsLoading.value = true
+  logsError.value = ''
+  try {
+    const result = await getCallLogs({
+      pageNum: logPage.pageNum,
+      pageSize: logPage.pageSize,
+      apiKeyId: filters.apiKeyId,
+      modelId: filters.modelId,
+      status: filters.status || undefined,
+      startTime: filterStartTime()
+    })
+    callLogRecords.value = result.records
+    callLogTotal.value = result.total
+  } catch (error) {
+    callLogRecords.value = []
+    callLogTotal.value = 0
+    logsError.value = errorMessage(error, '调用日志加载失败')
+  } finally {
+    logsLoading.value = false
+  }
+}
+
+// ---- key management ----
 
 async function submitCreateKey() {
   const keyName = createForm.keyName.trim()
@@ -292,6 +352,32 @@ async function submitCreateKey() {
     ElMessage.error(errorMessage(error, 'API Key 创建失败'))
   } finally {
     createLoading.value = false
+  }
+}
+
+function openEditKeyDialog(row: ApiKey) {
+  editKeyForm.keyName = row.keyName
+  editKeyForm.apiKeyId = row.apiKeyId
+  editKeyDialogVisible.value = true
+}
+
+async function submitEditKeyName() {
+  const keyName = editKeyForm.keyName.trim()
+  if (!keyName) {
+    ElMessage.warning('请输入 Key 名称')
+    return
+  }
+
+  editLoading.value = true
+  try {
+    await updateApiKeyName(editKeyForm.apiKeyId, { keyName })
+    editKeyDialogVisible.value = false
+    ElMessage.success('API Key 名称已更新')
+    await loadKeys()
+  } catch (error) {
+    ElMessage.error(errorMessage(error, '名称修改失败'))
+  } finally {
+    editLoading.value = false
   }
 }
 
@@ -372,11 +458,55 @@ async function deleteKey(row: ApiKey) {
   try {
     await deleteApiKey(row.apiKeyId)
     ElMessage.success('API Key 已删除')
-    await Promise.all([loadKeys(), loadStatsLogs()])
+    await Promise.all([loadKeys(), loadStats()])
   } catch (error) {
     ElMessage.error(errorMessage(error, 'API Key 删除失败'))
   } finally {
     actionLoadingId.value = null
+  }
+}
+
+async function handleExport() {
+  exporting.value = true
+  try {
+    const params = filterParams()
+    const logs = await exportCallLogs({
+      ...params,
+      status: filters.status || undefined
+    })
+    if (!logs.length) {
+      ElMessage.warning('当前筛选条件下无数据可导出')
+      return
+    }
+    const headers = ['时间', 'API Key ID', '模型', '接口', '方法', '状态', 'HTTP', '耗时(ms)', '错误信息', 'Token(输入)', 'Token(输出)', 'Token(总计)']
+    const rows = logs.map((log) => [
+      formatDate(log.requestTime ?? log.createdAt),
+      log.apiKeyId ?? '',
+      log.modelName ?? (log.modelId ? `模型 #${log.modelId}` : ''),
+      log.path ?? log.requestPath ?? '',
+      log.method ?? log.requestMethod ?? '',
+      log.status ?? log.bizStatus ?? '',
+      log.statusCode ?? log.httpStatus ?? '',
+      log.costTimeMs ?? log.costTime ?? 0,
+      (log.errorMessage ?? '').replace(/,/g, ' '),
+      log.inputTokens ?? 0,
+      log.outputTokens ?? 0,
+      log.totalTokens ?? 0
+    ])
+    const csvContent = [headers.join(','), ...rows.map((r) => r.join(','))].join('\n')
+    const BOM = '﻿'
+    const blob = new Blob([BOM + csvContent], { type: 'text/csv;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `api-call-logs-${formatDateTime(new Date()).slice(0, 10)}.csv`
+    link.click()
+    URL.revokeObjectURL(url)
+    ElMessage.success(`已导出 ${logs.length} 条记录`)
+  } catch (error) {
+    ElMessage.error(errorMessage(error, '导出失败'))
+  } finally {
+    exporting.value = false
   }
 }
 
@@ -389,31 +519,7 @@ function clearOneTimeKey() {
   createdKey.value = null
 }
 
-function normalizeCallLog(log: ApiCallLog): NormalizedCallLog {
-  return {
-    logId: log.logId,
-    apiKeyId: log.apiKeyId,
-    modelId: log.modelId,
-    path: log.path ?? log.requestPath ?? '',
-    method: log.method ?? log.requestMethod ?? '',
-    requestTime: log.requestTime ?? log.createdAt ?? '',
-    status: (log.status ?? log.bizStatus ?? '').toUpperCase(),
-    statusCode: log.statusCode ?? log.httpStatus,
-    costTime: log.costTimeMs ?? log.costTime ?? 0,
-    errorMessage: log.errorMessage
-  }
-}
-
-function groupDistribution(logs: NormalizedCallLog[], getName: (log: NormalizedCallLog) => string) {
-  const grouped = new Map<string, number>()
-  logs.forEach((log) => {
-    const name = getName(log)
-    grouped.set(name, (grouped.get(name) ?? 0) + 1)
-  })
-  return Array.from(grouped.entries())
-    .map(([name, value]) => ({ name, value }))
-    .sort((left, right) => right.value - left.value)
-}
+// ---- chart rendering ----
 
 function renderCharts() {
   renderTrendChart()
@@ -424,6 +530,7 @@ function renderCharts() {
 function renderTrendChart() {
   if (!trendChartRef.value) return
   trendChart = trendChart ?? echarts.init(trendChartRef.value)
+  const items = trendData.value
   trendChart.setOption({
     animationDuration: 350,
     color: ['#1d6fdc', '#e05a67'],
@@ -432,7 +539,7 @@ function renderTrendChart() {
     grid: { left: 42, right: 18, top: 42, bottom: 30 },
     xAxis: {
       type: 'category',
-      data: trendData.value.map((item) => item.date.slice(5)),
+      data: items.map((item) => item.date.length > 10 ? item.date.slice(5, 16) : item.date.slice(5)),
       axisLine: { lineStyle: { color: '#d9e3ef' } },
       axisTick: { show: false }
     },
@@ -449,7 +556,7 @@ function renderTrendChart() {
         symbol: 'circle',
         symbolSize: 7,
         areaStyle: { color: 'rgba(29, 111, 220, 0.08)' },
-        data: trendData.value.map((item) => item.success)
+        data: items.map((item) => item.success)
       },
       {
         name: '失败',
@@ -457,7 +564,7 @@ function renderTrendChart() {
         smooth: 0.3,
         symbol: 'circle',
         symbolSize: 7,
-        data: trendData.value.map((item) => item.failed)
+        data: items.map((item) => item.failed)
       }
     ]
   }, true)
@@ -519,6 +626,8 @@ function resizeCharts() {
   keyChart?.resize()
 }
 
+// ---- display helpers ----
+
 function normalizeKeyStatus(status?: string) {
   return status === 'ACTIVE' ? 'ACTIVE' : status === 'EXPIRED' ? 'EXPIRED' : 'DISABLED'
 }
@@ -537,22 +646,14 @@ function keyStatusType(status?: string) {
   return 'info'
 }
 
-function normalizeLogStatus(log: NormalizedCallLog) {
-  if (log.status === 'SUCCESS') return 'SUCCESS'
-  if (log.status === 'FAILED') return 'FAILED'
-  return (log.statusCode ?? 200) < 400 ? 'SUCCESS' : 'FAILED'
+function logStatusLabel(log: ApiCallLog) {
+  const status = (log.status ?? log.bizStatus ?? '').toUpperCase()
+  return status === 'SUCCESS' ? '成功' : '失败'
 }
 
-function isSuccessfulLog(log: NormalizedCallLog) {
-  return normalizeLogStatus(log) === 'SUCCESS'
-}
-
-function logStatusLabel(log: NormalizedCallLog) {
-  return isSuccessfulLog(log) ? '成功' : '失败'
-}
-
-function logStatusType(log: NormalizedCallLog) {
-  return isSuccessfulLog(log) ? 'success' : 'danger'
+function logStatusType(log: ApiCallLog) {
+  const status = (log.status ?? log.bizStatus ?? '').toUpperCase()
+  return status === 'SUCCESS' ? 'success' : 'danger'
 }
 
 function maskedKey(key: ApiKey) {
@@ -564,11 +665,13 @@ function oneTimeKey() {
   return createdKey.value?.apiKey?.trim() ?? ''
 }
 
-function keyName(apiKeyId: number) {
+function keyName(apiKeyId: number | null | undefined) {
+  if (apiKeyId == null) return '未记录'
   return keyNameMap.value.get(apiKeyId) ?? `Key #${apiKeyId}`
 }
 
-function modelName(modelId: number) {
+function modelName(modelId: number | null | undefined) {
+  if (modelId == null) return '未记录'
   return modelNameMap.value.get(modelId) ?? `模型 #${modelId}`
 }
 
@@ -579,19 +682,6 @@ function formatNumber(value: number) {
 function formatDate(value?: string) {
   if (!value) return '从未使用'
   return value.replace('T', ' ')
-}
-
-function parseDate(value?: string) {
-  if (!value) return null
-  const parsed = new Date(value.replace(' ', 'T'))
-  return Number.isNaN(parsed.getTime()) ? null : parsed
-}
-
-function startOfDaysAgo(days: number) {
-  const date = new Date()
-  date.setHours(0, 0, 0, 0)
-  date.setDate(date.getDate() - days)
-  return date
 }
 
 function errorMessage(error: unknown, fallback: string) {
@@ -651,9 +741,7 @@ async function copyText(value: string) {
           <el-table-column label="操作" width="270" fixed="right">
             <template #default="{ row }: { row: ApiKey }">
               <div class="key-actions">
-                <el-tooltip content="后端暂未提供修改 Key 名称接口" placement="top">
-                  <span><el-button link disabled>编辑</el-button></span>
-                </el-tooltip>
+                <el-button link type="primary" @click="openEditKeyDialog(row)">编辑</el-button>
                 <el-button
                   link
                   type="primary"
@@ -694,9 +782,7 @@ async function copyText(value: string) {
           <p>{{ statsCoverageText }}</p>
         </div>
         <div class="heading-actions">
-          <el-tooltip content="后端暂未提供统计导出接口" placement="top">
-            <span><el-button disabled>导出</el-button></span>
-          </el-tooltip>
+          <el-button :loading="exporting" @click="handleExport">导出 CSV</el-button>
           <el-button :loading="refreshing" @click="loadPage">刷新数据</el-button>
         </div>
       </div>
@@ -717,12 +803,9 @@ async function copyText(value: string) {
         </el-select>
       </div>
 
-      <el-alert v-if="statsTruncated" type="warning" show-icon :closable="false">
-        当前统计只覆盖最近 {{ formatNumber(statsLogs.length) }} 条调用日志；如需全量、按时间或模型精确统计，需要后端补充聚合接口。
-      </el-alert>
       <el-alert v-if="statsError" :title="statsError" type="error" show-icon :closable="false">
         <template #default>
-          <el-button text type="primary" @click="loadStatsLogs">重新加载</el-button>
+          <el-button text type="primary" @click="loadStats">重新加载</el-button>
         </template>
       </el-alert>
 
@@ -732,19 +815,24 @@ async function copyText(value: string) {
           <strong>{{ card.value }}</strong>
           <small>{{ card.note }}</small>
         </article>
-        <article class="summary-card unavailable-card">
+        <article class="summary-card token-card" :class="tokenSummary.hasData ? 'tone-blue' : 'unavailable-card'">
           <span>Token 使用量</span>
-          <strong>—</strong>
-          <small>调用日志暂未返回 Token 字段</small>
-          <el-tag size="small" type="info" effect="plain">暂未接通</el-tag>
+          <div class="token-values">
+            <div class="token-row"><em>输入</em><strong>{{ tokenSummary.input }}</strong></div>
+            <div class="token-row"><em>输出</em><strong>{{ tokenSummary.output }}</strong></div>
+            <div class="token-row"><em>总计</em><strong>{{ tokenSummary.total }}</strong></div>
+          </div>
+          <small v-if="tokenSummary.hasData">后端聚合统计</small>
+          <small v-else>调用日志暂未返回 Token 字段</small>
+          <el-tag v-if="!tokenSummary.hasData" size="small" type="info" effect="plain">暂未接通</el-tag>
         </article>
       </div>
 
-      <div v-if="!statsLoading && !statsError && filteredLogs.length === 0" class="usage-empty">
+      <div v-if="!statsLoading && !statsError && !logsLoading && callLogTotal === 0" class="usage-empty">
         <el-empty description="当前筛选条件下暂无调用数据" :image-size="86" />
       </div>
 
-      <div v-show="filteredLogs.length" class="chart-layout">
+      <div v-show="callLogTotal > 0" class="chart-layout">
         <section class="chart-card trend-card">
           <div class="chart-heading">
             <div>
@@ -780,52 +868,62 @@ async function copyText(value: string) {
         <div class="chart-heading log-heading">
           <div>
             <h3>调用记录</h3>
-            <p>记录来自 GET /api/open/call-logs，当前表格对已读取日志进行前端筛选和分页。</p>
+            <p>数据来自后端 GET /api/open/call-logs，支持时间、Key、模型多条件服务端筛选和分页。</p>
           </div>
-          <span>{{ formatNumber(filteredLogs.length) }} 条</span>
+          <span>{{ formatNumber(callLogTotal) }} 条</span>
         </div>
 
-        <el-table v-loading="statsLoading" :data="visibleLogs" stripe empty-text="暂无调用记录">
+        <el-alert v-if="logsError" :title="logsError" type="error" show-icon :closable="false" style="margin-bottom:14px">
+          <template #default>
+            <el-button text type="primary" @click="loadCallLogs">重新加载</el-button>
+          </template>
+        </el-alert>
+
+        <el-table v-loading="logsLoading" :data="callLogRecords" stripe empty-text="暂无调用记录">
           <el-table-column label="时间" min-width="168">
-            <template #default="{ row }: { row: NormalizedCallLog }">{{ formatDate(row.requestTime) }}</template>
+            <template #default="{ row }: { row: ApiCallLog }">{{ formatDate(row.requestTime ?? row.createdAt) }}</template>
           </el-table-column>
           <el-table-column label="API Key" min-width="150">
-            <template #default="{ row }: { row: NormalizedCallLog }">
-              {{ row.apiKeyId == null ? '未记录' : keyName(row.apiKeyId) }}
+            <template #default="{ row }: { row: ApiCallLog }">
+              {{ keyName(row.apiKeyId) }}
             </template>
           </el-table-column>
           <el-table-column label="模型" min-width="160">
-            <template #default="{ row }: { row: NormalizedCallLog }">
-              {{ row.modelId == null ? '未记录' : modelName(row.modelId) }}
+            <template #default="{ row }: { row: ApiCallLog }">
+              {{ row.modelName ?? modelName(row.modelId) }}
             </template>
           </el-table-column>
           <el-table-column label="接口" min-width="190">
-            <template #default="{ row }: { row: NormalizedCallLog }">
-              <span class="path-cell"><b>{{ row.method }}</b>{{ row.path }}</span>
+            <template #default="{ row }: { row: ApiCallLog }">
+              <span class="path-cell"><b>{{ row.method ?? row.requestMethod }}</b>{{ row.path ?? row.requestPath }}</span>
             </template>
           </el-table-column>
           <el-table-column label="状态" width="92">
-            <template #default="{ row }: { row: NormalizedCallLog }">
+            <template #default="{ row }: { row: ApiCallLog }">
               <el-tag :type="logStatusType(row)" effect="light">{{ logStatusLabel(row) }}</el-tag>
             </template>
           </el-table-column>
-          <el-table-column prop="statusCode" label="HTTP" width="82" />
-          <el-table-column label="耗时" width="100">
-            <template #default="{ row }: { row: NormalizedCallLog }">{{ row.costTime }} ms</template>
+          <el-table-column label="HTTP" width="82">
+            <template #default="{ row }: { row: ApiCallLog }">{{ row.statusCode ?? row.httpStatus }}</template>
           </el-table-column>
-          <el-table-column prop="errorMessage" label="错误信息" min-width="180" show-overflow-tooltip />
+          <el-table-column label="耗时" width="100">
+            <template #default="{ row }: { row: ApiCallLog }">{{ row.costTimeMs ?? row.costTime ?? 0 }} ms</template>
+          </el-table-column>
+          <el-table-column label="错误信息" min-width="180" show-overflow-tooltip>
+            <template #default="{ row }: { row: ApiCallLog }">{{ row.errorMessage }}</template>
+          </el-table-column>
         </el-table>
 
         <div class="pagination-row">
           <el-pagination
             background
             layout="total, sizes, prev, pager, next"
-            :total="filteredLogs.length"
+            :total="callLogTotal"
             :current-page="logPage.pageNum"
             :page-size="logPage.pageSize"
             :page-sizes="[10, 20, 50]"
-            @current-change="logPage.pageNum = $event"
-            @size-change="logPage.pageSize = $event; logPage.pageNum = 1"
+            @current-change="(val: number) => { logPage.pageNum = val }"
+            @size-change="(val: number) => { logPage.pageSize = val; logPage.pageNum = 1 }"
           />
         </div>
       </section>
@@ -880,6 +978,23 @@ async function copyText(value: string) {
       </div>
       <template #footer>
         <el-button type="primary" @click="resultDialogVisible = false">我已保存</el-button>
+      </template>
+    </el-dialog>
+
+    <el-dialog v-model="editKeyDialogVisible" title="修改 API Key 名称" width="440px">
+      <el-form label-position="top" @submit.prevent>
+        <el-form-item label="名称" required>
+          <el-input
+            v-model="editKeyForm.keyName"
+            maxlength="128"
+            show-word-limit
+            placeholder="例如：生产环境预测服务"
+          />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="editKeyDialogVisible = false">取消</el-button>
+        <el-button type="primary" :loading="editLoading" @click="submitEditKeyName">保存</el-button>
       </template>
     </el-dialog>
   </section>
@@ -1061,6 +1176,10 @@ async function copyText(value: string) {
   white-space: nowrap;
 }
 
+.token-card.tone-blue::before {
+  background: #1d6fdc;
+}
+
 .unavailable-card {
   background: #f8fafc;
 }
@@ -1072,6 +1191,30 @@ async function copyText(value: string) {
 .unavailable-card .el-tag {
   align-self: flex-start;
   margin-top: auto;
+}
+
+.token-values {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin: 8px 0;
+}
+
+.token-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.token-row em {
+  color: #728198;
+  font-size: 12px;
+  font-style: normal;
+}
+
+.token-row strong {
+  margin: 0;
+  font-size: 15px;
 }
 
 .usage-empty {

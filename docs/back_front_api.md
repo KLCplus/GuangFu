@@ -907,9 +907,15 @@ POST /api/cloud-forecast/predict
 POST   /api/open/apply-key
 GET    /api/open/keys
 PUT    /api/open/keys/{apiKeyId}/status
+PUT    /api/open/keys/{apiKeyId}/name
 DELETE /api/open/keys/{apiKeyId}
 POST   /api/open/keys/{apiKeyId}/reset
 GET    /api/open/call-logs?pageNum=1&pageSize=10
+GET    /api/open/call-logs/export
+GET    /api/open/usage/summary
+GET    /api/open/usage/trend
+GET    /api/open/usage/by-model
+GET    /api/open/usage/by-key
 POST   /api/open/trials
 GET    /api/open/entitlements
 GET    /api/open/wallet
@@ -933,6 +939,20 @@ GET    /api/open/overview
   "status": "ACTIVE"
 }
 ```
+
+修改 Key 名称（不改变密钥本身）：
+
+```http
+PUT /api/open/keys/{apiKeyId}/name
+```
+
+```json
+{
+  "keyName": "生产环境预测服务"
+}
+```
+
+响应返回更新后的 `ApiKeyVO`，需校验当前用户是 Key 所有者。
 
 重置 Key 会重新生成密钥哈希，只在本次响应返回完整 `apiKey`，旧 Key 立即失效。
 
@@ -987,7 +1007,119 @@ GET /api/open/overview
 
 当前版本不新增钱包充值/订单表，钱包月消费和权益已用量基于当前用户 API 调用日志聚合；套餐列表为后端固定配置，用于前端展示和后续购买接口衔接。
 
-### 14.2 开放预测接口
+### 14.2 调用日志查询（增强）
+
+```http
+GET /api/open/call-logs?pageNum=1&pageSize=10&apiKeyId=&status=&startTime=&endTime=&modelId=
+```
+
+参数：
+
+| 参数 | 必填 | 说明 |
+|---|---|---|
+| `pageNum` | 否 | 默认 1 |
+| `pageSize` | 否 | 默认 10，最大 100 |
+| `apiKeyId` | 否 | 按 API Key 筛选 |
+| `status` | 否 | `SUCCESS` 或 `FAILED` |
+| `startTime` | 否 | 开始时间，格式 `yyyy-MM-dd HH:mm:ss` |
+| `endTime` | 否 | 结束时间，格式 `yyyy-MM-dd HH:mm:ss` |
+| `modelId` | 否 | 按模型筛选 |
+
+日志 VO 字段：
+
+```json
+{
+  "logId": 1,
+  "apiKeyId": 1,
+  "modelId": 1,
+  "modelName": "iTransformer",
+  "path": "/openapi/v1/predict",
+  "method": "POST",
+  "requestIp": "127.0.0.1",
+  "requestTime": "2026-07-10 12:00:00",
+  "responseTime": "2026-07-10 12:00:01",
+  "costTime": 123,
+  "costTimeMs": 123,
+  "statusCode": 200,
+  "status": "SUCCESS",
+  "errorMessage": null,
+  "requestSummary": null,
+  "responseSummary": null,
+  "inputTokens": 100,
+  "outputTokens": 200,
+  "totalTokens": 300,
+  "createdAt": "2026-07-10 12:00:00"
+}
+```
+
+`modelName` 通过关联 `model_info` 表获取；`inputTokens`、`outputTokens`、`totalTokens` 由实际模型调用写入，旧记录可能为 null。
+
+### 14.3 调用日志导出
+
+```http
+GET /api/open/call-logs/export?startTime=&endTime=&apiKeyId=&modelId=&status=
+```
+
+参数与日志筛选保持一致。不使用分页，最多返回 10000 条记录。返回日志数组（JSON），前端按需生成 CSV。
+
+### 14.4 使用统计汇总
+
+```http
+GET /api/open/usage/summary?startTime=&endTime=&apiKeyId=&modelId=
+```
+
+所有参数可选，按当前用户过滤。
+
+响应：
+
+```json
+{
+  "totalCalls": 1250,
+  "successCalls": 1180,
+  "failedCalls": 70,
+  "successRate": 94.4,
+  "avgCostTimeMs": 234,
+  "inputTokens": 50000,
+  "outputTokens": 120000,
+  "totalTokens": 170000
+}
+```
+
+### 14.5 按日期调用趋势
+
+```http
+GET /api/open/usage/trend?startTime=&endTime=&apiKeyId=&modelId=&granularity=DAY
+```
+
+参数：
+
+| 参数 | 必填 | 说明 |
+|---|---|---|
+| `startTime` | 否 | 开始时间 |
+| `endTime` | 否 | 结束时间 |
+| `apiKeyId` | 否 | 按 Key 筛选 |
+| `modelId` | 否 | 按模型筛选 |
+| `granularity` | 否 | `DAY`（默认）或 `HOUR` |
+
+响应记录字段：`timeBucket`、`totalCalls`、`successCalls`、`failedCalls`、`avgCostTimeMs`、`totalTokens`。按 `timeBucket` 升序返回数组。
+
+### 14.6 按模型统计
+
+```http
+GET /api/open/usage/by-model?startTime=&endTime=&apiKeyId=
+```
+
+响应记录字段：`modelId`、`modelName`、`totalCalls`、`successCalls`、`failedCalls`、`avgCostTimeMs`、`totalTokens`。按 `totalCalls` 降序返回。
+
+### 14.7 按 API Key 统计
+
+```http
+GET /api/open/usage/by-key?startTime=&endTime=&modelId=
+```
+
+响应记录字段：`apiKeyId`、`keyName`、`apiKeyPrefix`、`totalCalls`、`successCalls`、`failedCalls`、`avgCostTimeMs`、`totalTokens`。按 `totalCalls` 降序返回。
+
+### 14.8 开放预测接口
 
 ```http
 POST /openapi/v1/predict
@@ -1014,13 +1146,15 @@ X-API-KEY: <api-key>
 
 `input` 必须正好 30 帧，`inputImages` 必须正好 30 张图片；两组数据都按时间升序排列，时间间隔均为 1 分钟，且同一序号时间必须一致。
 
-### 14.3 管理员开放平台
+### 14.9 管理员开放平台
 
 ```http
 GET /api/admin/api-keys
 PUT /api/admin/api-keys/{apiKeyId}/status
-GET /api/admin/api-call-logs?pageNum=1&pageSize=10
+GET /api/admin/api-call-logs?pageNum=1&pageSize=10&apiKeyId=&status=&startTime=&endTime=&modelId=
 ```
+
+管理员调用日志接口参数与 `14.2` 用户端一致，但不过滤 userId。
 
 ## 15. 新闻与通知
 

@@ -2,6 +2,7 @@ package com.example.pvplatform.module.openapi.controller;
 
 import com.example.pvplatform.common.Result;
 import com.example.pvplatform.module.openapi.dto.ApiKeyApplyRequest;
+import com.example.pvplatform.module.openapi.dto.ApiKeyNameRequest;
 import com.example.pvplatform.module.openapi.dto.ApiKeyStatusRequest;
 import com.example.pvplatform.module.openapi.dto.MarketplaceTrialRequest;
 import com.example.pvplatform.module.openapi.dto.OpenPredictRequest;
@@ -9,9 +10,13 @@ import com.example.pvplatform.module.openapi.service.ApiCallLogService;
 import com.example.pvplatform.module.openapi.service.ApiKeyService;
 import com.example.pvplatform.module.openapi.service.OpenAccountService;
 import com.example.pvplatform.module.openapi.service.OpenApiService;
+import com.example.pvplatform.security.SecurityUtils;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.web.bind.annotation.*;
+
+import java.time.LocalDateTime;
 
 @RestController
 public class OpenApiController {
@@ -27,6 +32,8 @@ public class OpenApiController {
         this.apiKeyService = apiKeyService;
         this.callLogService = callLogService;
     }
+
+    // ---- API Key 管理 ----
 
     @PostMapping("/api/open/apply-key")
     public Result<?> applyKey(@Valid @RequestBody ApiKeyApplyRequest request) {
@@ -45,6 +52,12 @@ public class OpenApiController {
         return Result.success();
     }
 
+    @PutMapping("/api/open/keys/{apiKeyId}/name")
+    public Result<?> updateName(@PathVariable Long apiKeyId,
+                                @Valid @RequestBody ApiKeyNameRequest request) {
+        return Result.success(apiKeyService.updateOwnName(apiKeyId, request.keyName()));
+    }
+
     @DeleteMapping("/api/open/keys/{apiKeyId}")
     public Result<?> delete(@PathVariable Long apiKeyId) {
         apiKeyService.deleteOwn(apiKeyId);
@@ -56,13 +69,68 @@ public class OpenApiController {
         return Result.success(apiKeyService.resetOwn(apiKeyId));
     }
 
+    // ---- 调用日志 ----
+
     @GetMapping("/api/open/call-logs")
     public Result<?> callLogs(@RequestParam(defaultValue = "1") int pageNum,
                               @RequestParam(defaultValue = "10") int pageSize,
                               @RequestParam(required = false) Long apiKeyId,
-                              @RequestParam(required = false) String status) {
-        return Result.success(callLogService.ownLogs(pageNum, pageSize, apiKeyId, status));
+                              @RequestParam(required = false) String status,
+                              @RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM-dd HH:mm:ss") LocalDateTime startTime,
+                              @RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM-dd HH:mm:ss") LocalDateTime endTime,
+                              @RequestParam(required = false) Long modelId) {
+        return Result.success(callLogService.ownLogs(pageNum, pageSize, apiKeyId, status,
+            startTime, endTime, modelId));
     }
+
+    @GetMapping("/api/open/call-logs/export")
+    public Result<?> exportCallLogs(@RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM-dd HH:mm:ss") LocalDateTime startTime,
+                                     @RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM-dd HH:mm:ss") LocalDateTime endTime,
+                                     @RequestParam(required = false) Long apiKeyId,
+                                     @RequestParam(required = false) Long modelId,
+                                     @RequestParam(required = false) String status) {
+        return Result.success(callLogService.exportCallLogs(SecurityUtils.requireCurrentUserId(),
+            startTime, endTime, apiKeyId, modelId, status));
+    }
+
+    // ---- 使用统计 ----
+
+    @GetMapping("/api/open/usage/summary")
+    public Result<?> usageSummary(@RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM-dd HH:mm:ss") LocalDateTime startTime,
+                                   @RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM-dd HH:mm:ss") LocalDateTime endTime,
+                                   @RequestParam(required = false) Long apiKeyId,
+                                   @RequestParam(required = false) Long modelId) {
+        return Result.success(callLogService.getUsageSummary(SecurityUtils.requireCurrentUserId(),
+            startTime, endTime, apiKeyId, modelId));
+    }
+
+    @GetMapping("/api/open/usage/trend")
+    public Result<?> usageTrend(@RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM-dd HH:mm:ss") LocalDateTime startTime,
+                                 @RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM-dd HH:mm:ss") LocalDateTime endTime,
+                                 @RequestParam(required = false) Long apiKeyId,
+                                 @RequestParam(required = false) Long modelId,
+                                 @RequestParam(defaultValue = "DAY") String granularity) {
+        return Result.success(callLogService.getUsageTrend(SecurityUtils.requireCurrentUserId(),
+            startTime, endTime, apiKeyId, modelId, granularity));
+    }
+
+    @GetMapping("/api/open/usage/by-model")
+    public Result<?> usageByModel(@RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM-dd HH:mm:ss") LocalDateTime startTime,
+                                   @RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM-dd HH:mm:ss") LocalDateTime endTime,
+                                   @RequestParam(required = false) Long apiKeyId) {
+        return Result.success(callLogService.getUsageByModel(SecurityUtils.requireCurrentUserId(),
+            startTime, endTime, apiKeyId));
+    }
+
+    @GetMapping("/api/open/usage/by-key")
+    public Result<?> usageByKey(@RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM-dd HH:mm:ss") LocalDateTime startTime,
+                                 @RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM-dd HH:mm:ss") LocalDateTime endTime,
+                                 @RequestParam(required = false) Long modelId) {
+        return Result.success(callLogService.getUsageByKey(SecurityUtils.requireCurrentUserId(),
+            startTime, endTime, modelId));
+    }
+
+    // ---- 开放平台账户 ----
 
     @PostMapping("/api/open/trials")
     public Result<?> requestTrial(@Valid @RequestBody MarketplaceTrialRequest request) {
@@ -89,11 +157,15 @@ public class OpenApiController {
         return Result.success(openAccountService.overview());
     }
 
+    // ---- 开放预测 ----
+
     @PostMapping("/openapi/v1/predict")
     public Result<?> predict(@RequestBody OpenPredictRequest request,
                              HttpServletRequest httpRequest) {
         return Result.success(openApiService.predict(request, httpRequest));
     }
+
+    // ---- 管理员 ----
 
     @GetMapping("/api/admin/api-keys")
     public Result<?> adminKeys() {
@@ -111,7 +183,11 @@ public class OpenApiController {
     public Result<?> adminLogs(@RequestParam(defaultValue = "1") int pageNum,
                                @RequestParam(defaultValue = "10") int pageSize,
                                @RequestParam(required = false) Long apiKeyId,
-                               @RequestParam(required = false) String status) {
-        return Result.success(callLogService.adminLogs(pageNum, pageSize, apiKeyId, status));
+                               @RequestParam(required = false) String status,
+                               @RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM-dd HH:mm:ss") LocalDateTime startTime,
+                               @RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM-dd HH:mm:ss") LocalDateTime endTime,
+                               @RequestParam(required = false) Long modelId) {
+        return Result.success(callLogService.adminLogs(pageNum, pageSize, apiKeyId, status,
+            startTime, endTime, modelId));
     }
 }

@@ -6,6 +6,7 @@ public record ApiCallLogVO(
     Long logId,
     Long apiKeyId,
     Long modelId,
+    String modelName,
     String path,
     String method,
     String requestIp,
@@ -18,5 +19,8 @@ public record ApiCallLogVO(
     String errorMessage,
     String requestSummary,
     String responseSummary,
+    Long inputTokens,
+    Long outputTokens,
+    Long totalTokens,
     LocalDateTime createdAt
 ) {}
