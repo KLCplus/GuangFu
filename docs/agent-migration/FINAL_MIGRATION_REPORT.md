@@ -15,6 +15,7 @@ This is not final acceptance. It records the current migration checkpoint.
 - MySQL-backed Agent Memory Gateway and runtime memory adapter.
 - Approval-required report generation flow with `ApprovalActionCard`, `agent_approval`, and approved continuation.
 - Migrated E2E script at `scripts/migrated-agent-e2e.mjs`.
+- Vue `/reports` Agent workbench renders migrated UI instructions through a whitelisted `PvGenerativeUi` component.
 
 ## Verified
 
@@ -24,10 +25,11 @@ This is not final acceptance. It records the current migration checkpoint.
 - Migrated analysis live smoke calls real Spring `station.detail`, `weather.current`, and `prediction.list`.
 - DeepSeek-backed internal LLM synthesis works through Spring without exposing the API key to runtime.
 - Migrated E2E passed locally: analysis UI instructions, report approval pause, approved report execution, returned `reportId=5`.
+- Frontend build passes with migrated UI instruction renderer wired into `/reports`.
 
 ## Still Blocking Final Acceptance
 
 - Need production-auth E2E.
 - Need real non-seed station/prediction data for the first chain.
-- Need clean Vue `/reports` component extraction/commit for migrated `ui_instruction` rendering; current worktree has large pre-existing dirty changes in `AnalysisReport.vue`.
+- Need standalone `agent-web`/Next.js module only if Vue adaptation is rejected; current migrated UI is implemented in Vue to preserve platform routing/session.
 - Need live `prediction.detail` E2E with a station that has prediction records.

@@ -2,6 +2,7 @@
 import { computed, nextTick, onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useUserStore } from '../store/user'
+import PvGenerativeUi from '../components/agent/PvGenerativeUi.vue'
 import {
   approveAgentApproval,
   archiveAgentSession,
@@ -41,6 +42,7 @@ interface ToolCard {
   title: string
   status: StepStatus
   summary: string
+  highlights?: string[]
   durationMs?: number
   detail?: string
 }
@@ -55,6 +57,11 @@ interface ApprovalCard {
   fields: Array<{ label: string; value: string }>
 }
 
+interface PvUiInstruction {
+  component: string
+  props: Record<string, unknown>
+}
+
 interface ChatMessage {
   id: number
   role: MessageRole
@@ -63,6 +70,7 @@ interface ChatMessage {
   time: string
   steps?: AgentStep[]
   tools?: ToolCard[]
+  uiInstructions?: PvUiInstruction[]
   approval?: ApprovalCard
   finalActions?: boolean
 }
@@ -74,6 +82,8 @@ interface SlashCommand {
   template: string
 }
 
+type SignatureRole = 'author' | 'reviewer' | 'confirmer'
+
 const userStore = useUserStore()
 
 const agentSessions = ref<AgentSession[]>([])
@@ -83,6 +93,7 @@ const currentAssistantId = ref<number | null>(null)
 const leftCollapsed = ref(false)
 const showArchived = ref(false)
 const showSlashMenu = ref(false)
+const slashActiveIndex = ref(0)
 const composerText = ref('')
 const composerRef = ref<HTMLTextAreaElement>()
 const loadingHistory = ref(false)
@@ -90,6 +101,21 @@ const loadingMessages = ref(false)
 const running = ref(false)
 const historyError = ref('')
 const messages = ref<ChatMessage[]>([])
+const signatureDialogVisible = ref(false)
+const signatureTargetMessageId = ref<number | null>(null)
+const signatureForm = ref({
+  author: '',
+  reviewer: '',
+  confirmer: ''
+})
+const signatureImages = ref<Record<SignatureRole, string>>({
+  author: '',
+  reviewer: '',
+  confirmer: ''
+})
+const activeSignatureRole = ref<SignatureRole>('author')
+const signatureCanvasRef = ref<HTMLCanvasElement>()
+const drawingSignature = ref(false)
 
 const slashCommands: SlashCommand[] = [
   { command: '/station', label: '查询电站', hint: '查看电站基础信息', template: '查询电站信息 ' },
@@ -146,12 +172,107 @@ function commandParts(text = composerText.value) {
   return { command: parts[0] || '', args: parts.slice(1) }
 }
 
+function escapeHtml(value: string) {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+}
+
+function inlineMarkdown(value: string) {
+  return escapeHtml(value)
+    .replace(/!\[([^\]]*)\]\((data:image\/png;base64,[A-Za-z0-9+/=]+)\)/g, '<img class="signature-image" alt="$1" src="$2" />')
+    .replace(/`([^`]+)`/g, '<code>$1</code>')
+    .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+}
+
+function renderMarkdown(value: string) {
+  const lines = value.split(/\r?\n/)
+  const html: string[] = []
+  let inList = false
+  let inCode = false
+  let inTable = false
+  const closeList = () => {
+    if (inList) {
+      html.push('</ul>')
+      inList = false
+    }
+  }
+  const closeTable = () => {
+    if (inTable) {
+      html.push('</tbody></table>')
+      inTable = false
+    }
+  }
+  for (const line of lines) {
+    if (line.trim().startsWith('```')) {
+      closeList()
+      closeTable()
+      html.push(inCode ? '</code></pre>' : '<pre><code>')
+      inCode = !inCode
+      continue
+    }
+    if (inCode) {
+      html.push(`${escapeHtml(line)}\n`)
+      continue
+    }
+    if (!line.trim()) {
+      closeList()
+      closeTable()
+      continue
+    }
+    if (/^\|(.+)\|$/.test(line.trim())) {
+      closeList()
+      const cells = line.trim().slice(1, -1).split('|').map((cell) => cell.trim())
+      if (cells.every((cell) => /^:?-{3,}:?$/.test(cell))) continue
+      if (!inTable) {
+        html.push('<table><tbody>')
+        inTable = true
+      }
+      html.push(`<tr>${cells.map((cell) => `<td>${inlineMarkdown(cell)}</td>`).join('')}</tr>`)
+      continue
+    }
+    closeTable()
+    const heading = line.match(/^(#{1,3})\s+(.+)$/)
+    if (heading) {
+      closeList()
+      closeTable()
+      const level = heading[1].length + 2
+      html.push(`<h${level}>${inlineMarkdown(heading[2])}</h${level}>`)
+      continue
+    }
+    const bullet = line.match(/^\s*(?:[-*]|\d+[.)])\s+(.+)$/)
+    if (bullet) {
+      if (!inList) {
+        html.push('<ul>')
+        inList = true
+      }
+      html.push(`<li>${inlineMarkdown(bullet[1])}</li>`)
+      continue
+    }
+    closeList()
+    closeTable()
+    html.push(`<p>${inlineMarkdown(line)}</p>`)
+  }
+  closeList()
+  closeTable()
+  if (inCode) html.push('</code></pre>')
+  return html.join('')
+}
+
+function activeStep(message: ChatMessage) {
+  const steps = message.steps || []
+  return [...steps].reverse().find((step) => ['running', 'waiting', 'failed'].includes(step.status)) || steps[steps.length - 1]
+}
+
 function createSystemMessage(): ChatMessage {
   return {
     id: Date.now(),
     role: 'system',
     kind: 'text',
-    content: '描述你的目标，Agent 会按需查询电站、天气、预测和报告工具。',
+    content: '说出你要完成的任务。业务数据会由 Agent 自动选择工具查询。',
     time: nowTime()
   }
 }
@@ -163,11 +284,19 @@ function addMessage(message: Omit<ChatMessage, 'id' | 'time'>) {
     time: nowTime()
   }
   messages.value.push(item)
+  scrollToBottom('smooth', true)
+  return item
+}
+
+function scrollToBottom(behavior: ScrollBehavior = 'smooth', force = false) {
   nextTick(() => {
     const stream = document.querySelector('.message-stream')
-    stream?.scrollTo({ top: stream.scrollHeight, behavior: 'smooth' })
+    if (!stream) return
+    const distance = stream.scrollHeight - stream.scrollTop - stream.clientHeight
+    if (force || distance < 180) {
+      stream.scrollTo({ top: stream.scrollHeight, behavior })
+    }
   })
-  return item
 }
 
 function activeAssistant() {
@@ -176,7 +305,7 @@ function activeAssistant() {
     item = addMessage({
       role: 'assistant',
       kind: 'working',
-      content: '正在处理任务',
+      content: '',
       steps: [],
       tools: []
     })
@@ -195,6 +324,7 @@ function upsertStep(key: string, title: string, status: StepStatus, detail = '')
   if (index >= 0) steps[index] = { ...steps[index], ...next }
   else steps.push(next)
   assistant.steps = steps
+  scrollToBottom('auto')
 }
 
 function upsertTool(card: ToolCard) {
@@ -204,6 +334,75 @@ function upsertTool(card: ToolCard) {
   if (index >= 0) tools[index] = { ...tools[index], ...card }
   else tools.push(card)
   assistant.tools = tools
+  scrollToBottom('auto')
+}
+
+const allowedPvComponents = new Set([
+  'StationSummaryCard',
+  'WeatherImpactCard',
+  'PredictionTrendCard',
+  'PowerMetricCard',
+  'RiskAssessmentCard',
+  'MaintenanceRecommendationCard',
+  'ReportPreviewCard',
+  'ApprovalActionCard',
+  'ToolProgressCard',
+  'ErrorRecoveryCard'
+])
+
+function addUiInstruction(value: unknown) {
+  const data = recordValue(value)
+  const component = firstText(data.component)
+  const props = recordValue(data.props)
+  if (!allowedPvComponents.has(component)) return
+  const assistant = activeAssistant()
+  assistant.uiInstructions = assistant.uiInstructions || []
+  assistant.uiInstructions.push({ component, props })
+  scrollToBottom('auto')
+}
+
+function uiTitle(instruction: PvUiInstruction) {
+  const titles: Record<string, string> = {
+    StationSummaryCard: '电站概览',
+    WeatherImpactCard: '天气影响',
+    PredictionTrendCard: '预测趋势',
+    PowerMetricCard: '功率指标',
+    RiskAssessmentCard: '风险摘要',
+    MaintenanceRecommendationCard: '运维建议',
+    ReportPreviewCard: '报告预览',
+    ApprovalActionCard: '确认操作',
+    ToolProgressCard: '工具进度',
+    ErrorRecoveryCard: '错误恢复'
+  }
+  return titles[instruction.component] || instruction.component
+}
+
+function uiFields(instruction: PvUiInstruction) {
+  const props = instruction.props
+  const fields: Array<{ label: string; value: string }> = []
+  const push = (label: string, ...values: unknown[]) => {
+    const value = firstText(...values)
+    if (value) fields.push({ label, value })
+  }
+  if (instruction.component === 'StationSummaryCard') {
+    push('电站', props.stationName)
+    push('容量', props.capacity !== undefined ? `${props.capacity} MW` : '')
+    push('状态', props.status)
+    push('位置', props.location)
+  } else if (instruction.component === 'WeatherImpactCard') {
+    push('天气', props.weather)
+    push('温度', props.temperature !== undefined ? `${props.temperature}℃` : '')
+    push('湿度', props.humidity !== undefined ? `${props.humidity}%` : '')
+    push('风速', props.windSpeed !== undefined ? `${props.windSpeed} m/s` : '')
+    push('影响', props.impact)
+  } else if (instruction.component === 'PredictionTrendCard') {
+    push('摘要', props.summary)
+    const highlights = asStringArray(props.highlights)
+    highlights.forEach((item, index) => fields.push({ label: index === 0 ? '要点' : '', value: item }))
+  } else {
+    Object.entries(props).forEach(([key, value]) => push(key, value))
+  }
+  return fields
 }
 
 function humanError(error: unknown) {
@@ -244,10 +443,12 @@ function toolTitle(toolName: string, displayName?: string) {
   const local: Record<string, string> = {
     'station.list': '查询电站列表',
     'station.detail': '查询电站信息',
-    'weather.current': '获取天气数据',
+    'weather.current': '获取电站天气',
+    'weather.location': '获取城市天气',
     'prediction.list': '读取预测任务',
     'prediction.detail': '读取预测结果',
     'report.generate': '生成综合分析报告',
+    'report.conversation': '生成会话工作报告',
     'report.list': '查询历史报告',
     'report.detail': '读取报告详情',
     'model.list': '查询模型',
@@ -258,8 +459,15 @@ function toolTitle(toolName: string, displayName?: string) {
   return local[toolName] || displayName || toolName
 }
 
+function asStringArray(value: unknown) {
+  return Array.isArray(value) ? value.map((item) => firstText(item)).filter(Boolean) : []
+}
+
 function toolBusinessSummary(data: Record<string, unknown>) {
   const summary = firstText(data.summary, data.error)
+  const highlights = asStringArray(data.highlights)
+  if (summary) return summary
+  if (highlights.length) return highlights[0]
   const preview = recordValue(data.dataPreview)
   if (data.toolName === 'weather.current') {
     return firstText(
@@ -297,6 +505,7 @@ function mapToolRecord(tool: AgentToolCallRecord): ToolCard {
   const data = {
     toolName: tool.toolName,
     summary: firstText(result.summary, tool.errorMessage),
+    highlights: asStringArray(result.highlights),
     error: firstText(tool.errorMessage, result.errorMessage),
     dataPreview: result.data ?? result.raw ?? {}
   }
@@ -306,6 +515,7 @@ function mapToolRecord(tool: AgentToolCallRecord): ToolCard {
     title: toolTitle(tool.toolName, tool.displayName),
     status: tool.status === 'SUCCESS' ? 'success' : tool.status === 'FAILED' ? 'failed' : tool.status === 'AWAITING_APPROVAL' ? 'waiting' : 'running',
     summary: toolBusinessSummary(data),
+    highlights: data.highlights,
     durationMs: tool.durationMs,
     detail: firstText(data.error)
   }
@@ -357,7 +567,7 @@ function handleAgentEvent(event: AgentSseEnvelope) {
   const data = event.data || {}
   if (event.event === 'started') {
     agentSessionId.value = firstNumber(data.sessionId, agentSessionId.value)
-    activeAssistant().content = '正在处理任务'
+    activeAssistant().content = ''
     upsertStep('intent', '理解用户意图', 'running', '正在分析任务目标')
     return
   }
@@ -383,13 +593,14 @@ function handleAgentEvent(event: AgentSseEnvelope) {
       toolName,
       title,
       status: 'running',
-      summary: '正在执行'
+      summary: '正在执行',
+      highlights: []
     })
     return
   }
   if (event.event === 'tool_result') {
-    const toolName = firstText(data.toolName)
-    const ok = firstText(data.status) === 'success'
+    const toolName = firstText(data.toolName, data.tool_name)
+    const ok = data.success === true || firstText(data.status) === 'success'
     const title = toolTitle(toolName, firstText(data.displayName))
     const summary = toolBusinessSummary(data)
     upsertStep(`tool-${toolName}`, title, ok ? 'success' : 'failed', summary)
@@ -399,9 +610,24 @@ function handleAgentEvent(event: AgentSseEnvelope) {
       title,
       status: ok ? 'success' : 'failed',
       summary,
+      highlights: asStringArray(data.highlights),
       durationMs: firstNumber(data.durationMs) || undefined,
       detail: ok ? '' : firstText(data.error)
     })
+    return
+  }
+  if (event.event === 'step_started') {
+    const stepId = firstText(data.stepId, data.step_id, data.title)
+    upsertStep(stepId, firstText(data.title, '执行步骤'), 'running', firstText(data.purpose, data.detail))
+    return
+  }
+  if (event.event === 'step_completed') {
+    const stepId = firstText(data.stepId, data.step_id, data.title)
+    upsertStep(stepId, firstText(data.title, '执行步骤'), 'success', firstText(data.detail, '已完成'))
+    return
+  }
+  if (event.event === 'ui_instruction') {
+    addUiInstruction(data)
     return
   }
   if (event.event === 'approval_required') {
@@ -433,6 +659,17 @@ function handleAgentEvent(event: AgentSseEnvelope) {
     assistant.finalActions = true
     upsertStep('final', '生成结论', 'success', '已完成')
     currentAssistantId.value = null
+    scrollToBottom()
+    return
+  }
+  if (event.event === 'run_completed') {
+    const assistant = activeAssistant()
+    assistant.kind = 'text'
+    assistant.content = firstText(data.answer, data.content) || assistant.content || '任务已完成'
+    assistant.finalActions = true
+    upsertStep('final', '生成结论', 'success', '已完成')
+    currentAssistantId.value = null
+    scrollToBottom()
     return
   }
   if (event.event === 'error') {
@@ -502,6 +739,7 @@ async function loadAgentMessages(sessionId: number) {
     currentAssistantId.value = null
     const history = await getAgentSessionMessages(sessionId)
     messages.value = history.length > 0 ? history.map(mapHistoryMessage) : [createSystemMessage()]
+    scrollToBottom('auto', true)
   } catch (error) {
     addMessage({ role: 'assistant', kind: 'error', content: `会话加载失败：${humanError(error)}` })
   } finally {
@@ -583,17 +821,18 @@ async function handleSessionCommand(command: string, session: AgentSession) {
 function applyCommand(command: SlashCommand) {
   composerText.value = command.template
   showSlashMenu.value = false
+  slashActiveIndex.value = 0
   focusComposer()
 }
 
-function setSlashCommand(command: string) {
-  composerText.value = `${command} `
-  showSlashMenu.value = false
-  focusComposer()
+function selectActiveSlashCommand() {
+  const command = filteredCommands.value[slashActiveIndex.value]
+  if (command) applyCommand(command)
 }
 
 function onComposerInput() {
   showSlashMenu.value = composerText.value.trim().startsWith('/')
+  slashActiveIndex.value = 0
 }
 
 async function submitComposer() {
@@ -614,6 +853,33 @@ async function submitComposer() {
 }
 
 function onComposerKeydown(event: KeyboardEvent) {
+  if (showSlashMenu.value && filteredCommands.value.length > 0) {
+    if (event.key === 'ArrowDown') {
+      event.preventDefault()
+      slashActiveIndex.value = (slashActiveIndex.value + 1) % filteredCommands.value.length
+      return
+    }
+    if (event.key === 'ArrowUp') {
+      event.preventDefault()
+      slashActiveIndex.value = (slashActiveIndex.value - 1 + filteredCommands.value.length) % filteredCommands.value.length
+      return
+    }
+    if (event.key === 'Tab') {
+      event.preventDefault()
+      selectActiveSlashCommand()
+      return
+    }
+    if (event.key === 'Enter' && !event.shiftKey) {
+      event.preventDefault()
+      selectActiveSlashCommand()
+      return
+    }
+    if (event.key === 'Escape') {
+      event.preventDefault()
+      showSlashMenu.value = false
+      return
+    }
+  }
   if (event.key === 'Enter' && !event.shiftKey) {
     event.preventDefault()
     void submitComposer()
@@ -624,6 +890,174 @@ async function copyMessage(message: ChatMessage) {
   if (!message.content) return
   await navigator.clipboard.writeText(message.content)
   ElMessage.success('已复制')
+}
+
+function isFormalReport(message: ChatMessage) {
+  return message.role === 'assistant' && message.content.includes('电子签名') && message.content.includes('| 角色 |')
+}
+
+function signatureValue(content: string, role: string) {
+  const match = content.match(new RegExp(`\|\s*${role}\s*\|\s*([^|]+?)\s*\|`))
+  const value = match?.[1]?.trim() || ''
+  return value.includes('____') || value.includes('data:image/png') ? '' : value
+}
+
+function signatureImageValue(content: string, role: string) {
+  const row = content.split(/\r?\n/).find((line) => new RegExp(`^\|\s*${role}\s*\|`).test(line)) || ''
+  const match = row.match(/!\[[^\]]*\]\((data:image\/png;base64,[A-Za-z0-9+/=]+)\)/)
+  return match?.[1] || ''
+}
+
+function openSignatureDialog(message: ChatMessage) {
+  signatureTargetMessageId.value = message.id
+  signatureForm.value = {
+    author: signatureValue(message.content, '编制人'),
+    reviewer: signatureValue(message.content, '复核人'),
+    confirmer: signatureValue(message.content, '确认人')
+  }
+  signatureImages.value = {
+    author: signatureImageValue(message.content, '编制人'),
+    reviewer: signatureImageValue(message.content, '复核人'),
+    confirmer: signatureImageValue(message.content, '确认人')
+  }
+  activeSignatureRole.value = 'author'
+  signatureDialogVisible.value = true
+  nextTick(() => resetSignatureCanvas())
+}
+
+function roleLabel(role: SignatureRole) {
+  if (role === 'author') return '编制人'
+  if (role === 'reviewer') return '复核人'
+  return '确认人'
+}
+
+function setSignatureRole(role: SignatureRole) {
+  saveSignatureCanvas()
+  activeSignatureRole.value = role
+  nextTick(() => resetSignatureCanvas())
+}
+
+function canvasPoint(event: MouseEvent | TouchEvent) {
+  const canvas = signatureCanvasRef.value
+  if (!canvas) return null
+  const rect = canvas.getBoundingClientRect()
+  const source = 'touches' in event ? event.touches[0] || event.changedTouches[0] : event
+  return {
+    x: (source.clientX - rect.left) * (canvas.width / rect.width),
+    y: (source.clientY - rect.top) * (canvas.height / rect.height)
+  }
+}
+
+function signatureContext() {
+  const canvas = signatureCanvasRef.value
+  const context = canvas?.getContext('2d')
+  if (!canvas || !context) return null
+  context.lineWidth = 4
+  context.lineCap = 'round'
+  context.lineJoin = 'round'
+  context.strokeStyle = '#172033'
+  return context
+}
+
+function resetSignatureCanvas() {
+  const canvas = signatureCanvasRef.value
+  const context = signatureContext()
+  if (!canvas || !context) return
+  context.clearRect(0, 0, canvas.width, canvas.height)
+  context.fillStyle = '#ffffff'
+  context.fillRect(0, 0, canvas.width, canvas.height)
+  const image = signatureImages.value[activeSignatureRole.value]
+  if (image) {
+    const img = new Image()
+    img.onload = () => context.drawImage(img, 0, 0, canvas.width, canvas.height)
+    img.src = image
+  }
+}
+
+function beginSignature(event: MouseEvent | TouchEvent) {
+  event.preventDefault()
+  const context = signatureContext()
+  const point = canvasPoint(event)
+  if (!context || !point) return
+  drawingSignature.value = true
+  context.beginPath()
+  context.moveTo(point.x, point.y)
+}
+
+function drawSignature(event: MouseEvent | TouchEvent) {
+  if (!drawingSignature.value) return
+  event.preventDefault()
+  const context = signatureContext()
+  const point = canvasPoint(event)
+  if (!context || !point) return
+  context.lineTo(point.x, point.y)
+  context.stroke()
+}
+
+function endSignature() {
+  if (!drawingSignature.value) return
+  drawingSignature.value = false
+  saveSignatureCanvas()
+}
+
+function saveSignatureCanvas() {
+  const canvas = signatureCanvasRef.value
+  if (!canvas) return
+  signatureImages.value[activeSignatureRole.value] = canvas.toDataURL('image/png')
+}
+
+function clearSignatureCanvas() {
+  signatureImages.value[activeSignatureRole.value] = ''
+  resetSignatureCanvas()
+}
+
+function safeSignature(value: string) {
+  const text = value.trim().replace(/[|\r\n]/g, ' ')
+  return text || '________________'
+}
+
+function signatureCell(role: SignatureRole) {
+  const image = signatureImages.value[role]
+  if (image) return `![${roleLabel(role)}签名](${image})`
+  return safeSignature(signatureForm.value[role])
+}
+
+function replaceSignatureRows(content: string) {
+  const rows = content.split(/\r?\n/)
+  return rows.map((row) => {
+    if (/^\|\s*编制人\s*\|/.test(row)) return `| 编制人 | ${signatureCell('author')} | ____ 年 __ 月 __ 日 |`
+    if (/^\|\s*复核人\s*\|/.test(row)) return `| 复核人 | ${signatureCell('reviewer')} | ____ 年 __ 月 __ 日 |`
+    if (/^\|\s*确认人\s*\|/.test(row)) return `| 确认人 | ${signatureCell('confirmer')} | ____ 年 __ 月 __ 日 |`
+    return row
+  }).join('\n')
+}
+
+function applySignature() {
+  saveSignatureCanvas()
+  const message = messages.value.find((item) => item.id === signatureTargetMessageId.value)
+  if (!message) return
+  message.content = replaceSignatureRows(message.content)
+  signatureDialogVisible.value = false
+  ElMessage.success('手写签名已写入报告')
+}
+
+function printReport(message: ChatMessage) {
+  if (!message.content) return
+  const win = window.open('', '_blank')
+  if (!win) {
+    ElMessage.error('浏览器阻止了打印窗口')
+    return
+  }
+  win.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Agent 工作报告</title><style>
+    body{margin:0;background:#eef1f5;color:#172033;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;}
+    main{width:794px;min-height:1123px;margin:24px auto;padding:56px 64px;background:#fff;box-shadow:0 20px 60px rgba(31,45,61,.16);box-sizing:border-box;}
+    h3:first-child{text-align:center;font-size:26px;margin:0 0 28px;} h4,h5{margin:24px 0 10px;}
+    p{line-height:1.75;margin:0 0 12px;} ul{padding-left:22px;line-height:1.7;} li{margin:5px 0;}
+    table{width:100%;border-collapse:collapse;margin:14px 0 20px;} td,th{border:1px solid #aeb8c6;padding:9px 10px;vertical-align:top;} tr:first-child td{background:#f4f7fb;font-weight:700;} .signature-image{max-width:150px;max-height:48px;vertical-align:middle;}
+    blockquote{margin:20px 0 0;border-left:3px solid #1d6fdc;padding:8px 12px;background:#f4f7fb;color:#526179;}
+    @media print{body{background:#fff;} main{width:auto;min-height:auto;margin:0;padding:0;box-shadow:none;} button{display:none;}}
+  </style></head><body><main>${renderMarkdown(message.content)}</main><script>window.onload=()=>window.print()<\/script></body></html>`)
+  win.document.close()
 }
 
 function continueWith(text: string) {
@@ -754,15 +1188,14 @@ onMounted(() => {
     <main class="chat-stage">
       <header class="stage-header">
         <div class="agent-title">
-          <span class="agent-mark">AI</span>
+          <span class="agent-mark">PV</span>
           <div>
-            <h1>综合分析 Agent</h1>
+            <h1>智能体工作台</h1>
             <p>{{ activeSessionTitle }}</p>
           </div>
         </div>
         <div class="header-actions">
-          <el-tag size="small" effect="plain">Agent</el-tag>
-          <el-tag size="small" :type="connected ? 'success' : 'warning'" effect="plain">{{ connected ? 'Connected' : 'Connecting' }}</el-tag>
+          <el-tag size="small" :type="connected ? 'success' : 'warning'" effect="plain">{{ connected ? '已连接' : '连接中' }}</el-tag>
           <el-dropdown trigger="click">
             <button class="user-chip" type="button">
               <span>{{ username.slice(0, 1).toUpperCase() }}</span>
@@ -788,20 +1221,22 @@ onMounted(() => {
           :class="[`role-${message.role}`, `kind-${message.kind}`]"
         >
           <div v-if="message.role !== 'system'" class="avatar">
-            {{ message.role === 'user' ? username.slice(0, 1).toUpperCase() : 'AI' }}
+            {{ message.role === 'user' ? username.slice(0, 1).toUpperCase() : 'PV' }}
           </div>
           <article class="message-bubble">
             <div v-if="message.role !== 'system'" class="message-meta">
-              <strong>{{ message.role === 'user' ? username : 'Agent' }}</strong>
+              <strong>{{ message.role === 'user' ? username : '光伏智能体' }}</strong>
               <span>{{ message.time }}</span>
             </div>
-            <p v-if="message.content" class="message-text">{{ message.content }}</p>
+            <div v-if="message.steps?.length" class="process-strip" :class="activeStep(message)?.status">
+              <span class="process-pulse">{{ stepMark(activeStep(message)?.status || 'pending') }}</span>
+              <div>
+                <strong>{{ activeStep(message)?.title || '正在处理' }}</strong>
+                <small>{{ activeStep(message)?.detail || statusLabel(activeStep(message)?.status || 'pending') }}</small>
+              </div>
+            </div>
 
             <div v-if="message.steps?.length" class="run-card">
-              <div class="run-head">
-                <strong>执行过程</strong>
-                <span>{{ message.steps.filter((step) => step.status === 'success').length }}/{{ message.steps.length }}</span>
-              </div>
               <div class="run-steps">
                 <div v-for="step in message.steps" :key="step.key" class="run-step" :class="step.status">
                   <span>{{ stepMark(step.status) }}</span>
@@ -813,6 +1248,14 @@ onMounted(() => {
               </div>
             </div>
 
+            <div
+              v-if="message.content"
+              class="message-text markdown-body"
+              v-html="message.role === 'assistant' ? renderMarkdown(message.content) : escapeHtml(message.content)"
+            ></div>
+
+            <PvGenerativeUi v-if="message.uiInstructions?.length" :instructions="message.uiInstructions" class="pv-ui-grid" />
+
             <div v-if="message.tools?.length" class="tool-list">
               <details v-for="tool in message.tools" :key="tool.id" class="tool-card" :class="tool.status">
                 <summary>
@@ -822,7 +1265,10 @@ onMounted(() => {
                   </span>
                   <em>{{ statusLabel(tool.status) }}<template v-if="tool.durationMs"> · {{ tool.durationMs }} ms</template></em>
                 </summary>
-                <p>{{ tool.detail || tool.summary }}</p>
+                <ul v-if="tool.highlights?.length" class="tool-highlights">
+                  <li v-for="item in tool.highlights" :key="item">{{ item }}</li>
+                </ul>
+                <p v-else>{{ tool.detail || tool.summary }}</p>
               </details>
             </div>
 
@@ -846,7 +1292,9 @@ onMounted(() => {
             </div>
 
             <div v-if="message.finalActions && message.role === 'assistant'" class="final-actions">
-              <button type="button" @click="continueWith('生成综合分析报告')">生成报告</button>
+              <button type="button" @click="continueWith('总结当前聊天内容并生成正式 Markdown 工作报告，包含电子签名栏')">生成报告</button>
+              <button v-if="isFormalReport(message)" type="button" @click="openSignatureDialog(message)">填写签名</button>
+              <button v-if="isFormalReport(message)" type="button" @click="printReport(message)">打印报告</button>
               <button type="button" @click="copyMessage(message)">复制结论</button>
               <button type="button" @click="continueWith('继续分析：')">继续追问</button>
             </div>
@@ -856,7 +1304,14 @@ onMounted(() => {
 
       <section class="composer-wrap">
         <div v-if="showSlashMenu && filteredCommands.length > 0" class="slash-menu">
-          <button v-for="command in filteredCommands" :key="command.command" type="button" @click="applyCommand(command)">
+          <button
+            v-for="(command, index) in filteredCommands"
+            :key="command.command"
+            type="button"
+            :class="{ active: index === slashActiveIndex }"
+            @mouseenter="slashActiveIndex = index"
+            @click="applyCommand(command)"
+          >
             <strong>{{ command.command }}</strong>
             <span>{{ command.label }}</span>
             <small>{{ command.hint }}</small>
@@ -864,7 +1319,7 @@ onMounted(() => {
         </div>
 
         <div class="composer">
-          <button class="tool-trigger" type="button" @click="showSlashMenu = !showSlashMenu">/</button>
+          <button class="tool-trigger" type="button" @click="showSlashMenu = !showSlashMenu; slashActiveIndex = 0">/</button>
           <textarea
             ref="composerRef"
             v-model="composerText"
@@ -877,16 +1332,43 @@ onMounted(() => {
             {{ running ? '执行中' : '发送' }}
           </button>
         </div>
-
-        <div class="quick-commands">
-          <button type="button" @click="setSlashCommand('/station')">/station</button>
-          <button type="button" @click="setSlashCommand('/weather')">/weather</button>
-          <button type="button" @click="setSlashCommand('/predict')">/predict</button>
-          <button type="button" @click="setSlashCommand('/report')">/report</button>
-          <button type="button" @click="setSlashCommand('/api')">/api</button>
-        </div>
       </section>
     </main>
+
+    <el-dialog v-model="signatureDialogVisible" title="手写电子签名" width="560px" append-to-body @opened="resetSignatureCanvas">
+      <div class="signature-role-tabs">
+        <button type="button" :class="{ active: activeSignatureRole === 'author' }" @click="setSignatureRole('author')">编制人</button>
+        <button type="button" :class="{ active: activeSignatureRole === 'reviewer' }" @click="setSignatureRole('reviewer')">复核人</button>
+        <button type="button" :class="{ active: activeSignatureRole === 'confirmer' }" @click="setSignatureRole('confirmer')">确认人</button>
+      </div>
+      <div class="signature-pad-wrap">
+        <canvas
+          ref="signatureCanvasRef"
+          class="signature-pad"
+          width="900"
+          height="260"
+          @mousedown="beginSignature"
+          @mousemove="drawSignature"
+          @mouseup="endSignature"
+          @mouseleave="endSignature"
+          @touchstart="beginSignature"
+          @touchmove="drawSignature"
+          @touchend="endSignature"
+          @touchcancel="endSignature"
+        ></canvas>
+      </div>
+      <el-form label-width="88px" class="signature-form">
+        <el-form-item :label="`${roleLabel(activeSignatureRole)}姓名`">
+          <el-input v-model="signatureForm[activeSignatureRole]" placeholder="可选：填写姓名，未手写时使用" />
+        </el-form-item>
+      </el-form>
+      <p class="signature-hint">用鼠标或触摸在上方区域手写签名；切换角色前会自动保存当前签名。</p>
+      <template #footer>
+        <el-button @click="clearSignatureCanvas">清空当前签名</el-button>
+        <el-button @click="signatureDialogVisible = false">取消</el-button>
+        <el-button type="primary" @click="applySignature">写入报告</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -895,10 +1377,11 @@ onMounted(() => {
   height: calc(100vh - 88px);
   min-height: 0;
   display: grid;
-  grid-template-columns: 268px minmax(0, 1fr);
+  grid-template-columns: 252px minmax(0, 1fr);
   overflow: hidden;
-  border-radius: 12px;
-  background: #f4f7fb;
+  border: 1px solid rgba(130, 150, 180, 0.18);
+  border-radius: 14px;
+  background: #f3f7fd;
   color: #172033;
 }
 
@@ -922,7 +1405,6 @@ button {
 .rail-top,
 .stage-header,
 .header-actions,
-.quick-commands,
 .approval-actions,
 .final-actions {
   display: flex;
@@ -1056,15 +1538,17 @@ button {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr) auto;
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.86), rgba(246, 249, 252, 0.94)),
-    radial-gradient(circle at 80% 0%, rgba(66, 153, 225, 0.12), transparent 34%);
+    radial-gradient(circle at 78% 8%, rgba(90, 142, 255, 0.10), transparent 28%),
+    linear-gradient(180deg, #f6f9ff 0%, #f3f7fd 100%);
 }
 
 .stage-header {
   justify-content: space-between;
   gap: 16px;
-  padding: 18px 28px 14px;
-  border-bottom: 1px solid rgba(122, 139, 165, 0.12);
+  padding: 14px 28px 12px;
+  border-bottom: 1px solid rgba(130, 150, 180, 0.16);
+  background: rgba(255, 255, 255, 0.72);
+  backdrop-filter: blur(10px);
 }
 
 .agent-title {
@@ -1079,11 +1563,13 @@ button {
   height: 38px;
   display: grid;
   place-items: center;
-  border-radius: 50%;
-  background: #172033;
-  color: #fff;
+  border-radius: 12px;
+  background: linear-gradient(180deg, #eaf2ff, #dbe9ff);
+  color: #1d6fdc;
+  border: 1px solid rgba(66, 126, 220, 0.20);
   font-weight: 800;
   font-size: 13px;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.8);
 }
 
 .agent-title h1 {
@@ -1121,7 +1607,7 @@ button {
   display: grid;
   place-items: center;
   border-radius: 50%;
-  background: #1d6fdc;
+  background: #2f75e6;
   color: #fff;
   font-size: 12px;
   font-weight: 800;
@@ -1131,16 +1617,17 @@ button {
   min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
-  padding: 28px 36px 22px;
+  padding: 28px 40px 152px;
   scroll-behavior: smooth;
+  overscroll-behavior: contain;
 }
 
 .message-row {
   display: flex;
   gap: 12px;
-  margin: 0 auto 18px;
+  margin: 0 auto 22px;
   width: 100%;
-  max-width: 1180px;
+  max-width: 1120px;
 }
 
 .message-row.role-user {
@@ -1149,7 +1636,9 @@ button {
 
 .message-row.role-user .avatar {
   order: 2;
-  background: #1d6fdc;
+  border-radius: 50%;
+  background: #2f75e6;
+  color: #fff;
 }
 
 .message-row.role-system {
@@ -1157,16 +1646,20 @@ button {
 }
 
 .message-bubble {
-  max-width: min(940px, calc(100% - 56px));
-  border-radius: 8px;
-  padding: 14px 16px;
-  background: rgba(255, 255, 255, 0.86);
-  box-shadow: 0 12px 30px rgba(31, 45, 61, 0.06);
+  max-width: min(980px, calc(100% - 56px));
+  border-radius: 14px;
+  padding: 0;
+  background: transparent;
+  box-shadow: none;
 }
 
 .role-user .message-bubble {
-  background: #172033;
-  color: #fff;
+  max-width: min(720px, calc(100% - 56px));
+  padding: 12px 16px;
+  border: 1px solid rgba(86, 128, 210, 0.18);
+  background: #edf4ff;
+  color: #1c2c46;
+  box-shadow: 0 10px 28px rgba(80, 112, 180, 0.10);
 }
 
 .role-system .message-bubble {
@@ -1185,46 +1678,97 @@ button {
   display: flex;
   align-items: center;
   gap: 10px;
-  margin-bottom: 6px;
+  margin: 0 0 10px;
   color: #7a879a;
   font-size: 12px;
+  font-weight: 600;
 }
 
 .role-user .message-meta {
-  color: rgba(255, 255, 255, 0.72);
+  color: #647798;
 }
 
 .message-text {
   margin: 0;
-  white-space: pre-wrap;
-  line-height: 1.7;
+  line-height: 1.75;
 }
 
+.role-assistant .markdown-body {
+  margin-top: 12px;
+  border: 1px solid rgba(130, 150, 180, 0.18);
+  border-radius: 16px;
+  padding: 18px 22px;
+  background: rgba(255, 255, 255, 0.98);
+  box-shadow: 0 16px 42px rgba(70, 96, 140, 0.08);
+}
+
+.role-assistant .message-meta {
+  padding-left: 2px;
+}
+
+
+.process-strip,
 .run-card,
+.pv-ui-grid,
 .tool-list,
 .approval-card,
 .final-actions {
   margin-top: 12px;
 }
 
-.run-card {
-  border: 1px solid rgba(122, 139, 165, 0.16);
-  border-radius: 8px;
-  background: #fbfdff;
-  overflow: hidden;
-}
-
-.run-head {
-  display: flex;
-  justify-content: space-between;
+.process-strip {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+  max-width: 280px;
   padding: 10px 12px;
-  border-bottom: 1px solid rgba(122, 139, 165, 0.12);
-  color: #34445f;
+  border: 1px solid rgba(130, 150, 180, 0.18);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 12px 34px rgba(70, 96, 140, 0.08);
 }
 
-.run-head span {
-  color: #7a879a;
+.process-strip strong {
+  display: block;
+  font-size: 13px;
+}
+
+.process-strip small {
+  color: #6b778c;
+}
+
+.process-pulse {
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: #eef4fb;
+  color: #1d6fdc;
   font-size: 12px;
+  font-weight: 800;
+}
+
+.process-strip.running .process-pulse,
+.process-strip.waiting .process-pulse {
+  background: #fff4d8;
+  color: #a05a00;
+}
+
+.process-strip.failed .process-pulse {
+  background: #ffe8e8;
+  color: #b42318;
+}
+
+.run-card {
+  max-width: 300px;
+  border-left: 2px solid rgba(29, 111, 220, 0.22);
+  background: transparent;
+  overflow: hidden;
 }
 
 .run-steps {
@@ -1236,11 +1780,11 @@ button {
   display: grid;
   grid-template-columns: 24px minmax(0, 1fr);
   gap: 8px;
-  padding: 10px 12px;
+  padding: 8px 12px;
 }
 
 .run-step + .run-step {
-  border-top: 1px solid rgba(122, 139, 165, 0.08);
+  border-top: 0;
 }
 
 .run-step > span {
@@ -1280,16 +1824,84 @@ button {
   color: #7a879a;
 }
 
+.pv-ui-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 10px;
+  max-width: 760px;
+}
+
+.pv-ui-card {
+  border: 1px solid rgba(47, 117, 230, 0.18);
+  border-radius: 8px;
+  padding: 12px;
+  background: #ffffff;
+  box-shadow: 0 12px 30px rgba(70, 96, 140, 0.07);
+}
+
+.pv-ui-card header {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.pv-ui-card header strong {
+  color: #1d2f4f;
+  font-size: 14px;
+}
+
+.pv-ui-card header span {
+  color: #8090a8;
+  font-size: 11px;
+}
+
+.pv-ui-card dl {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+}
+
+.pv-ui-card dl div {
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr);
+  gap: 8px;
+  align-items: baseline;
+}
+
+.pv-ui-card dt {
+  color: #7a879a;
+  font-size: 12px;
+}
+
+.pv-ui-card dd {
+  margin: 0;
+  color: #2b3950;
+  font-size: 13px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.pv-ui-card.WeatherImpactCard {
+  border-color: rgba(22, 163, 74, 0.22);
+}
+
+.pv-ui-card.PredictionTrendCard {
+  border-color: rgba(126, 87, 194, 0.22);
+}
+
 .tool-list {
   display: grid;
   gap: 8px;
 }
 
 .tool-card {
-  border: 1px solid rgba(122, 139, 165, 0.16);
-  border-radius: 8px;
-  background: #fff;
+  border: 1px solid rgba(130, 150, 180, 0.18);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.96);
   overflow: hidden;
+  box-shadow: 0 12px 32px rgba(70, 96, 140, 0.07);
 }
 
 .tool-card summary {
@@ -1321,6 +1933,17 @@ button {
   margin: 0;
   padding: 0 12px 12px;
   color: #526179;
+}
+
+.tool-highlights {
+  margin: 0;
+  padding: 0 12px 12px 28px;
+  color: #526179;
+  line-height: 1.65;
+}
+
+.tool-highlights li + li {
+  margin-top: 3px;
 }
 
 .tool-card.failed {
@@ -1370,26 +1993,82 @@ button {
   gap: 8px;
 }
 
+.signature-role-tabs {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.signature-role-tabs button {
+  border: 1px solid rgba(122, 139, 165, 0.24);
+  border-radius: 8px;
+  padding: 8px 10px;
+  background: #fff;
+  color: #34445f;
+  cursor: pointer;
+}
+
+.signature-role-tabs button.active {
+  border-color: rgba(29, 111, 220, 0.52);
+  background: rgba(29, 111, 220, 0.08);
+  color: #1d6fdc;
+}
+
+.signature-pad-wrap {
+  border: 1px dashed rgba(122, 139, 165, 0.48);
+  border-radius: 10px;
+  padding: 8px;
+  background: #f8fafc;
+}
+
+.signature-pad {
+  width: 100%;
+  height: 174px;
+  display: block;
+  border-radius: 8px;
+  background: #fff;
+  cursor: crosshair;
+  touch-action: none;
+}
+
+.signature-form {
+  padding-top: 14px;
+}
+
+.signature-hint {
+  margin: 0;
+  color: #7a879a;
+  font-size: 12px;
+}
+
 .final-actions {
   gap: 8px;
   flex-wrap: wrap;
 }
 
-.final-actions button,
-.quick-commands button {
-  border: 0;
-  border-radius: 999px;
-  padding: 7px 11px;
-  background: rgba(29, 111, 220, 0.08);
-  color: #1d4f9a;
+.final-actions button {
+  min-height: 34px;
+  border: 1px solid rgba(130, 150, 180, 0.18);
+  border-radius: 8px;
+  padding: 7px 13px;
+  background: #f8fbff;
+  color: #34445f;
   cursor: pointer;
+}
+
+.final-actions button:first-child {
+  border-color: #1f6eea;
+  background: #1f6eea;
+  color: #fff;
 }
 
 .composer-wrap {
   position: relative;
-  max-width: 1180px;
-  width: calc(100% - 72px);
-  margin: 0 auto 22px;
+  max-width: 980px;
+  width: calc(100% - 64px);
+  margin: -122px auto 18px;
+  pointer-events: none;
 }
 
 .composer {
@@ -1399,9 +2078,11 @@ button {
   align-items: center;
   gap: 10px;
   padding: 10px;
-  border-radius: 16px;
-  background: #fff;
-  box-shadow: 0 18px 50px rgba(31, 45, 61, 0.14);
+  border: 1px solid rgba(130, 150, 180, 0.20);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.98);
+  box-shadow: 0 18px 44px rgba(70, 96, 140, 0.14);
+  pointer-events: auto;
 }
 
 .composer textarea {
@@ -1430,24 +2111,20 @@ button {
   cursor: not-allowed;
 }
 
-.quick-commands {
-  gap: 6px;
-  margin-top: 8px;
-  flex-wrap: wrap;
-}
-
 .slash-menu {
   position: absolute;
   left: 0;
   right: 0;
-  bottom: 124px;
+  bottom: 72px;
   z-index: 10;
   display: grid;
   gap: 4px;
   padding: 8px;
+  border: 1px solid rgba(122, 139, 165, 0.16);
   border-radius: 12px;
   background: rgba(255, 255, 255, 0.98);
   box-shadow: 0 18px 50px rgba(31, 45, 61, 0.16);
+  pointer-events: auto;
 }
 
 .slash-menu button {
@@ -1464,12 +2141,123 @@ button {
   cursor: pointer;
 }
 
-.slash-menu button:hover {
+.slash-menu button:hover,
+.slash-menu button.active {
   background: rgba(29, 111, 220, 0.08);
+}
+
+.slash-menu button.active strong {
+  color: #1d6fdc;
 }
 
 .slash-menu small {
   color: #7a879a;
+}
+
+.markdown-body :deep(p) {
+  margin: 0 0 12px;
+}
+
+.markdown-body :deep(p:last-child) {
+  margin-bottom: 0;
+}
+
+.markdown-body :deep(h3),
+.markdown-body :deep(h4),
+.markdown-body :deep(h5) {
+  margin: 16px 0 8px;
+  color: #172033;
+  line-height: 1.35;
+}
+
+.markdown-body :deep(h3:first-child),
+.markdown-body :deep(h4:first-child),
+.markdown-body :deep(h5:first-child) {
+  margin-top: 0;
+}
+
+.markdown-body :deep(ul) {
+  margin: 8px 0 14px;
+  padding-left: 22px;
+}
+
+.markdown-body :deep(li) {
+  margin: 5px 0;
+}
+
+.markdown-body :deep(code) {
+  border-radius: 5px;
+  padding: 2px 5px;
+  background: rgba(23, 32, 51, 0.07);
+  color: #172033;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.92em;
+}
+
+.markdown-body :deep(pre) {
+  overflow: auto;
+  margin: 12px 0;
+  border-radius: 10px;
+  padding: 12px;
+  background: #172033;
+  color: #f8fafc;
+}
+
+.markdown-body :deep(pre code) {
+  padding: 0;
+  background: transparent;
+  color: inherit;
+}
+
+.markdown-body {
+  color: #172033;
+}
+
+.markdown-body :deep(h3:first-child) {
+  text-align: center;
+  font-size: 24px;
+  margin-bottom: 18px;
+}
+
+.markdown-body :deep(.signature-image) {
+  max-width: 150px;
+  max-height: 48px;
+  display: inline-block;
+  vertical-align: middle;
+}
+
+.markdown-body :deep(table) {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 14px 0 18px;
+  background: #fff;
+}
+
+.markdown-body :deep(td),
+.markdown-body :deep(th) {
+  border: 1px solid rgba(122, 139, 165, 0.32);
+  padding: 9px 10px;
+  vertical-align: top;
+}
+
+.markdown-body :deep(tr:first-child td) {
+  background: #f4f7fb;
+  font-weight: 700;
+}
+
+.markdown-body :deep(blockquote) {
+  margin: 18px 0 0;
+  border-left: 3px solid #1d6fdc;
+  padding: 8px 12px;
+  background: rgba(29, 111, 220, 0.06);
+  color: #526179;
+}
+
+.role-assistant .message-bubble:has(.markdown-body table) {
+  max-width: min(920px, calc(100% - 56px));
+  border: 1px solid rgba(122, 139, 165, 0.16);
+  background: #fff;
+  box-shadow: 0 18px 50px rgba(31, 45, 61, 0.08);
 }
 
 @media (max-width: 980px) {
