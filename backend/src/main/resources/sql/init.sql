@@ -717,6 +717,30 @@ CREATE TABLE agent_approval (
 
 
 -- =========================================================
+-- 17E. Agent 长期记忆表
+-- =========================================================
+CREATE TABLE agent_memory (
+    memory_id BIGINT PRIMARY KEY AUTO_INCREMENT COMMENT 'Agent记忆ID',
+    user_id BIGINT NOT NULL COMMENT '用户ID',
+    memory_type VARCHAR(64) NOT NULL COMMENT '记忆类型',
+    memory_key VARCHAR(128) NOT NULL COMMENT '同类型记忆键',
+    value_json JSON NOT NULL COMMENT '记忆内容',
+    source_message TEXT DEFAULT NULL COMMENT '来源消息',
+    confidence DECIMAL(4,3) NOT NULL DEFAULT 0.500 COMMENT '置信度：0-1',
+    enabled TINYINT(1) NOT NULL DEFAULT 1 COMMENT '是否启用',
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+
+    UNIQUE KEY uk_agent_memory_user_type_key (user_id, memory_type, memory_key),
+    KEY idx_agent_memory_user_type (user_id, memory_type, enabled),
+    KEY idx_agent_memory_updated (updated_at),
+
+    CONSTRAINT fk_agent_memory_user
+        FOREIGN KEY (user_id) REFERENCES sys_user(user_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Agent长期记忆表';
+
+
+-- =========================================================
 -- 18. API Key 表
 -- 用于模型开放平台
 -- =========================================================

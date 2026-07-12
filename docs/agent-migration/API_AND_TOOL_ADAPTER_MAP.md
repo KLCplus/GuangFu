@@ -40,3 +40,11 @@ Internal LLM gateway:
 - Header: `X-Agent-Internal-Token`
 - Request/response shape: OpenAI-compatible Chat Completions.
 - The gateway forces the configured DeepSeek model and key from Spring Boot environment.
+
+Internal Memory gateway:
+
+- `POST /api/internal/agent/memory/list`
+- `POST /api/internal/agent/memory/write`
+- Header: `X-Agent-Internal-Token`
+- Runtime provides `userId`, `username`, and `roles`; Spring binds user context before reading or writing MySQL.
+- Writes are restricted to approved memory types and rejected when source/value contains sensitive markers.

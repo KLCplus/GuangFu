@@ -10,7 +10,11 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class FakeGateway:
+    def __init__(self):
+        self.calls = []
+
     def execute(self, tool_name, arguments, context):
+        self.calls.append((tool_name, arguments))
         if tool_name == "station.detail":
             return ToolResult(tool_name, True, "已获取 1 号电站基础信息", ["状态：RUNNING"], {
                 "stationName": "1号电站",
@@ -65,6 +69,19 @@ class FailingLlmGateway:
         raise RuntimeError("llm timeout")
 
 
+class FakeMemoryGateway:
+    def __init__(self, memories=None):
+        self.memories = memories or []
+        self.writes = []
+
+    def list(self, context, memory_type=None, limit=20):
+        return self.memories
+
+    def write(self, context, candidate, memory_key=None):
+        self.writes.append((candidate, memory_key))
+        return {"memoryType": candidate.memory_type, "value": candidate.value}
+
+
 class RuntimeFoundationTest(unittest.TestCase):
     def test_skill_loader(self):
         skills = SkillLoader(ROOT / "skills").load_all()
@@ -109,6 +126,25 @@ class RuntimeFoundationTest(unittest.TestCase):
         state = runtime.run("分析 1 号电站当前运行情况，结合天气和最近预测结果。", {"sessionId": 1})
         self.assertIn("LLM 不可用，已降级为工具结果摘要", state.final_answer)
         self.assertIn("llm timeout", state.final_answer)
+
+    def test_default_station_can_come_from_memory(self):
+        gateway = FakeGateway()
+        memory = FakeMemoryGateway([{
+            "memoryType": "default_station",
+            "memoryKey": "default",
+            "value": {"stationId": 2},
+        }])
+        runtime = PhotovoltaicAgentRuntime(gateway, ROOT / "skills", memory_gateway=memory)
+        runtime.run("分析默认电站当前运行情况", {"sessionId": 1, "userId": 7})
+        station_call = next(call for call in gateway.calls if call[0] == "station.detail")
+        self.assertEqual(station_call[1]["stationId"], 2)
+
+    def test_memory_candidates_are_persisted_after_run(self):
+        memory = FakeMemoryGateway()
+        runtime = PhotovoltaicAgentRuntime(FakeGateway(), ROOT / "skills", memory_gateway=memory)
+        runtime.run("默认 2 号电站", {"sessionId": 1, "userId": 7})
+        self.assertEqual(memory.writes[0][0].memory_type, "default_station")
+        self.assertEqual(memory.writes[0][0].value["stationId"], 2)
 
     def test_memory_filters_sensitive_values(self):
         self.assertEqual(extract_memory_candidates("我的 api_key 是 secret，默认 1 号电站"), [])

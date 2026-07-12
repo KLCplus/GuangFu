@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from .events import stream_event, ui_instruction
+from .memory import extract_memory_candidates
 from .skill_loader import SkillLoader
 from .tool_router import DEFAULT_CAPABILITIES, ToolGateway, ToolRouter
 from .types import AgentState, PlanStep, ToolResult
@@ -17,16 +18,20 @@ class PhotovoltaicAgentRuntime:
     dependency-light so it can be tested before Spring Gateway integration.
     """
 
-    def __init__(self, gateway: ToolGateway, skills_dir: str | Path, llm_gateway: Any | None = None):
+    def __init__(self, gateway: ToolGateway, skills_dir: str | Path,
+                 llm_gateway: Any | None = None, memory_gateway: Any | None = None):
         self.skill_loader = SkillLoader(skills_dir)
         self.skills = self.skill_loader.load_all()
         self.router = ToolRouter(gateway, DEFAULT_CAPABILITIES)
         self.llm_gateway = llm_gateway
+        self.memory_gateway = memory_gateway
 
     def plan(self, task: str, context: dict[str, Any]) -> AgentState:
         skill = self.skill_loader.select(task, self.skills)
-        station_id = int(context.get("stationId") or self._extract_station_id(task) or 1)
-        state = AgentState(session_id=context.get("sessionId"), user_task=task, selected_skill=skill.name)
+        memories = self._load_memories(context)
+        context["memories"] = memories
+        station_id = int(context.get("stationId") or self._extract_station_id(task) or self._default_station_id(memories) or 1)
+        state = AgentState(session_id=context.get("sessionId"), user_task=task, selected_skill=skill.name, memories=memories)
         state.plan = [
             PlanStep("understand", "Understand", "理解任务", "识别电站运行分析目标"),
             PlanStep("station", "Collect", "查询电站", "确认电站基础信息", "station.detail", {"stationId": station_id}),
@@ -47,6 +52,7 @@ class PhotovoltaicAgentRuntime:
                 state.plan.insert(state.plan.index(step) + 1, follow_up)
                 self._execute_step(state, follow_up, context)
         state.final_answer = self._synthesize(state)
+        self._persist_memory_candidates(state.user_task, context)
         return state
 
     def iter_events(self, task: str, context: dict[str, Any]):
@@ -76,6 +82,7 @@ class PhotovoltaicAgentRuntime:
                 state.plan.insert(index + 1, follow_up)
             index += 1
         state.final_answer = self._synthesize(state)
+        self._persist_memory_candidates(state.user_task, context)
         yield stream_event("run_completed", {
             "sessionId": state.session_id,
             "skill": state.selected_skill,
@@ -188,6 +195,7 @@ class PhotovoltaicAgentRuntime:
                     "content": json.dumps({
                         "task": state.user_task,
                         "skill": state.selected_skill,
+                        "memories": state.memories,
                         "toolResults": tool_context,
                     }, ensure_ascii=False),
                 },
@@ -205,3 +213,35 @@ class PhotovoltaicAgentRuntime:
     def _extract_station_id(self, task: str) -> int | None:
         digits = "".join(ch if ch.isdigit() else " " for ch in task).split()
         return int(digits[0]) if digits else None
+
+    def _load_memories(self, context: dict[str, Any]) -> list[dict[str, Any]]:
+        if not self.memory_gateway or not context.get("userId"):
+            return []
+        try:
+            value = self.memory_gateway.list(context, limit=20)
+            return value if isinstance(value, list) else []
+        except Exception:
+            return []
+
+    def _default_station_id(self, memories: list[dict[str, Any]]) -> int | None:
+        for memory in memories:
+            if memory.get("memoryType") != "default_station":
+                continue
+            value = memory.get("value")
+            if not isinstance(value, dict):
+                continue
+            station_id = value.get("stationId")
+            try:
+                return int(station_id)
+            except (TypeError, ValueError):
+                continue
+        return None
+
+    def _persist_memory_candidates(self, message: str, context: dict[str, Any]) -> None:
+        if not self.memory_gateway or not context.get("userId"):
+            return
+        for candidate in extract_memory_candidates(message):
+            try:
+                self.memory_gateway.write(context, candidate)
+            except Exception:
+                continue

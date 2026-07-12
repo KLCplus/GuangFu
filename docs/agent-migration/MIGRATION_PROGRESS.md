@@ -22,6 +22,8 @@
 - Added migrated runtime follow-up routing from `prediction.list` to `prediction.detail` when the latest prediction task record contains `taskId`.
 - Connected migrated runtime synthesis to Spring internal LLM Gateway, with deterministic fallback when the LLM gateway fails.
 - Live-smoked migrated `/api/agent/chat/stream` through Spring Gateway, Python runtime, real station/weather/prediction tools, and DeepSeek-backed internal LLM synthesis.
+- Added MySQL-backed Agent Memory schema, Spring internal Memory Gateway, and runtime memory read/write adapter.
+- Added runtime tests for default station memory injection and safe memory candidate persistence.
 
 ## Not Complete
 
@@ -31,3 +33,4 @@
 - Generative UI cards are specified but not yet rendered in Vue/agent-web.
 - `prediction.detail` follow-up is unit-tested and runtime-supported, but live smoke used an environment where `prediction.list` returned no records.
 - Live smoke used local seed station/weather data; a production-auth E2E with non-mock business data is still required.
+- Memory live smoke is pending database migration execution on the local MySQL schema.
