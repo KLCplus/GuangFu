@@ -49,6 +49,22 @@ class PredictionDetailGateway(FakeGateway):
         return super().execute(tool_name, arguments, context)
 
 
+class FakeLlmGateway:
+    def chat_completions(self, messages, **options):
+        return {
+            "choices": [{
+                "message": {
+                    "content": "运行结论：1号电站运行正常。\n风险：天气可能造成波动。\n建议：持续关注预测偏差。"
+                }
+            }]
+        }
+
+
+class FailingLlmGateway:
+    def chat_completions(self, messages, **options):
+        raise RuntimeError("llm timeout")
+
+
 class RuntimeFoundationTest(unittest.TestCase):
     def test_skill_loader(self):
         skills = SkillLoader(ROOT / "skills").load_all()
@@ -82,6 +98,17 @@ class RuntimeFoundationTest(unittest.TestCase):
         step_ids = [event["data"]["stepId"] for event in events if event["event"] == "step_completed"]
         self.assertIn("prediction.detail", tool_results)
         self.assertLess(step_ids.index("prediction-list"), step_ids.index("prediction-detail"))
+
+    def test_llm_synthesis_uses_gateway(self):
+        runtime = PhotovoltaicAgentRuntime(FakeGateway(), ROOT / "skills", llm_gateway=FakeLlmGateway())
+        state = runtime.run("分析 1 号电站当前运行情况，结合天气和最近预测结果。", {"sessionId": 1})
+        self.assertIn("运行结论：1号电站运行正常", state.final_answer)
+
+    def test_llm_synthesis_degrades_when_gateway_fails(self):
+        runtime = PhotovoltaicAgentRuntime(FakeGateway(), ROOT / "skills", llm_gateway=FailingLlmGateway())
+        state = runtime.run("分析 1 号电站当前运行情况，结合天气和最近预测结果。", {"sessionId": 1})
+        self.assertIn("LLM 不可用，已降级为工具结果摘要", state.final_answer)
+        self.assertIn("llm timeout", state.final_answer)
 
     def test_memory_filters_sensitive_values(self):
         self.assertEqual(extract_memory_candidates("我的 api_key 是 secret，默认 1 号电站"), [])

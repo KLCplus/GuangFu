@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Any
 
@@ -16,10 +17,11 @@ class PhotovoltaicAgentRuntime:
     dependency-light so it can be tested before Spring Gateway integration.
     """
 
-    def __init__(self, gateway: ToolGateway, skills_dir: str | Path):
+    def __init__(self, gateway: ToolGateway, skills_dir: str | Path, llm_gateway: Any | None = None):
         self.skill_loader = SkillLoader(skills_dir)
         self.skills = self.skill_loader.load_all()
         self.router = ToolRouter(gateway, DEFAULT_CAPABILITIES)
+        self.llm_gateway = llm_gateway
 
     def plan(self, task: str, context: dict[str, Any]) -> AgentState:
         skill = self.skill_loader.select(task, self.skills)
@@ -149,9 +151,56 @@ class PhotovoltaicAgentRuntime:
     def _synthesize(self, state: AgentState) -> str:
         failed = [item for item in state.tool_results if not item.success]
         summaries = [item.summary for item in state.tool_results if item.summary]
+        if self.llm_gateway and summaries:
+            try:
+                answer = self._llm_synthesize(state)
+                if answer:
+                    return answer
+            except Exception as exc:
+                fallback = "；".join(summaries) if summaries else "没有可用工具结果。"
+                return f"LLM 不可用，已降级为工具结果摘要：{fallback}（原因：{exc}）"
         if failed:
             return "部分数据获取失败：" + "；".join(item.summary for item in failed)
         return "；".join(summaries) if summaries else "已完成任务规划，但没有可用工具结果。"
+
+    def _llm_synthesize(self, state: AgentState) -> str:
+        tool_context = [
+            {
+                "tool": item.tool_name,
+                "success": item.success,
+                "summary": item.summary,
+                "highlights": item.highlights,
+                "error": item.error,
+            }
+            for item in state.tool_results
+        ]
+        response = self.llm_gateway.chat_completions(
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "你是光伏预测与运维平台的分析 Agent。只能基于给定工具结果回答；"
+                        "如果数据不完整，要明确指出缺口。输出包括运行结论、风险、建议三部分。"
+                    ),
+                },
+                {
+                    "role": "user",
+                    "content": json.dumps({
+                        "task": state.user_task,
+                        "skill": state.selected_skill,
+                        "toolResults": tool_context,
+                    }, ensure_ascii=False),
+                },
+            ],
+            temperature=0.2,
+            max_tokens=900,
+        )
+        choices = response.get("choices") or []
+        if not choices:
+            return ""
+        message = choices[0].get("message") or {}
+        content = message.get("content")
+        return content.strip() if isinstance(content, str) else ""
 
     def _extract_station_id(self, task: str) -> int | None:
         digits = "".join(ch if ch.isdigit() else " " for ch in task).split()

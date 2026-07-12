@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 
 from pv_agent_runtime.gateway import SpringToolGateway
+from pv_agent_runtime.llm_gateway import SpringLlmGateway
 from pv_agent_runtime.runtime import PhotovoltaicAgentRuntime
 
 
@@ -71,7 +72,8 @@ def main():
         raise SystemExit("AGENT_INTERNAL_TOKEN is required")
 
     gateway = SpringToolGateway(args.spring_base_url, args.internal_token, None)
-    RuntimeHandler.runtime = PhotovoltaicAgentRuntime(gateway, args.skills_dir)
+    llm_gateway = SpringLlmGateway(args.spring_base_url, args.internal_token)
+    RuntimeHandler.runtime = PhotovoltaicAgentRuntime(gateway, args.skills_dir, llm_gateway=llm_gateway)
     server = ThreadingHTTPServer((args.host, args.port), RuntimeHandler)
     print(f"agent-runtime listening on http://{args.host}:{args.port}", flush=True)
     server.serve_forever()
@@ -79,4 +81,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
