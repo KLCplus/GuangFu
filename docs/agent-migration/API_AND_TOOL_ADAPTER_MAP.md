@@ -13,8 +13,12 @@ Gateway request:
 ```json
 {
   "sessionId": 1,
+  "userId": 1,
+  "username": "agent-runtime",
+  "roles": ["USER"],
   "arguments": {},
-  "context": {}
+  "context": {},
+  "approved": false
 }
 ```
 
@@ -30,3 +34,9 @@ Gateway response:
 }
 ```
 
+Internal LLM gateway:
+
+- `POST /api/internal/llm/v1/chat/completions`
+- Header: `X-Agent-Internal-Token`
+- Request/response shape: OpenAI-compatible Chat Completions.
+- The gateway forces the configured DeepSeek model and key from Spring Boot environment.

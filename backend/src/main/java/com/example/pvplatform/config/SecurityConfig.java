@@ -101,6 +101,7 @@ public class SecurityConfig {
                     "/v3/api-docs/**"
                 ).permitAll()
                 .requestMatchers("/openapi/**").permitAll()
+                .requestMatchers("/api/internal/**").permitAll()
                 .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                 .requestMatchers("/api/admin/**").hasRole("ADMIN")
                 .requestMatchers("/api/**").authenticated()

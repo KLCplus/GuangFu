@@ -1,6 +1,6 @@
 from .runtime import PhotovoltaicAgentRuntime
 from .skill_loader import SkillLoader
 from .tool_router import ToolRouter
+from .llm_gateway import SpringLlmGateway
 
-__all__ = ["PhotovoltaicAgentRuntime", "SkillLoader", "ToolRouter"]
-
+__all__ = ["PhotovoltaicAgentRuntime", "SkillLoader", "ToolRouter", "SpringLlmGateway"]

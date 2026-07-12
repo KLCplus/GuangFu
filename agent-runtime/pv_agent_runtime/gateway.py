@@ -16,8 +16,12 @@ class SpringToolGateway:
     def execute(self, tool_name: str, arguments: dict[str, Any], context: dict[str, Any]) -> ToolResult:
         payload = json.dumps({
             "sessionId": self.session_id,
+            "userId": context.get("userId"),
+            "username": context.get("username"),
+            "roles": context.get("roles", ["USER"]),
             "arguments": arguments,
             "context": context,
+            "approved": context.get("approved", False),
         }).encode("utf-8")
         request = urllib.request.Request(
             f"{self.base_url}/api/internal/agent/tools/{tool_name}/execute",
@@ -28,7 +32,8 @@ class SpringToolGateway:
             },
             method="POST",
         )
-        with urllib.request.urlopen(request, timeout=30) as response:
+        opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+        with opener.open(request, timeout=30) as response:
             body = json.loads(response.read().decode("utf-8"))
         return ToolResult(
             tool_name=tool_name,
@@ -38,4 +43,3 @@ class SpringToolGateway:
             data=dict(body.get("data") or {}),
             error=body.get("error"),
         )
-
