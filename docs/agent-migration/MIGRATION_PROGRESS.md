@@ -26,13 +26,15 @@
 - Added runtime tests for default station memory injection and safe memory candidate persistence.
 - Added migrated approval flow for `report.generate`: runtime emits `ApprovalActionCard`/`approval_required`, Spring creates `agent_approval`, and migrated proxy executes the approved pending tool call.
 - Live-smoked approval continuation: approved `approvalId=8`, executed `report.generate`, and saved report `reportId=4`.
+- Added `scripts/migrated-agent-e2e.mjs` and verified migrated analysis, UI instructions, report approval, approval continuation, and report generation end-to-end.
+- Migrated E2E passed locally with `reportId=5`.
 
 ## Not Complete
 
 - Full Next.js `agent-web` has not been integrated.
 - Vue `/reports` UI has not yet been updated to render migrated `ui_instruction` events as photovoltaic component cards.
 - Production-auth E2E has not run because no real user token was provided.
-- Generative UI cards are specified but not yet rendered in Vue/agent-web.
+- Generative UI cards are emitted and E2E-validated at the event/schema level; clean Vue component extraction/commit is still pending because `/reports` has large pre-existing dirty changes.
 - `prediction.detail` follow-up is unit-tested and runtime-supported, but live smoke used an environment where `prediction.list` returned no records.
 - Live smoke used local seed station/weather data; a production-auth E2E with non-mock business data is still required.
 - Memory live smoke is pending database migration execution on the local MySQL schema.

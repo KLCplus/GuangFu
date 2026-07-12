@@ -12,6 +12,8 @@
 
 - Spring internal LLM gateway proxies DeepSeek without logging key.
 - Spring internal tool gateway executes `station.detail`, `weather.current`, `prediction.list`, `prediction.detail`.
+- Spring internal tool gateway creates approval records instead of executing `report.generate` before approval.
+- Migrated proxy executes approved pending `report.generate` calls when `approvalId` is supplied.
 - `AGENT_RUNTIME_MODE=legacy` continues current behavior.
 - `AGENT_RUNTIME_MODE=migrated` calls `agent-runtime`.
 
@@ -28,3 +30,15 @@
 - LLM failure.
 - Refresh and restore session.
 
+Implemented E2E script:
+
+```bash
+node scripts/migrated-agent-e2e.mjs
+```
+
+The script expects backend and `agent-runtime` to be running in migrated mode. It validates:
+
+- migrated runtime `started` and `run_completed` events;
+- whitelisted photovoltaic UI instructions: `StationSummaryCard`, `WeatherImpactCard`, `PredictionTrendCard`;
+- report approval pause with `ApprovalActionCard` and `approval_required`;
+- approval continuation with successful `report.generate` and returned `reportId`.
