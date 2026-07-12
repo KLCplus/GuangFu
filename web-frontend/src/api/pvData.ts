@@ -25,8 +25,12 @@ export interface PvHistoryQuery {
 export interface PvHistoryItem {
   time: DateTimeString
   power: number
+  voltage: number
+  current: number
   irradiance: number
   temperature: number
+  humidity: number
+  windSpeed: number
 }
 
 export interface PvDataImportResult {

@@ -80,7 +80,8 @@ public class PvDataService {
 
     private PvDataVO toVO(PvDataDO data) {
         return new PvDataVO(format(data.getCollectTime()), number(data.getPowerKw()),
-            number(data.getIrradianceWM2()), number(data.getAmbientTemperatureC()));
+            number(data.getVoltageV()), number(data.getCurrentA()), number(data.getIrradianceWM2()),
+            number(data.getAmbientTemperatureC()), number(data.getHumidityPercent()), number(data.getWindSpeedMS()));
     }
 
     private String format(LocalDateTime value) {

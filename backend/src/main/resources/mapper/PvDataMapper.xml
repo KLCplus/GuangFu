@@ -6,8 +6,12 @@
         <constructor>
             <arg column="time" javaType="java.lang.String"/>
             <arg column="power" javaType="java.lang.Double"/>
+            <arg column="voltage" javaType="java.lang.Double"/>
+            <arg column="current" javaType="java.lang.Double"/>
             <arg column="irradiance" javaType="java.lang.Double"/>
             <arg column="temperature" javaType="java.lang.Double"/>
+            <arg column="humidity" javaType="java.lang.Double"/>
+            <arg column="windSpeed" javaType="java.lang.Double"/>
         </constructor>
     </resultMap>
 
@@ -15,13 +19,21 @@
             resultMap="PvDataVOMap">
         SELECT DATE_FORMAT(FROM_UNIXTIME(bucket * #{intervalMinutes} * 60), '%Y-%m-%d %H:%i:%s') AS time,
                COALESCE(AVG(power_kw), 0) AS power,
+               COALESCE(AVG(voltage_v), 0) AS voltage,
+               COALESCE(AVG(current_a), 0) AS current,
                COALESCE(AVG(irradiance_w_m2), 0) AS irradiance,
-               COALESCE(AVG(ambient_temperature_c), 0) AS temperature
+               COALESCE(AVG(ambient_temperature_c), 0) AS temperature,
+               COALESCE(AVG(humidity_percent), 0) AS humidity,
+               COALESCE(AVG(wind_speed_m_s), 0) AS windSpeed
         FROM (
             SELECT FLOOR(UNIX_TIMESTAMP(collect_time) / (#{intervalMinutes} * 60)) AS bucket,
                    power_kw,
+                   voltage_v,
+                   current_a,
                    irradiance_w_m2,
-                   ambient_temperature_c
+                   ambient_temperature_c,
+                   humidity_percent,
+                   wind_speed_m_s
             FROM pv_data
             WHERE station_id = #{stationId}
               AND collect_time <![CDATA[ >= ]]> #{startTime}
