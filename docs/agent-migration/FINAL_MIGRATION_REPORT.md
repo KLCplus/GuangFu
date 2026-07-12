@@ -1,0 +1,19 @@
+# Final Migration Report
+
+This is not final acceptance. It records the current migration checkpoint.
+
+## Actually Migrated
+
+- Runtime structure from Generative UI Starter and AI Consultant into `agent-runtime/pv_agent_runtime`.
+- Tool router shape from Multi MCP Agent Router into `agent-runtime/pv_agent_runtime/tool_router.py`.
+- Memory flow from Personalized Memory into `agent-runtime/pv_agent_runtime/memory.py`.
+- Skill frontmatter/section format from `agent_skills` into `agent-runtime/skills/*/SKILL.md`.
+
+## Still Blocking Final Acceptance
+
+- Need Spring internal Gateway.
+- Need runtime process management and same-domain integration.
+- Need production-auth E2E.
+- Need real non-seed station/prediction data for the first chain.
+- Need Generative UI renderer integration.
+

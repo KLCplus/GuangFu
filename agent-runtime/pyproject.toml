@@ -1,0 +1,10 @@
+[project]
+name = "pv-agent-runtime"
+version = "0.1.0"
+description = "Photovoltaic agent runtime migration foundation"
+requires-python = ">=3.11"
+dependencies = []
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+
