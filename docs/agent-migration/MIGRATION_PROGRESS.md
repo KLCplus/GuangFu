@@ -17,10 +17,12 @@
 - Verified `agent-runtime` can call Spring internal tool gateway for the first station/weather/prediction chain.
 - Added `agent-runtime/server.py` with `GET /health` and `POST /run/stream` SSE.
 - Verified migrated runtime SSE emits `run_started`, `step_started`, `tool_result`, `ui_instruction`, `step_completed`, and `run_completed`.
+- Added Spring proxy for `AGENT_RUNTIME_MODE=migrated` on the existing `/api/agent/chat/stream` endpoint.
+- Verified `/api/agent/chat/stream` streams migrated runtime events and real Spring tool results in migrated mode.
 
 ## Not Complete
 
 - Full Next.js `agent-web` has not been integrated.
-- Migrated runtime server is not yet wired into Spring chat/SSE routing.
+- Vue `/reports` UI has not yet been updated to render migrated `ui_instruction` events as photovoltaic component cards.
 - Production-auth E2E has not run because no real user token was provided.
 - Generative UI cards are specified but not yet rendered in Vue/agent-web.

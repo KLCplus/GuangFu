@@ -11,10 +11,11 @@ This is not final acceptance. It records the current migration checkpoint.
 - Spring Boot internal Tool Gateway for controlled runtime-to-business-tool calls.
 - Spring Boot OpenAI-compatible LLM Gateway for runtime-to-DeepSeek calls without exposing the API key.
 - Runtime SSE server at `agent-runtime/server.py`.
+- Spring `/api/agent/chat/stream` migrated-mode proxy.
 
 ## Still Blocking Final Acceptance
 
-- Need Spring-side runtime mode switch and same-domain SSE proxy.
+- Need Vue `/reports` rendering for migrated `ui_instruction` events.
 - Need production-auth E2E.
 - Need real non-seed station/prediction data for the first chain.
 - Need Generative UI renderer integration.

@@ -37,3 +37,10 @@ Whitelist components:
 
 The model/runtime may emit component names and props only. It must never emit HTML, JavaScript, Vue templates, or CSS.
 
+## Current Checkpoint
+
+`agent-runtime/server.py` emits `ui_instruction` events using the schema above.
+
+Spring `/api/agent/chat/stream` forwards those events when `AGENT_RUNTIME_MODE=migrated`.
+
+The Vue `/reports` page still needs a whitelist renderer for the migrated component names.
