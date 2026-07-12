@@ -6,6 +6,8 @@ import com.example.pvplatform.module.station.entity.PowerStation;
 import com.example.pvplatform.module.station.service.StationService;
 import org.springframework.stereotype.Component;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 
 @Component
@@ -21,7 +23,20 @@ public class StationListTool extends AbstractAgentTool {
     public ToolExecutionResult execute(ToolExecutionContext context, Map<String, Object> arguments) {
         return guard(() -> {
             PageResult<PowerStation> page = stationService.list(1, 50, null, null);
-            return ToolExecutionResult.success(page, "已获取 " + page.records().size() + " 个可访问电站");
+            List<String> highlights = new ArrayList<>();
+            highlights.add("可访问电站：" + page.records().size() + " 个");
+            page.records().stream().limit(5).forEach(station -> highlights.add(station.stationId() + " - " + value(station.stationName(), "未命名电站") + status(station.status())));
+            return ToolExecutionResult.success(displayName(), page,
+                page.records().isEmpty() ? "当前没有可访问电站" : "已获取当前用户可访问电站列表",
+                highlights);
         });
+    }
+
+    private String status(String status) {
+        return status == null || status.isBlank() ? "" : "（" + status + "）";
+    }
+
+    private String value(String value, String fallback) {
+        return value == null || value.isBlank() ? fallback : value;
     }
 }

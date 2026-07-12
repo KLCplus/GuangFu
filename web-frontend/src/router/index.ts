@@ -9,7 +9,13 @@ const AdminLayout = () => import('../layouts/AdminLayout.vue')
 const routes: RouteRecordRaw[] = [
   {
     path: '/',
-    redirect: '/dashboard'
+    redirect: '/welcome'
+  },
+  {
+    path: '/welcome',
+    name: 'Welcome',
+    component: () => import('../views/Welcome.vue'),
+    meta: { guestOnly: true, title: '欢迎' }
   },
   {
     path: '/',

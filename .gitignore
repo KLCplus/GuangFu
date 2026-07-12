@@ -24,8 +24,7 @@ model-service/venv/
 *.py[cod]
 .pytest_cache/
 
-# Environment and secrets
-!backend/secrets/README.md
+
 
 # Logs
 *.log

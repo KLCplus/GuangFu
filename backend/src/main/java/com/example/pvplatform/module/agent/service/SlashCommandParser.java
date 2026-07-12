@@ -45,8 +45,16 @@ public class SlashCommandParser {
                 if (stationId != null) args.put("stationId", stationId);
             }
             case "/weather" -> {
-                toolName = "weather.current";
-                putNumber(args, "stationId", positiveLong(arg), contextNumber(context, "stationId", "currentStationId"));
+                Long stationId = positiveLong(arg);
+                if (stationId != null) {
+                    toolName = "weather.current";
+                    args.put("stationId", stationId);
+                } else if (!arg.isBlank()) {
+                    toolName = "weather.location";
+                    args.put("location", cleanLocation(arg));
+                } else {
+                    toolName = "weather.location";
+                }
             }
             case "/predict" -> {
                 Long taskId = positiveLong(arg);
@@ -55,13 +63,19 @@ public class SlashCommandParser {
                 putNumber(args, "stationId", null, contextNumber(context, "stationId", "currentStationId"));
             }
             case "/report" -> {
-                toolName = "report.generate";
-                putNumber(args, "stationId", positiveLong(arg), contextNumber(context, "stationId", "currentStationId"));
-                putNumber(args, "taskId", null, contextNumber(context, "taskId", "currentTaskId"));
-                args.put("includeWeather", bool(context, "includeWeather", true));
-                args.put("includePrediction", bool(context, "includePrediction", true));
-                if (args.get("stationId") != null) {
-                    args.put("title", args.get("stationId") + "号电站综合分析报告");
+                Long stationId = positiveLong(arg);
+                if (stationId == null && (arg.isBlank() || wantsConversationReport(arg))) {
+                    toolName = "report.conversation";
+                    args.put("title", "光伏平台 Agent 会话工作报告");
+                } else {
+                    toolName = "report.generate";
+                    putNumber(args, "stationId", stationId, contextNumber(context, "stationId", "currentStationId"));
+                    putNumber(args, "taskId", null, contextNumber(context, "taskId", "currentTaskId"));
+                    args.put("includeWeather", bool(context, "includeWeather", true));
+                    args.put("includePrediction", bool(context, "includePrediction", true));
+                    if (args.get("stationId") != null) {
+                        args.put("title", args.get("stationId") + "号电站综合分析报告");
+                    }
                 }
             }
             case "/model" -> {
@@ -88,15 +102,30 @@ public class SlashCommandParser {
         Map<String, Object> args = new LinkedHashMap<>();
         String toolName = null;
         if (lower.contains("天气") || lower.contains("weather")) {
-            toolName = "weather.current";
-            putNumber(args, "stationId", extractStationId(text), contextNumber(context, "stationId", "currentStationId"));
+            Long stationId = extractStationId(text);
+            String location = extractLocation(text);
+            if (stationId != null || mentionsStation(lower)) {
+                toolName = "weather.current";
+                if (stationId != null) args.put("stationId", stationId);
+            } else if (location != null) {
+                toolName = "weather.location";
+                args.put("location", location);
+            } else {
+                toolName = "weather.location";
+            }
         } else if (lower.contains("报告") || lower.contains("report")) {
-            toolName = "report.generate";
-            putNumber(args, "stationId", extractStationId(text), contextNumber(context, "stationId", "currentStationId"));
-            putNumber(args, "taskId", extractTaskId(text), contextNumber(context, "taskId", "currentTaskId"));
-            args.put("includeWeather", bool(context, "includeWeather", true));
-            args.put("includePrediction", bool(context, "includePrediction", true));
-            if (args.get("stationId") != null) args.put("title", args.get("stationId") + "号电站综合分析报告");
+            Long stationId = extractStationId(text);
+            if (stationId == null && (!mentionsStation(lower) || wantsConversationReport(lower))) {
+                toolName = "report.conversation";
+                args.put("title", "光伏平台 Agent 会话工作报告");
+            } else {
+                toolName = "report.generate";
+                putNumber(args, "stationId", stationId, contextNumber(context, "stationId", "currentStationId"));
+                putNumber(args, "taskId", extractTaskId(text), contextNumber(context, "taskId", "currentTaskId"));
+                args.put("includeWeather", bool(context, "includeWeather", true));
+                args.put("includePrediction", bool(context, "includePrediction", true));
+                if (args.get("stationId") != null) args.put("title", args.get("stationId") + "号电站综合分析报告");
+            }
         } else if (lower.contains("预测") || lower.contains("prediction") || lower.contains("任务") || lower.contains("task")) {
             Long taskId = extractTaskId(text);
             toolName = taskId == null ? "prediction.list" : "prediction.detail";
@@ -132,6 +161,9 @@ public class SlashCommandParser {
         if (("station.detail".equals(toolName) || "weather.current".equals(toolName) || "report.generate".equals(toolName)) && args.get("stationId") == null) {
             return "请提供电站 ID，例如 /weather 2 或“查看 2 号电站信息”。";
         }
+        if ("weather.location".equals(toolName) && (args.get("location") == null || String.valueOf(args.get("location")).isBlank())) {
+            return "请提供城市或地点，例如 /weather 成都 或“查询成都天气”。";
+        }
         if ("prediction.detail".equals(toolName) && args.get("taskId") == null) {
             return "请提供预测任务 ID，例如 /predict 8 或“解释任务 8 的预测结果”。";
         }
@@ -145,14 +177,42 @@ public class SlashCommandParser {
             case "station.detail" -> "查看 " + stationId + " 号电站信息";
             case "station.list" -> "查询当前用户可访问电站列表";
             case "weather.current" -> "查询 " + stationId + " 号电站当前天气";
+            case "weather.location" -> "查询 " + args.get("location") + " 当前天气";
             case "prediction.detail" -> "解释任务 " + taskId + " 的预测结果";
             case "prediction.list" -> "查询预测任务列表";
             case "report.generate" -> "生成 " + stationId + " 号电站综合分析报告";
+            case "report.conversation" -> "生成当前会话工作报告";
             case "api.usage" -> "查询 API 使用情况";
             case "model.detail" -> "查询模型 " + args.get("modelId") + " 详情";
             case "model.list" -> "查询模型列表";
             default -> toolName;
         };
+    }
+
+    private boolean wantsConversationReport(String text) {
+        String lower = text == null ? "" : text.toLowerCase(Locale.ROOT);
+        return lower.contains("会话") || lower.contains("聊天") || lower.contains("当前")
+            || lower.contains("工作") || lower.contains("总结") || lower.contains("markdown")
+            || lower.contains("签字") || lower.contains("签名") || lower.contains("pdf");
+    }
+
+    private boolean mentionsStation(String lower) {
+        return lower != null && (lower.contains("电站") || lower.contains("station"));
+    }
+
+    private String extractLocation(String text) {
+        String value = text == null ? "" : text.trim();
+        value = value.replaceAll("(?i)weather", "");
+        value = value.replace("天气", "");
+        value = value.replace("查询", "").replace("查看", "").replace("帮我", "").replace("一下", "").replace("当前", "").replace("今天", "").replace("现在", "");
+        value = value.replaceAll("[，,。？?！!].*$", "").trim();
+        if (value.isBlank() || mentionsStation(value.toLowerCase(Locale.ROOT))) return null;
+        if (value.matches(".*\\d+.*")) return null;
+        return cleanLocation(value);
+    }
+
+    private String cleanLocation(String value) {
+        return value == null ? "" : value.replaceAll("[，,。？?！!]", "").trim();
     }
 
     private Long extractStationId(String text) {

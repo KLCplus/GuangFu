@@ -44,8 +44,8 @@ public class AgentToolService {
     public ToolExecutionResult execute(AgentToolCallDO row, AgentTool tool, ToolExecutionContext context, Map<String, Object> arguments) {
         long started = System.currentTimeMillis();
         ToolExecutionResult result = tool.execute(context, arguments == null ? Map.of() : arguments);
-        ToolExecutionResult safeResult = new ToolExecutionResult(result.success(), mask(result.data()), result.summary(),
-            result.errorCode(), result.errorMessage(), mask(result.raw()));
+        ToolExecutionResult safeResult = new ToolExecutionResult(result.success(), result.displayName(), mask(result.data()), result.summary(),
+            result.highlights(), result.errorCode(), result.errorMessage(), mask(result.raw()));
         long duration = System.currentTimeMillis() - started;
         AgentToolCallDO update = new AgentToolCallDO();
         update.setToolCallId(row.getToolCallId());

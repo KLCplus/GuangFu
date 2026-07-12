@@ -209,6 +209,13 @@ public class AgentOrchestratorService {
                 Map<String, Object> event = resultPayload(row, tool, result);
                 toolEvents.add(event);
                 progress.send(emitter, "tool_result", event);
+                if ("report.conversation".equals(tool.name()) && result.success()) {
+                    String reportMarkdown = conversationReportMarkdown(result);
+                    AgentMessageDO assistant = messageService.save(session.getSessionId(), "assistant", reportMarkdown, metadata("type", "conversation_report", "toolResult", result));
+                    progress.send(emitter, "final", finalPayload(assistant, reportMarkdown, List.of(event)));
+                    sessionService.touch(session.getSessionId());
+                    return;
+                }
                 loopResults.add(Map.of("toolName", tool.name(), "arguments", args, "result", result));
             }
             llmMessages.add(Map.of("role", "assistant", "content", jsonService.json(decision)));
@@ -302,9 +309,10 @@ public class AgentOrchestratorService {
         return new LinkedHashMap<>(Map.of(
             "toolCallId", row.getClientToolCallId(),
             "toolName", tool.name(),
-            "displayName", tool.displayName(),
+            "displayName", result.displayName() == null || result.displayName().isBlank() ? tool.displayName() : result.displayName(),
             "status", result.success() ? "success" : "failed",
             "summary", nullToEmpty(result.summary()),
+            "highlights", result.highlights() == null ? List.of() : result.highlights(),
             "error", result.errorMessage() == null ? "" : result.errorMessage(),
             "durationMs", row.getDurationMs() == null ? 0L : row.getDurationMs(),
             "dataPreview", result.data() == null ? Map.of() : result.data()
@@ -322,6 +330,16 @@ public class AgentOrchestratorService {
             map.put(String.valueOf(pairs[i]), pairs[i + 1]);
         }
         return map;
+    }
+
+    private String conversationReportMarkdown(ToolExecutionResult result) {
+        if (result.data() instanceof Map<?, ?> map) {
+            Object markdown = map.get("markdown");
+            if (markdown != null && !String.valueOf(markdown).isBlank()) {
+                return String.valueOf(markdown);
+            }
+        }
+        return summarizeResult(result);
     }
 
     private String summarizeResult(ToolExecutionResult result) {

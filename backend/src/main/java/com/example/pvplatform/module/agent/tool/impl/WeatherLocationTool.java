@@ -10,40 +10,38 @@ import java.util.List;
 import java.util.Map;
 
 @Component
-public class WeatherCurrentTool extends AbstractAgentTool {
+public class WeatherLocationTool extends AbstractAgentTool {
     private final WeatherService weatherService;
-    public WeatherCurrentTool(WeatherService weatherService) { this.weatherService = weatherService; }
-    public String name() { return "weather.current"; }
-    public String displayName() { return "查询当前天气"; }
+
+    public WeatherLocationTool(WeatherService weatherService) {
+        this.weatherService = weatherService;
+    }
+
+    public String name() { return "weather.location"; }
+    public String displayName() { return "查询城市天气"; }
     public ToolCategory category() { return ToolCategory.WEATHER; }
     public ToolPermissionLevel permissionLevel() { return ToolPermissionLevel.READ_ONLY; }
-    public String description() { return "按 stationId 查询当前电站实时天气，会复用天气缓存和权限校验。"; }
-    public Map<String, Object> inputSchema() { return schema("type", "object", "required", new String[]{"stationId"}, "properties", Map.of("stationId", Map.of("type", "number"))); }
+    public String description() { return "按城市、地区或地点名称查询当前天气，例如 成都、上海、北京。该工具不需要电站 ID。"; }
+    public Map<String, Object> inputSchema() { return schema("type", "object", "required", new String[]{"location"}, "properties", Map.of("location", Map.of("type", "string"))); }
+
     public ToolExecutionResult execute(ToolExecutionContext context, Map<String, Object> arguments) {
         return guard(() -> {
-            Long stationId = longArg(arguments, "stationId", true);
-            CurrentWeatherVO weather = weatherService.current(stationId);
+            String location = stringArg(arguments, "location", null);
+            if (location == null || location.isBlank()) {
+                return ToolExecutionResult.failure("MISSING_LOCATION", "请提供城市或地点名称，例如 成都");
+            }
+            CurrentWeatherVO weather = weatherService.currentByLocation(location);
             List<String> highlights = new ArrayList<>();
+            highlights.add("地点：" + location);
             highlights.add("天气：" + value(weather.weather(), "未返回"));
             if (weather.temperature() != null) highlights.add("温度：" + weather.temperature() + "℃");
             if (weather.humidity() != null) highlights.add("湿度：" + weather.humidity() + "%");
+            if (weather.windDirection() != null && !weather.windDirection().isBlank()) highlights.add("风向：" + weather.windDirection());
             if (weather.windSpeed() != null) highlights.add("风速：" + weather.windSpeed() + " m/s");
-            String impact = generationImpact(weather);
-            highlights.add("发电影响：" + impact);
             return ToolExecutionResult.success(displayName(), weather,
-                "当前天气为" + value(weather.weather(), "未知") + temperature(weather) + "，" + impact,
+                location + "当前天气为" + value(weather.weather(), "未知") + temperature(weather),
                 highlights);
         });
-    }
-
-    private String generationImpact(CurrentWeatherVO weather) {
-        String text = weather.weather() == null ? "" : weather.weather();
-        if (text.contains("雨") || text.contains("雪") || text.contains("雾") || text.contains("阴")) {
-            return "可能降低辐照度，需要关注短时功率下滑";
-        }
-        if (text.contains("云")) return "云量变化可能带来功率波动";
-        if (text.contains("晴")) return "天气条件整体有利于发电";
-        return "需要结合辐照度和预测结果进一步判断";
     }
 
     private String temperature(CurrentWeatherVO weather) {

@@ -6,7 +6,9 @@ import com.example.pvplatform.module.analysis.service.AnalysisService;
 import com.example.pvplatform.module.analysis.vo.AnalysisReportVO;
 import org.springframework.stereotype.Component;
 
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 @Component
@@ -44,7 +46,19 @@ public class ReportGenerateTool extends AbstractAgentTool {
             safeReport.put("includePrediction", report.includePrediction());
             safeReport.put("modelName", report.modelName());
             safeReport.put("createdAt", report.createdAt());
-            return ToolExecutionResult.success(safeReport, "综合分析报告已生成并保存，reportId=" + report.reportId());
+            List<String> highlights = new ArrayList<>();
+            highlights.add("报告：" + value(report.title(), title));
+            highlights.add("reportId：" + report.reportId());
+            if (report.riskLevel() != null && !report.riskLevel().isBlank()) highlights.add("风险等级：" + report.riskLevel());
+            highlights.add("保存状态：" + value(report.status(), "已保存"));
+            if (report.summary() != null && !report.summary().isBlank()) highlights.add("摘要：" + report.summary());
+            return ToolExecutionResult.success(displayName(), safeReport,
+                "综合分析报告已生成并保存，reportId=" + report.reportId(),
+                highlights);
         });
+    }
+
+    private String value(String value, String fallback) {
+        return value == null || value.isBlank() ? fallback : value;
     }
 }

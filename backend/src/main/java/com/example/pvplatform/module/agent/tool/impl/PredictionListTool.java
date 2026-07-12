@@ -7,6 +7,8 @@ import com.example.pvplatform.module.prediction.vo.PredictionTaskVO;
 import com.example.pvplatform.module.station.service.StationPermissionService;
 import org.springframework.stereotype.Component;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 
 @Component
@@ -27,7 +29,22 @@ public class PredictionListTool extends AbstractAgentTool {
             Long stationId = longArg(arguments, "stationId", false);
             if (stationId != null) permissionService.requireView(stationId);
             PageResult<PredictionTaskVO> page = predictionService.history(1, 10, stationId, null, null);
-            return ToolExecutionResult.success(page, "已获取 " + page.records().size() + " 条预测任务");
+            List<String> highlights = new ArrayList<>();
+            highlights.add("最近任务：" + page.records().size() + " 条");
+            long failed = page.records().stream().filter(task -> task.status() != null && task.status().toUpperCase().contains("FAIL")).count();
+            if (failed > 0) highlights.add("失败任务：" + failed + " 条");
+            page.records().stream().limit(3).forEach(task -> highlights.add("任务 " + task.taskId() + "：" + value(task.status(), "未知状态") + model(task.modelName())));
+            return ToolExecutionResult.success(displayName(), page,
+                page.records().isEmpty() ? "没有查询到预测任务" : "已获取最近预测任务列表",
+                highlights);
         });
+    }
+
+    private String model(String modelName) {
+        return modelName == null || modelName.isBlank() ? "" : "，模型 " + modelName;
+    }
+
+    private String value(String value, String fallback) {
+        return value == null || value.isBlank() ? fallback : value;
     }
 }
