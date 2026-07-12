@@ -21,6 +21,7 @@
 - Verified `/api/agent/chat/stream` streams migrated runtime events and real Spring tool results in migrated mode.
 - Added migrated runtime follow-up routing from `prediction.list` to `prediction.detail` when the latest prediction task record contains `taskId`.
 - Connected migrated runtime synthesis to Spring internal LLM Gateway, with deterministic fallback when the LLM gateway fails.
+- Live-smoked migrated `/api/agent/chat/stream` through Spring Gateway, Python runtime, real station/weather/prediction tools, and DeepSeek-backed internal LLM synthesis.
 
 ## Not Complete
 
@@ -29,4 +30,4 @@
 - Production-auth E2E has not run because no real user token was provided.
 - Generative UI cards are specified but not yet rendered in Vue/agent-web.
 - `prediction.detail` follow-up is unit-tested and runtime-supported, but live smoke used an environment where `prediction.list` returned no records.
-- Live DeepSeek synthesis through `/api/internal/llm/v1/chat/completions` still needs a full smoke run with the local API key environment.
+- Live smoke used local seed station/weather data; a production-auth E2E with non-mock business data is still required.
