@@ -19,6 +19,7 @@
 - Verified migrated runtime SSE emits `run_started`, `step_started`, `tool_result`, `ui_instruction`, `step_completed`, and `run_completed`.
 - Added Spring proxy for `AGENT_RUNTIME_MODE=migrated` on the existing `/api/agent/chat/stream` endpoint.
 - Verified `/api/agent/chat/stream` streams migrated runtime events and real Spring tool results in migrated mode.
+- Added migrated runtime follow-up routing from `prediction.list` to `prediction.detail` when the latest prediction task record contains `taskId`.
 
 ## Not Complete
 
@@ -26,3 +27,4 @@
 - Vue `/reports` UI has not yet been updated to render migrated `ui_instruction` events as photovoltaic component cards.
 - Production-auth E2E has not run because no real user token was provided.
 - Generative UI cards are specified but not yet rendered in Vue/agent-web.
+- `prediction.detail` follow-up is unit-tested and runtime-supported, but live smoke used an environment where `prediction.list` returned no records.

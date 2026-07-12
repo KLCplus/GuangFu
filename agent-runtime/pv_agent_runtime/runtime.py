@@ -38,11 +38,12 @@ class PhotovoltaicAgentRuntime:
 
     def run(self, task: str, context: dict[str, Any]) -> AgentState:
         state = self.plan(task, context)
-        for step in state.plan:
-            result = self.router.execute_step(step, context)
-            if result:
-                state.tool_results.append(result)
-                state.ui.extend(self._ui_for_result(result))
+        for step in list(state.plan):
+            result = self._execute_step(state, step, context)
+            follow_up = self._prediction_detail_follow_up(result)
+            if follow_up:
+                state.plan.insert(state.plan.index(step) + 1, follow_up)
+                self._execute_step(state, follow_up, context)
         state.final_answer = self._synthesize(state)
         return state
 
@@ -53,7 +54,9 @@ class PhotovoltaicAgentRuntime:
             "skill": state.selected_skill,
             "task": state.user_task,
         })
-        for step in state.plan:
+        index = 0
+        while index < len(state.plan):
+            step = state.plan[index]
             yield stream_event("step_started", step)
             result = self.router.execute_step(step, context)
             if result:
@@ -66,6 +69,10 @@ class PhotovoltaicAgentRuntime:
                 "stepId": step.step_id,
                 "title": step.title,
             })
+            follow_up = self._prediction_detail_follow_up(result)
+            if follow_up:
+                state.plan.insert(index + 1, follow_up)
+            index += 1
         state.final_answer = self._synthesize(state)
         yield stream_event("run_completed", {
             "sessionId": state.session_id,
@@ -73,6 +80,41 @@ class PhotovoltaicAgentRuntime:
             "answer": state.final_answer,
             "ui": [instruction.__dict__ for instruction in state.ui],
         })
+
+    def _execute_step(self, state: AgentState, step: PlanStep, context: dict[str, Any]) -> ToolResult | None:
+        result = self.router.execute_step(step, context)
+        if result:
+            state.tool_results.append(result)
+            state.ui.extend(self._ui_for_result(result))
+        return result
+
+    def _prediction_detail_follow_up(self, result: ToolResult | None) -> PlanStep | None:
+        if result is None or result.tool_name != "prediction.list" or not result.success:
+            return None
+        task_id = self._latest_prediction_task_id(result.data)
+        if task_id is None:
+            return None
+        return PlanStep(
+            "prediction-detail",
+            "Collect",
+            "查询预测详情",
+            "读取最近预测任务的曲线和趋势",
+            "prediction.detail",
+            {"taskId": task_id},
+        )
+
+    def _latest_prediction_task_id(self, data: dict[str, Any]) -> int | None:
+        records = data.get("records")
+        if not isinstance(records, list) or not records:
+            return None
+        first = records[0]
+        if not isinstance(first, dict):
+            return None
+        task_id = first.get("taskId") or first.get("id") or first.get("predictionTaskId")
+        try:
+            return int(task_id)
+        except (TypeError, ValueError):
+            return None
 
     def _ui_for_result(self, result: ToolResult):
         data = result.data

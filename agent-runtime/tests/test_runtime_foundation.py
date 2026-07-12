@@ -31,6 +31,24 @@ class FakeGateway:
         return ToolResult(tool_name, False, "unknown", error="unknown")
 
 
+class PredictionDetailGateway(FakeGateway):
+    def execute(self, tool_name, arguments, context):
+        if tool_name == "prediction.list":
+            return ToolResult(tool_name, True, "已获取最近预测任务列表", ["任务 42：SUCCESS"], {
+                "total": 1,
+                "records": [{"taskId": 42, "status": "SUCCESS"}],
+            })
+        if tool_name == "prediction.detail":
+            return ToolResult(tool_name, True, "已读取任务 42 的预测详情，预测功率10-120 kW", [
+                "任务状态：SUCCESS",
+                "预测点数：2",
+            ], {
+                "task": {"taskId": arguments["taskId"], "status": "SUCCESS"},
+                "results": [{"predictPowerKw": 10}, {"predictPowerKw": 120}],
+            })
+        return super().execute(tool_name, arguments, context)
+
+
 class RuntimeFoundationTest(unittest.TestCase):
     def test_skill_loader(self):
         skills = SkillLoader(ROOT / "skills").load_all()
@@ -45,6 +63,26 @@ class RuntimeFoundationTest(unittest.TestCase):
         self.assertEqual([ui.component for ui in state.ui], ["StationSummaryCard", "WeatherImpactCard", "PredictionTrendCard"])
         self.assertIn("当前天气多云", state.final_answer)
 
+    def test_prediction_detail_follow_up_when_list_has_records(self):
+        runtime = PhotovoltaicAgentRuntime(PredictionDetailGateway(), ROOT / "skills")
+        state = runtime.run("分析 1 号电站当前运行情况，结合天气和最近预测结果。", {"sessionId": 1})
+        self.assertEqual([r.tool_name for r in state.tool_results], [
+            "station.detail",
+            "weather.current",
+            "prediction.list",
+            "prediction.detail",
+        ])
+        self.assertEqual(state.tool_results[-1].data["task"]["taskId"], 42)
+        self.assertIn("预测功率10-120 kW", state.final_answer)
+
+    def test_stream_events_include_prediction_detail_follow_up(self):
+        runtime = PhotovoltaicAgentRuntime(PredictionDetailGateway(), ROOT / "skills")
+        events = list(runtime.iter_events("分析 1 号电站当前运行情况，结合天气和最近预测结果。", {"sessionId": 1}))
+        tool_results = [event["data"]["tool_name"] for event in events if event["event"] == "tool_result"]
+        step_ids = [event["data"]["stepId"] for event in events if event["event"] == "step_completed"]
+        self.assertIn("prediction.detail", tool_results)
+        self.assertLess(step_ids.index("prediction-list"), step_ids.index("prediction-detail"))
+
     def test_memory_filters_sensitive_values(self):
         self.assertEqual(extract_memory_candidates("我的 api_key 是 secret，默认 1 号电站"), [])
         safe = extract_memory_candidates("默认 1 号电站")
@@ -53,4 +91,3 @@ class RuntimeFoundationTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-
