@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from .events import ui_instruction
+from .events import stream_event, ui_instruction
 from .skill_loader import SkillLoader
 from .tool_router import DEFAULT_CAPABILITIES, ToolGateway, ToolRouter
 from .types import AgentState, PlanStep, ToolResult
@@ -46,6 +46,34 @@ class PhotovoltaicAgentRuntime:
         state.final_answer = self._synthesize(state)
         return state
 
+    def iter_events(self, task: str, context: dict[str, Any]):
+        state = self.plan(task, context)
+        yield stream_event("run_started", {
+            "sessionId": state.session_id,
+            "skill": state.selected_skill,
+            "task": state.user_task,
+        })
+        for step in state.plan:
+            yield stream_event("step_started", step)
+            result = self.router.execute_step(step, context)
+            if result:
+                state.tool_results.append(result)
+                yield stream_event("tool_result", result)
+                for instruction in self._ui_for_result(result):
+                    state.ui.append(instruction)
+                    yield stream_event("ui_instruction", instruction)
+            yield stream_event("step_completed", {
+                "stepId": step.step_id,
+                "title": step.title,
+            })
+        state.final_answer = self._synthesize(state)
+        yield stream_event("run_completed", {
+            "sessionId": state.session_id,
+            "skill": state.selected_skill,
+            "answer": state.final_answer,
+            "ui": [instruction.__dict__ for instruction in state.ui],
+        })
+
     def _ui_for_result(self, result: ToolResult):
         data = result.data
         if result.tool_name == "station.detail" and result.success:
@@ -86,4 +114,3 @@ class PhotovoltaicAgentRuntime:
     def _extract_station_id(self, task: str) -> int | None:
         digits = "".join(ch if ch.isdigit() else " " for ch in task).split()
         return int(digits[0]) if digits else None
-

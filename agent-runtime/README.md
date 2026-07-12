@@ -19,3 +19,15 @@ Run tests:
 ```bash
 python3 -m unittest discover -s agent-runtime/tests
 ```
+
+Run local runtime server:
+
+```bash
+PYTHONPATH=agent-runtime AGENT_INTERNAL_TOKEN=local-agent-runtime-token \
+  python3 agent-runtime/server.py --spring-base-url http://127.0.0.1:8080
+```
+
+The server exposes:
+
+- `GET /health`
+- `POST /run/stream`

@@ -28,6 +28,11 @@ Migratable code:
 - `src/app/declarative-generative-ui/renderers.tsx`: renderer whitelist.
 - `src/hooks/use-generative-ui-examples.tsx`: frontend component/tool/HITL registration.
 
+Migrated checkpoint:
+
+- Runtime event streaming has been adapted into `agent-runtime/server.py`.
+- Whitelisted UI instruction events are emitted as `ui_instruction`.
+
 Risk:
 
 - `npm audit` reported 28 vulnerabilities, including 2 critical. We should not copy its lockfile blindly into production.
@@ -115,4 +120,3 @@ Migratable code:
 - `When to use` / `When not to use` sections.
 - Execution steps and failure rules.
 - Lint/security scanner patterns as a future quality gate.
-

@@ -15,7 +15,7 @@ class SpringToolGateway:
 
     def execute(self, tool_name: str, arguments: dict[str, Any], context: dict[str, Any]) -> ToolResult:
         payload = json.dumps({
-            "sessionId": self.session_id,
+            "sessionId": self.session_id if self.session_id is not None else context.get("sessionId"),
             "userId": context.get("userId"),
             "username": context.get("username"),
             "roles": context.get("roles", ["USER"]),
