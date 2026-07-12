@@ -24,6 +24,8 @@
 - Live-smoked migrated `/api/agent/chat/stream` through Spring Gateway, Python runtime, real station/weather/prediction tools, and DeepSeek-backed internal LLM synthesis.
 - Added MySQL-backed Agent Memory schema, Spring internal Memory Gateway, and runtime memory read/write adapter.
 - Added runtime tests for default station memory injection and safe memory candidate persistence.
+- Added migrated approval flow for `report.generate`: runtime emits `ApprovalActionCard`/`approval_required`, Spring creates `agent_approval`, and migrated proxy executes the approved pending tool call.
+- Live-smoked approval continuation: approved `approvalId=8`, executed `report.generate`, and saved report `reportId=4`.
 
 ## Not Complete
 
@@ -34,3 +36,4 @@
 - `prediction.detail` follow-up is unit-tested and runtime-supported, but live smoke used an environment where `prediction.list` returned no records.
 - Live smoke used local seed station/weather data; a production-auth E2E with non-mock business data is still required.
 - Memory live smoke is pending database migration execution on the local MySQL schema.
+- Approval live smoke used local debug auth; production-auth approval/rejection E2E is still required.

@@ -53,6 +53,21 @@ class PredictionDetailGateway(FakeGateway):
         return super().execute(tool_name, arguments, context)
 
 
+class ReportApprovalGateway(FakeGateway):
+    def execute(self, tool_name, arguments, context):
+        if tool_name == "report.generate":
+            self.calls.append((tool_name, arguments))
+            return ToolResult(tool_name, False, "工具需要用户确认后才能执行", ["APPROVAL_REQUIRED"], {
+                "approvalRequired": True,
+                "approvalId": 9,
+                "clientToolCallId": "tc_report",
+                "toolName": "report.generate",
+                "reason": "工具 生成综合分析报告 会执行写操作，需要用户确认后才能继续。",
+                "arguments": arguments,
+            }, error="APPROVAL_REQUIRED")
+        return super().execute(tool_name, arguments, context)
+
+
 class FakeLlmGateway:
     def chat_completions(self, messages, **options):
         return {
@@ -145,6 +160,24 @@ class RuntimeFoundationTest(unittest.TestCase):
         runtime.run("默认 2 号电站", {"sessionId": 1, "userId": 7})
         self.assertEqual(memory.writes[0][0].memory_type, "default_station")
         self.assertEqual(memory.writes[0][0].value["stationId"], 2)
+
+    def test_report_generation_requires_approval(self):
+        runtime = PhotovoltaicAgentRuntime(ReportApprovalGateway(), ROOT / "skills")
+        state = runtime.run("分析 1 号电站并生成报告", {"sessionId": 1, "userId": 7})
+        self.assertIn("report.generate", [result.tool_name for result in state.tool_results])
+        self.assertEqual(state.ui[-1].component, "ApprovalActionCard")
+        self.assertEqual(state.ui[-1].props["approvalId"], 9)
+        self.assertIn("需要用户确认", state.final_answer)
+
+    def test_stream_events_emit_approval_required_for_report_generation(self):
+        runtime = PhotovoltaicAgentRuntime(ReportApprovalGateway(), ROOT / "skills")
+        events = list(runtime.iter_events("分析 1 号电站并生成报告", {"sessionId": 1, "userId": 7}))
+        names = [event["event"] for event in events]
+        self.assertIn("approval_required", names)
+        self.assertNotIn("run_completed", names)
+        approval = next(event["data"] for event in events if event["event"] == "approval_required")
+        self.assertEqual(approval["toolName"], "report.generate")
+        self.assertEqual(approval["approvalId"], 9)
 
     def test_memory_filters_sensitive_values(self):
         self.assertEqual(extract_memory_candidates("我的 api_key 是 secret，默认 1 号电站"), [])

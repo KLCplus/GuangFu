@@ -34,6 +34,32 @@ Gateway response:
 }
 ```
 
+Approval-required gateway response:
+
+```json
+{
+  "success": false,
+  "summary": "工具 ... 会执行写操作，需要用户确认后才能继续。",
+  "highlights": ["APPROVAL_REQUIRED"],
+  "data": {
+    "approvalRequired": true,
+    "approvalId": 8,
+    "toolCallId": 91,
+    "clientToolCallId": "tc_...",
+    "toolName": "report.generate",
+    "reason": "...",
+    "arguments": {}
+  },
+  "error": "APPROVAL_REQUIRED"
+}
+```
+
+Approval continuation:
+
+- User decision: `POST /api/agent/approvals/{approvalId}/approve`
+- Continue execution: `POST /api/agent/chat/stream` with `approvalId`
+- Migrated proxy reuses the original pending `agent_tool_call` row, executes the approved tool, persists the assistant final message, and emits `tool_call`, `tool_result`, and `final`.
+
 Internal LLM gateway:
 
 - `POST /api/internal/llm/v1/chat/completions`

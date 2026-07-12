@@ -2,8 +2,14 @@ package com.example.pvplatform.module.agent.service;
 
 import com.example.pvplatform.common.exception.BusinessException;
 import com.example.pvplatform.module.agent.dto.AgentChatRequest;
+import com.example.pvplatform.module.agent.entity.AgentApprovalDO;
 import com.example.pvplatform.module.agent.entity.AgentMessageDO;
 import com.example.pvplatform.module.agent.entity.AgentSessionDO;
+import com.example.pvplatform.module.agent.entity.AgentToolCallDO;
+import com.example.pvplatform.module.agent.tool.AgentTool;
+import com.example.pvplatform.module.agent.tool.AgentToolRegistry;
+import com.example.pvplatform.module.agent.tool.ToolExecutionContext;
+import com.example.pvplatform.module.agent.tool.ToolExecutionResult;
 import com.example.pvplatform.security.SecurityUser;
 import com.example.pvplatform.security.SecurityUtils;
 import com.fasterxml.jackson.core.type.TypeReference;
@@ -24,6 +30,10 @@ import java.util.*;
 public class MigratedAgentRuntimeProxyService {
     private final AgentSessionService sessionService;
     private final AgentMessageService messageService;
+    private final AgentApprovalService approvalService;
+    private final AgentToolService toolService;
+    private final AgentToolRegistry toolRegistry;
+    private final AgentJsonService jsonService;
     private final AgentProgressService progress;
     private final ObjectMapper objectMapper;
 
@@ -35,10 +45,18 @@ public class MigratedAgentRuntimeProxyService {
 
     public MigratedAgentRuntimeProxyService(AgentSessionService sessionService,
                                             AgentMessageService messageService,
+                                            AgentApprovalService approvalService,
+                                            AgentToolService toolService,
+                                            AgentToolRegistry toolRegistry,
+                                            AgentJsonService jsonService,
                                             AgentProgressService progress,
                                             ObjectMapper objectMapper) {
         this.sessionService = sessionService;
         this.messageService = messageService;
+        this.approvalService = approvalService;
+        this.toolService = toolService;
+        this.toolRegistry = toolRegistry;
+        this.jsonService = jsonService;
         this.progress = progress;
         this.objectMapper = objectMapper;
     }
@@ -50,6 +68,10 @@ public class MigratedAgentRuntimeProxyService {
             }
             Long userId = SecurityUtils.requireCurrentUserId();
             SecurityUser user = SecurityUtils.getCurrentUser();
+            if (request.approvalId() != null) {
+                continueApproval(request, emitter, userId, user);
+                return;
+            }
             AgentSessionDO session = sessionService.ensure(request.sessionId(), request.message());
             AgentMessageDO userMessage = messageService.save(session.getSessionId(), "user", request.message(), request.context());
             progress.send(emitter, "started", Map.of(
@@ -89,6 +111,51 @@ public class MigratedAgentRuntimeProxyService {
         }
     }
 
+    private void continueApproval(AgentChatRequest request, SseEmitter emitter, Long userId, SecurityUser user) {
+        AgentApprovalDO approval = approvalService.requireForContinuation(request.approvalId());
+        AgentSessionDO session = sessionService.requireOwned(approval.getSessionId());
+        AgentToolCallDO toolCall = approvalService.requireToolCall(approval);
+        progress.send(emitter, "started", Map.of("sessionId", session.getSessionId(), "runtime", "migrated", "text", "继续处理确认结果"));
+        if ("REJECTED".equals(approval.getStatus())) {
+            String answer = "已取消执行「" + toolCall.getToolName() + "」，没有进行写入操作。";
+            AgentMessageDO assistant = messageService.save(session.getSessionId(), "assistant", answer, Map.of("approvalId", approval.getApprovalId(), "status", "REJECTED"));
+            progress.send(emitter, "final", finalPayload(assistant, answer, List.of()));
+            return;
+        }
+        if (!"APPROVED".equals(approval.getStatus())) {
+            progress.send(emitter, "approval_required", Map.of(
+                "approvalId", approval.getApprovalId(),
+                "toolCallId", toolCall.getClientToolCallId(),
+                "toolName", toolCall.getToolName(),
+                "reason", approval.getReason() == null ? "" : approval.getReason(),
+                "arguments", jsonService.map(approval.getArgumentsJson())
+            ));
+            return;
+        }
+        AgentTool tool = toolRegistry.require(toolCall.getToolName());
+        Map<String, Object> args = jsonService.map(toolCall.getArgumentsJson());
+        progress.send(emitter, "tool_call", Map.of(
+            "toolCallId", toolCall.getClientToolCallId(),
+            "toolName", tool.name(),
+            "displayName", tool.displayName(),
+            "arguments", args
+        ));
+        ToolExecutionResult result = toolService.execute(
+            toolCall,
+            tool,
+            new ToolExecutionContext(userId, session.getSessionId(), toolCall.getMessageId(), user),
+            args
+        );
+        Map<String, Object> payload = resultPayload(toolCall, tool, result);
+        progress.send(emitter, "tool_result", payload);
+        String answer = result.success()
+            ? "已按确认执行「" + tool.displayName() + "」。\n\n" + summarizeResult(result)
+            : "执行「" + tool.displayName() + "」失败：" + (result.errorMessage() == null ? "" : result.errorMessage());
+        AgentMessageDO assistant = messageService.save(session.getSessionId(), "assistant", answer, Map.of("approvalId", approval.getApprovalId(), "toolResult", result));
+        sessionService.touch(session.getSessionId());
+        progress.send(emitter, "final", finalPayload(assistant, answer, List.of(payload)));
+    }
+
     private void forwardRuntimeEvents(java.util.stream.Stream<String> lines, SseEmitter emitter, Long sessionId) {
         final String[] eventName = {null};
         lines.forEach(line -> {
@@ -126,6 +193,52 @@ public class MigratedAgentRuntimeProxyService {
         }
     }
 
+    private Map<String, Object> resultPayload(AgentToolCallDO row, AgentTool tool, ToolExecutionResult result) {
+        return new LinkedHashMap<>(Map.of(
+            "toolCallId", row.getClientToolCallId(),
+            "toolName", tool.name(),
+            "displayName", result.displayName() == null || result.displayName().isBlank() ? tool.displayName() : result.displayName(),
+            "status", result.success() ? "success" : "failed",
+            "summary", nullToEmpty(result.summary()),
+            "highlights", result.highlights() == null ? List.of() : result.highlights(),
+            "error", result.errorMessage() == null ? "" : result.errorMessage(),
+            "durationMs", row.getDurationMs() == null ? 0L : row.getDurationMs(),
+            "dataPreview", result.data() == null ? Map.of() : result.data()
+        ));
+    }
+
+    private Map<String, Object> finalPayload(AgentMessageDO assistant, String answer, List<?> toolCalls) {
+        return metadata(
+            "messageId", assistant.getMessageId(),
+            "content", nullToEmpty(answer),
+            "markdown", nullToEmpty(answer),
+            "toolCalls", toolCalls == null ? List.of() : toolCalls,
+            "createdAt", assistant.getCreatedAt()
+        );
+    }
+
+    private String summarizeResult(ToolExecutionResult result) {
+        if (result.summary() != null && !result.summary().isBlank()) {
+            return result.summary();
+        }
+        if (result.highlights() != null && !result.highlights().isEmpty()) {
+            return String.join("\n", result.highlights());
+        }
+        return "工具已执行完成。";
+    }
+
+    private Map<String, Object> metadata(Object... pairs) {
+        Map<String, Object> map = new LinkedHashMap<>();
+        for (int i = 0; i + 1 < pairs.length; i += 2) {
+            map.put(String.valueOf(pairs[i]), pairs[i + 1]);
+        }
+        return map;
+    }
+
+    private String nullToEmpty(String value) {
+        return value == null ? "" : value;
+    }
+
     private List<String> roles(SecurityUser user) {
         if (user == null) {
             return List.of("USER");
@@ -136,4 +249,3 @@ public class MigratedAgentRuntimeProxyService {
             .toList();
     }
 }
-

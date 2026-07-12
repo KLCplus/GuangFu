@@ -15,3 +15,10 @@
 - Tool calls record user, session, duration, status, arguments, redacted result, and error.
 - Write/cost/admin tools require approval before execution.
 
+## Implemented Approval Controls
+
+- `report.generate` is marked as a write tool and requires approval.
+- Internal tool gateway now creates a pending `agent_tool_call`, marks it `AWAITING_APPROVAL`, creates `agent_approval`, and returns `APPROVAL_REQUIRED`.
+- `agent-runtime` converts that response into a whitelisted `ApprovalActionCard` plus `approval_required` stream event.
+- Migrated Spring proxy handles `approvalId` continuation by checking the current user owns the approval, reloading the original pending tool call, and executing it only after status becomes `APPROVED`.
+- Local smoke confirmed that report generation did not execute before approval and did execute after approval.

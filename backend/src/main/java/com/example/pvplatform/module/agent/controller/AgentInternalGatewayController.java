@@ -3,7 +3,9 @@ package com.example.pvplatform.module.agent.controller;
 import com.example.pvplatform.common.exception.BusinessException;
 import com.example.pvplatform.module.agent.dto.InternalToolExecuteRequest;
 import com.example.pvplatform.module.agent.dto.InternalToolExecuteResponse;
+import com.example.pvplatform.module.agent.entity.AgentApprovalDO;
 import com.example.pvplatform.module.agent.entity.AgentToolCallDO;
+import com.example.pvplatform.module.agent.service.AgentApprovalService;
 import com.example.pvplatform.module.agent.service.AgentToolService;
 import com.example.pvplatform.module.agent.tool.AgentTool;
 import com.example.pvplatform.module.agent.tool.AgentToolRegistry;
@@ -23,13 +25,16 @@ import java.util.Map;
 public class AgentInternalGatewayController {
     private final AgentToolRegistry toolRegistry;
     private final AgentToolService toolService;
+    private final AgentApprovalService approvalService;
 
     @Value("${agent.internal-token:}")
     private String internalToken;
 
-    public AgentInternalGatewayController(AgentToolRegistry toolRegistry, AgentToolService toolService) {
+    public AgentInternalGatewayController(AgentToolRegistry toolRegistry, AgentToolService toolService,
+                                          AgentApprovalService approvalService) {
         this.toolRegistry = toolRegistry;
         this.toolService = toolService;
+        this.approvalService = approvalService;
     }
 
     @PostMapping("/tools/{toolName}/execute")
@@ -53,11 +58,21 @@ public class AgentInternalGatewayController {
 
         try {
             AgentTool tool = toolRegistry.require(toolName);
-            if (tool.requiresApproval() && !Boolean.TRUE.equals(request.approved())) {
-                return InternalToolExecuteResponse.failure("APPROVAL_REQUIRED", "工具需要用户确认后才能执行");
-            }
             Map<String, Object> args = request.arguments() == null ? Map.of() : request.arguments();
             AgentToolCallDO row = toolService.createPending(request.sessionId(), null, tool, args);
+            if (tool.requiresApproval() && !Boolean.TRUE.equals(request.approved())) {
+                toolService.markAwaitingApproval(row);
+                String reason = "工具 " + tool.displayName() + " 会执行写操作，需要用户确认后才能继续。";
+                AgentApprovalDO approval = approvalService.create(request.sessionId(), row, reason);
+                return InternalToolExecuteResponse.approvalRequired(
+                    approval.getApprovalId(),
+                    row.getToolCallId(),
+                    row.getClientToolCallId(),
+                    tool.name(),
+                    reason,
+                    args
+                );
+            }
             ToolExecutionResult result = toolService.execute(
                 row,
                 tool,

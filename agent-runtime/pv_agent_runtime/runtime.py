@@ -39,14 +39,25 @@ class PhotovoltaicAgentRuntime:
             PlanStep("prediction-list", "Collect", "查询预测", "查找最近预测任务", "prediction.list", {"stationId": station_id}),
             PlanStep("evaluate", "Evaluate", "校验数据", "检查工具结果完整性"),
             PlanStep("recommend", "Recommend", "生成建议", "形成运维建议"),
-            PlanStep("synthesize", "Synthesize", "生成结论", "输出结构化结论和 UI 指令"),
         ]
+        if self._wants_report(task):
+            state.plan.append(PlanStep("report-generate", "Synthesize", "生成报告", "生成并保存综合分析报告", "report.generate", {
+                "stationId": station_id,
+                "title": f"{station_id}号电站综合分析报告",
+                "includeWeather": True,
+                "includePrediction": True,
+            }))
+        state.plan.append(PlanStep("synthesize", "Synthesize", "生成结论", "输出结构化结论和 UI 指令"))
         return state
 
     def run(self, task: str, context: dict[str, Any]) -> AgentState:
         state = self.plan(task, context)
         for step in list(state.plan):
             result = self._execute_step(state, step, context)
+            if self._is_approval_required(result):
+                state.final_answer = self._approval_message(result)
+                self._persist_memory_candidates(state.user_task, context)
+                return state
             follow_up = self._prediction_detail_follow_up(result)
             if follow_up:
                 state.plan.insert(state.plan.index(step) + 1, follow_up)
@@ -73,6 +84,15 @@ class PhotovoltaicAgentRuntime:
                 for instruction in self._ui_for_result(result):
                     state.ui.append(instruction)
                     yield stream_event("ui_instruction", instruction)
+                if self._is_approval_required(result):
+                    yield stream_event("approval_required", self._approval_event_data(result))
+                    yield stream_event("step_completed", {
+                        "stepId": step.step_id,
+                        "title": step.title,
+                    })
+                    state.final_answer = self._approval_message(result)
+                    self._persist_memory_candidates(state.user_task, context)
+                    return
             yield stream_event("step_completed", {
                 "stepId": step.step_id,
                 "title": step.title,
@@ -127,6 +147,8 @@ class PhotovoltaicAgentRuntime:
 
     def _ui_for_result(self, result: ToolResult):
         data = result.data
+        if self._is_approval_required(result):
+            return [ui_instruction("ApprovalActionCard", self._approval_event_data(result))]
         if result.tool_name == "station.detail" and result.success:
             return [ui_instruction("StationSummaryCard", {
                 "stationName": data.get("stationName") or data.get("name") or "未知电站",
@@ -154,6 +176,26 @@ class PhotovoltaicAgentRuntime:
                 "error": result.error or result.summary,
             })]
         return []
+
+    def _is_approval_required(self, result: ToolResult | None) -> bool:
+        if result is None:
+            return False
+        return result.error == "APPROVAL_REQUIRED" or result.data.get("approvalRequired") is True
+
+    def _approval_event_data(self, result: ToolResult) -> dict[str, Any]:
+        data = result.data
+        return {
+            "approvalId": data.get("approvalId"),
+            "toolCallId": data.get("clientToolCallId") or data.get("toolCallId"),
+            "toolName": data.get("toolName") or result.tool_name,
+            "reason": data.get("reason") or result.summary,
+            "arguments": data.get("arguments") or {},
+        }
+
+    def _approval_message(self, result: ToolResult | None) -> str:
+        if result is None:
+            return "需要用户确认后继续。"
+        return self._approval_event_data(result)["reason"] or "需要用户确认后继续。"
 
     def _synthesize(self, state: AgentState) -> str:
         failed = [item for item in state.tool_results if not item.success]
@@ -213,6 +255,10 @@ class PhotovoltaicAgentRuntime:
     def _extract_station_id(self, task: str) -> int | None:
         digits = "".join(ch if ch.isdigit() else " " for ch in task).split()
         return int(digits[0]) if digits else None
+
+    def _wants_report(self, task: str) -> bool:
+        normalized = task.lower()
+        return ("报告" in task and ("生成" in task or "创建" in task or "保存" in task)) or "generate report" in normalized
 
     def _load_memories(self, context: dict[str, Any]) -> list[dict[str, Any]]:
         if not self.memory_gateway or not context.get("userId"):
