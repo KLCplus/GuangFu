@@ -24,6 +24,14 @@ model-service/venv/
 *.py[cod]
 .pytest_cache/
 
+# Local secrets and environment
+.env
+.env.*
+!.env.example
+backend/secrets/*.pem
+backend/secrets/*.key
+backend/secrets/*.p8
+
 .cache/
 start-personal.sh
 
