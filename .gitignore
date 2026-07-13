@@ -24,6 +24,7 @@ model-service/venv/
 *.py[cod]
 .pytest_cache/
 
+
 .cache/
 start-personal.sh
 

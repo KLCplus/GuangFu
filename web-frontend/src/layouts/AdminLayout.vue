@@ -11,7 +11,8 @@ const menus = [
   { path: '/admin/users-apis', label: 'API 管理' },
   { path: '/admin/pvoutput', label: 'PVOutput' },
   { path: '/admin/models', label: '模型' },
-  { path: '/admin/news', label: '新闻管理' }
+  { path: '/admin/news', label: '新闻管理' },
+  { path: '/admin/announcements', label: '公告管理' }
 ]
 
 const activePath = computed(() => {

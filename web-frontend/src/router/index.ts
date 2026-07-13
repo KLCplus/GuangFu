@@ -32,6 +32,7 @@ const routes: RouteRecordRaw[] = [
     meta: { requiresAuth: true },
     children: [
       { path: 'dashboard', name: 'Dashboard', component: () => import('../views/Dashboard.vue'), meta: { title: '看板' } },
+      { path: 'visualization', name: 'Visualization', component: () => import('../views/Visualization.vue'), meta: { title: '数据可视化' } },
       { path: 'models/use', name: 'ModelUse', component: () => import('../views/ModelPrediction.vue'), meta: { title: '模型' } },
       { path: 'cloud-forecast', name: 'CloudForecast', component: () => import('../views/CloudForecast.vue'), meta: { title: '云图' } },
       { path: 'weather', name: 'Weather', component: () => import('../views/Weather.vue'), meta: { title: '天气' } },
@@ -52,6 +53,7 @@ const routes: RouteRecordRaw[] = [
       { path: 'reports', name: 'Reports', component: () => import('../views/AnalysisReport.vue'), meta: { title: '报告' } },
       { path: 'news', name: 'NewsList', component: () => import('../views/NewsList.vue'), meta: { title: '新闻' } },
       { path: 'news/:newsId', name: 'NewsDetail', component: () => import('../views/NewsDetail.vue'), meta: { title: '新闻详情' } },
+      { path: 'notifications', name: 'Notifications', redirect: { path: '/news', query: { tab: 'notifications' } }, meta: { title: '站内通知' } },
       { path: 'profile', name: 'Profile', component: () => import('../views/Profile.vue'), meta: { title: '我的' } },
 
       { path: 'stations', name: 'StationList', component: () => import('../views/StationList.vue'), meta: { title: '电站列表' } },
@@ -76,7 +78,8 @@ const routes: RouteRecordRaw[] = [
       { path: 'models', name: 'AdminModels', component: () => import('../views/admin/ModelManage.vue'), meta: { title: '模型' } },
 
       { path: 'api-keys', redirect: '/admin/users-apis' },
-      { path: 'news', component: () => import('../views/admin/NewsManage.vue'), meta: { title: '新闻管理' } }
+      { path: 'news', component: () => import('../views/admin/NewsManage.vue'), meta: { title: '新闻管理' } },
+      { path: 'announcements', name: 'AdminAnnouncements', component: () => import('../views/admin/AnnouncementManage.vue'), meta: { title: '公告管理' } }
     ]
   },
   {

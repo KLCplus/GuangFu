@@ -292,6 +292,13 @@ function notificationTypeLabel(type?: string) {
   return labels[type ?? ''] ?? type ?? '站内通知'
 }
 
+function newsTypeTag(type?: string) {
+  if (type === 'ALERT') return 'danger'
+  if (type === 'MODEL_UPDATE') return 'success'
+  if (type === 'NOTICE') return 'warning'
+  return 'info'
+}
+
 function rowIcon(type?: string) {
   if (type === 'MODEL_UPDATE') return Cpu
   if (type === 'ALERT') return Warning

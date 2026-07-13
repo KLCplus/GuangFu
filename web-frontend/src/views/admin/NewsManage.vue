@@ -44,8 +44,7 @@ type Mode = 'create' | 'edit'
 // ---- 筛选 ----
 const filters = reactive({
   keyword: '',
-  status: '' as '' | NewsStatus,
-  type: '' as '' | NewsType
+  status: '' as '' | NewsStatus
 })
 
 // ---- 分页 ----
@@ -85,8 +84,7 @@ const filteredRows = computed(() => {
       !keyword ||
       [row.title, row.summary, row.content, row.newsType].some((v) => v.toLowerCase().includes(keyword))
     const matchStatus = !filters.status || row.status === filters.status
-    const matchType = !filters.type || row.newsType === filters.type
-    return matchKeyword && matchStatus && matchType
+    return matchKeyword && matchStatus
   })
 })
 
@@ -115,7 +113,6 @@ function toPayload(f: NewsRow): NewsPayload {
     content: f.content,
     coverUrl: f.coverUrl || undefined,
     newsType: f.newsType,
-    category: f.category || 'PLATFORM',
     targetRole: f.targetRole
   }
 }
@@ -123,9 +120,8 @@ function toPayload(f: NewsRow): NewsPayload {
 async function fetchList() {
   loading.value = true
   try {
-    const params: AdminNewsQuery = { pageNum: 1, pageSize: 200 }
+    const params: AdminNewsQuery = { pageNum: 1, pageSize: 100, type: 'NEWS' }
     if (filters.status) params.status = filters.status
-    if (filters.type) params.type = filters.type
     const pageResult = await getAdminNewsList(params)
     rows.value = pageResult.records as NewsRow[]
     page.total = pageResult.total
@@ -161,14 +157,23 @@ async function submitForm() {
     return
   }
 
-    saving.value = true
-    try {
-      if (mode.value === 'create') {
-      await createNews(toPayload(form))
-      await fetchList()
+  saving.value = true
+  try {
+    const payload = toPayload(form)
+    if (mode.value === 'create') {
+      const created = await createNews(payload)
+      rows.value.unshift({
+        ...form,
+        ...payload,
+        ...created,
+        coverUrl: payload.coverUrl ?? '',
+        status: 'DRAFT',
+        publishedAt: '',
+        createdAt: new Date().toISOString()
+      })
       ElMessage.success('新闻创建成功')
     } else {
-      await updateNews(editingId.value!, toPayload(form))
+      await updateNews(editingId.value!, payload)
       const idx = rows.value.findIndex((r) => r.newsId === editingId.value)
       if (idx >= 0) Object.assign(rows.value[idx], form)
       ElMessage.success('新闻更新成功')
@@ -242,7 +247,7 @@ function statusTag(status: NewsStatus) {
 }
 
 function typeLabel(type: NewsType) {
-  const map: Record<string, string> = { NEWS: '平台新闻', NOTICE: '公开公告', MODEL_UPDATE: '模型更新通知', ALERT: '异常提醒', SYSTEM_NOTICE: '系统通知', INDUSTRY_NEWS: '旧行业资讯' }
+  const map: Record<string, string> = { MODEL_UPDATE: '模型更新', SYSTEM_NOTICE: '系统通知', INDUSTRY_NEWS: '行业资讯' }
   return map[type] || type
 }
 
@@ -258,7 +263,6 @@ function timeText(row: NewsRow) {
 function resetFilters() {
   filters.keyword = ''
   filters.status = ''
-  filters.type = ''
   page.pageNum = 1
 }
 
@@ -270,6 +274,14 @@ onMounted(() => {
 
 <template>
   <div class="page-shell">
+    <div class="page-title">
+      <div>
+        <h2>新闻管理</h2>
+        <p>查看脚本采集的光伏行业资讯；需要修正采集结果时，可手动补录或编辑。</p>
+      </div>
+      <el-tag type="info" effect="plain">内容来源：采集脚本</el-tag>
+    </div>
+
     <!-- 统计卡片 -->
     <div class="stat-row">
       <div v-for="s in stats" :key="s.label" class="stat-card">
@@ -294,16 +306,11 @@ onMounted(() => {
           <el-option label="草稿" value="DRAFT" />
           <el-option label="已下线" value="OFFLINE" />
         </el-select>
-        <el-select v-model="filters.type" placeholder="类型筛选" clearable style="width: 130px" @change="page.pageNum = 1">
-          <el-option label="模型更新" value="MODEL_UPDATE" />
-          <el-option label="系统通知" value="SYSTEM_NOTICE" />
-          <el-option label="行业资讯" value="INDUSTRY_NEWS" />
-        </el-select>
       </div>
       <div class="toolbar-right">
         <el-button @click="resetFilters">重置</el-button>
         <el-button :loading="loading" @click="fetchList">刷新</el-button>
-        <el-button type="primary" @click="openCreate">新建新闻</el-button>
+        <el-button type="primary" @click="openCreate">手动补录</el-button>
       </div>
     </div>
 
@@ -312,13 +319,10 @@ onMounted(() => {
       <el-table v-loading="loading" :data="pagedRows" stripe size="default" style="width:100%">
         <el-table-column prop="newsId" label="ID" width="60" />
         <el-table-column prop="title" label="标题" min-width="180" show-overflow-tooltip />
-        <el-table-column label="类型" width="100">
-          <template #default="{ row }">
-            <el-tag size="small" type="info">{{ typeLabel(row.newsType) }}</el-tag>
+        <el-table-column label="来源" width="110">
+          <template #default>
+            <el-tag size="small" type="info" effect="plain">自动采集</el-tag>
           </template>
-        </el-table-column>
-        <el-table-column label="目标角色" width="110">
-          <template #default="{ row }">{{ roleLabel(row.targetRole) }}</template>
         </el-table-column>
         <el-table-column label="状态" width="90">
           <template #default="{ row }">
@@ -406,11 +410,9 @@ onMounted(() => {
           <el-col :span="12">
             <el-form-item label="新闻类型">
               <el-select v-model="form.newsType" style="width:100%">
-                <el-option label="平台新闻（公开）" value="NEWS" />
-                <el-option label="平台公告（公开并通知）" value="NOTICE" />
-                <el-option label="模型更新（仅通知）" value="MODEL_UPDATE" />
-                <el-option label="异常提醒（仅通知）" value="ALERT" />
-                <el-option label="系统通知（仅通知）" value="SYSTEM_NOTICE" />
+                <el-option label="模型更新" value="MODEL_UPDATE" />
+                <el-option label="系统通知" value="SYSTEM_NOTICE" />
+                <el-option label="行业资讯" value="INDUSTRY_NEWS" />
               </el-select>
             </el-form-item>
           </el-col>
@@ -488,6 +490,16 @@ onMounted(() => {
   display: flex;
   justify-content: flex-end;
   margin-top: 14px;
+}
+
+.news-source-note {
+  margin: 2px 0 18px;
+  padding: 10px 12px;
+  border: 1px solid #d8e3ef;
+  border-radius: 7px;
+  background: #f6f9fc;
+  color: var(--admin-muted);
+  font-size: 13px;
 }
 
 @media (max-width: 760px) {

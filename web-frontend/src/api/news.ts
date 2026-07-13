@@ -53,11 +53,16 @@ export interface NewsPayload {
   targetRole: NewsTargetRole
 }
 
+export interface CreateNewsResult {
+  newsId: number
+  title: string
+}
+
 export const getNewsList = (params?: NewsQuery) => request.get<PageResult<News>>('/news', { params })
 export const getNews = (newsId: number) => request.get<News>(`/news/${newsId}`)
 export const getAdminNewsList = (params?: AdminNewsQuery) => request.get<PageResult<News>>('/admin/news', { params })
-export const createNews = (data: NewsPayload) => request.post<{ newsId: number; title: string }>('/admin/news', data)
-export const updateNews = (newsId: number, data: NewsPayload) => request.put<News>(`/admin/news/${newsId}`, data)
+export const createNews = (data: NewsPayload) => request.post<CreateNewsResult>('/admin/news', data)
+export const updateNews = (newsId: number, data: NewsPayload) => request.put<void>(`/admin/news/${newsId}`, data)
 export const publishNews = (newsId: number) => request.put<void>(`/admin/news/${newsId}/publish`)
 export const offlineNews = (newsId: number) => request.put<void>(`/admin/news/${newsId}/offline`)
 export const deleteNews = (newsId: number) => request.delete<void>(`/admin/news/${newsId}`)

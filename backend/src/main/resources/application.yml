@@ -8,6 +8,9 @@ server:
     accept-count: ${TOMCAT_ACCEPT_COUNT:100}
 
 spring:
+  config:
+    # Enables `mvn spring-boot:run` from backend/ to read the sole local config file.
+    import: optional:file:../.env[.properties]
   application:
     name: pv-platform-backend
   cache:
@@ -160,7 +163,11 @@ redis:
   enabled: ${REDIS_ENABLED:false}
 
 oauth:
+  # Frontend address used after a completed OAuth login, e.g. https://app.example.com
   callback-base-url: ${OAUTH_CALLBACK_BASE_URL:http://localhost:5173}
+  # Public backend origin registered in GitHub OAuth App, e.g. https://api.example.com.
+  # Leave empty locally to retain http://localhost:${SERVER_PORT}/... callback behavior.
+  backend-callback-base-url: ${OAUTH_BACKEND_CALLBACK_BASE_URL:}
   providers:
     github:
       enabled: ${OAUTH_GITHUB_ENABLED:false}
