@@ -709,7 +709,9 @@ function handleAgentEvent(event: AgentSseEnvelope) {
       detail: ok ? '' : firstText(data.error)
     })
     if (ok && toolName === 'user.profile.update') {
-      void userStore.fetchProfile()
+      void userStore.fetchProfile().then(() => {
+        window.dispatchEvent(new CustomEvent('pv:user-profile-updated'))
+      })
     }
     return
   }

@@ -87,12 +87,18 @@ const profileStats = computed(() => [
 
 onMounted(() => {
   void fetchOverview()
+  window.addEventListener('pv:user-profile-updated', handleExternalProfileUpdate)
 })
 
 onBeforeUnmount(() => {
+  window.removeEventListener('pv:user-profile-updated', handleExternalProfileUpdate)
   stopFaceCamera()
   clearFaceSelection()
 })
+
+function handleExternalProfileUpdate() {
+  void fetchOverview()
+}
 
 async function fetchOverview() {
   loading.value = true

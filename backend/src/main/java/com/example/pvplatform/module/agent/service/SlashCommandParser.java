@@ -113,6 +113,7 @@ public class SlashCommandParser {
         Map<String, Object> args = new LinkedHashMap<>();
         String toolName = null;
         if (hasAny(lower, "修改个人", "更新个人", "改昵称", "改邮箱", "改手机号", "改电话", "改联系方式", "修改昵称", "修改邮箱", "修改手机号", "修改电话", "修改联系方式", "昵称改", "邮箱改", "手机号改", "电话改")
+            || (lower.contains("邮箱") && hasAny(lower, "改为", "改成", "修改为", "设为", "设置为"))
             || (hasAny(lower, "手机号", "电话号码", "联系电话", "联系方式", "手机", "电话") && hasAny(lower, "改为", "改成", "修改为", "设为", "设置为"))) {
             toolName = "user.profile.update";
             args.putAll(profileUpdateArgs(text));

@@ -361,6 +361,8 @@ class PhotovoltaicAgentRuntime:
             steps.append(PlanStep(step_id, "Collect", title, self._tool_title(tool_name), tool_name, arguments or {}))
 
         if any(word in task for word in ("修改个人", "更新个人", "改昵称", "改邮箱", "改手机号", "改电话", "改联系方式", "修改昵称", "修改邮箱", "修改手机号", "修改电话", "修改联系方式")) or (
+            "邮箱" in task and any(word in task for word in ("改为", "改成", "修改为", "设为", "设置为"))
+        ) or (
             any(word in task for word in ("手机号", "电话号码", "联系电话", "联系方式", "手机", "电话"))
             and any(word in task for word in ("改为", "改成", "修改为", "设为", "设置为"))
         ):

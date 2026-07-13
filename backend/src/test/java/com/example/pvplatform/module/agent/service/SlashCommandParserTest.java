@@ -43,6 +43,10 @@ class SlashCommandParserTest {
         assertEquals("user.profile.update", profile.toolName());
         assertEquals("张三", profile.arguments().get("nickname"));
 
+        AgentToolIntent email = parser.parse("把我的邮箱改为 new@example.com", Map.of(), null, Map.of());
+        assertEquals("user.profile.update", email.toolName());
+        assertEquals("new@example.com", email.arguments().get("email"));
+
         AgentToolIntent phone = parser.parse("把我的电话号码改为 13900001111", Map.of(), null, Map.of());
         assertEquals("user.profile.update", phone.toolName());
         assertEquals("13900001111", phone.arguments().get("phone"));
