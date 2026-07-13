@@ -574,23 +574,6 @@ function message(error: unknown, fallback: string) {
   return error instanceof Error ? error.message : fallback
 }
 
-function stationTagType(status?: string) {
-  if (status === 'RUNNING') return 'success'
-  if (status === 'MAINTENANCE' || status === 'SYNC_ERROR') return 'warning'
-  if (status === 'STOPPED') return 'info'
-  return 'primary'
-}
-
-function stationStatusText(status?: string) {
-  const map: Record<string, string> = {
-    RUNNING: '运行中',
-    MAINTENANCE: '维护中',
-    SYNC_ERROR: '同步异常',
-    STOPPED: '已停机'
-  }
-  return map[status ?? ''] ?? '未知'
-}
-
 function formatCoordinate(value?: number) {
   return typeof value === 'number' ? value.toFixed(4) : '-'
 }
@@ -607,18 +590,15 @@ function stationIdentifier() {
 
 <template>
   <section class="page-shell dashboard-page" v-loading="loading">
+    <div class="page-heading">
+      <h1>电站看板</h1>
+    </div>
+
     <section class="page-section station-header">
       <template v-if="selectedStation">
         <div class="station-title">
-          <p class="page-kicker">电站看板</p>
           <div class="station-name-row">
             <h2>{{ selectedStation.stationName }}</h2>
-            <el-tag :type="stationTagType(selectedStation.status)" effect="light">
-              {{ stationStatusText(selectedStation.status) }}
-            </el-tag>
-            <el-tag v-if="isPvOutputMode" class="source-tag" effect="plain" type="primary">
-              PVOutput 公开电站
-            </el-tag>
           </div>
           <p class="station-desc">{{ selectedStation.description || '-' }}</p>
         </div>
@@ -745,7 +725,6 @@ function stationIdentifier() {
 .station-name-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 4px; }
 .station-name-row h2, .panel-head h3, .weather-head h3 { margin: 0; color: #10274c; }
 .station-name-row h2 { font-size: 24px; }
-.source-tag { font-weight: 700; letter-spacing: 0.02em; }
 .station-desc { margin: 8px 0 0; color: var(--color-muted); }
 .station-switch { display: flex; align-items: center; gap: 10px; }
 .station-switch span { color: var(--color-muted); font-weight: 700; white-space: nowrap; }

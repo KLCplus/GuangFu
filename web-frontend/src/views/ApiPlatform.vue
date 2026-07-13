@@ -45,6 +45,7 @@ interface DistributionItem {
 // ---- state ----
 
 const keysLoading = ref(false)
+const activeApiView = ref<'keys' | 'usage'>('keys')
 const statsLoading = ref(false)
 const logsLoading = ref(false)
 const exporting = ref(false)
@@ -228,13 +229,6 @@ const keyDistribution = computed<DistributionItem[]>(() => {
   }))
 })
 
-const statsCoverageText = computed(() => {
-  if (statsLoading.value) return '正在从后端加载统计数据…'
-  if (statsError.value) return '统计数据加载失败，请重试。'
-  const total = summaryData.value?.totalCalls ?? 0
-  return `统计数据由后端聚合，当前筛选范围内共 ${formatNumber(total)} 条调用记录。`
-})
-
 const walletAmount = computed(() => wallet.value?.balance ?? null)
 const walletMonthlyCost = computed(() => wallet.value?.monthlyCost ?? null)
 const walletRecords = computed(() => wallet.value?.records ?? [])
@@ -244,6 +238,16 @@ const hasKeyStats = computed(() => keyApiData.value.length > 0)
 const hasAnyChartData = computed(() => hasTrendData.value || hasModelStats.value || hasKeyStats.value)
 
 // ---- lifecycle ----
+
+function switchApiView(view: 'keys' | 'usage') {
+  activeApiView.value = view
+  if (view === 'usage') {
+    void nextTick(() => {
+      renderCharts()
+      resizeCharts()
+    })
+  }
+}
 
 onMounted(() => {
   window.addEventListener('resize', resizeCharts)
@@ -793,17 +797,39 @@ async function copyText(value: string) {
 
 <template>
   <section class="api-page">
-    <section class="key-section">
+    <nav class="function-tabs" role="tablist" aria-label="API 功能">
+      <button
+        type="button"
+        role="tab"
+        :aria-selected="activeApiView === 'keys'"
+        :class="{ active: activeApiView === 'keys' }"
+        @click="switchApiView('keys')"
+      >
+        API Keys
+      </button>
+      <button
+        type="button"
+        role="tab"
+        :aria-selected="activeApiView === 'usage'"
+        :class="{ active: activeApiView === 'usage' }"
+        @click="switchApiView('usage')"
+      >
+        使用统计
+      </button>
+    </nav>
+
+    <section v-show="activeApiView === 'keys'" class="key-section" role="tabpanel">
       <div class="section-heading key-heading">
-        <div>
-          <p class="section-kicker">Access credentials</p>
-          <h1>API Keys</h1>
-          <p class="security-copy">
-            完整 API Key 仅在创建或重新生成时展示一次。请妥善保存，不要在浏览器脚本、公开仓库或客户端代码中暴露密钥。
-          </p>
-        </div>
+        <h1>API Keys</h1>
         <el-button type="primary" size="large" @click="createDialogVisible = true">创建 API Key</el-button>
       </div>
+
+      <el-alert
+        title="完整 API Key 仅在创建或重新生成时展示一次，请妥善保存。"
+        type="info"
+        show-icon
+        :closable="false"
+      />
 
       <el-alert v-if="keyError" :title="keyError" type="error" show-icon :closable="false">
         <template #default>
@@ -866,10 +892,18 @@ async function copyText(value: string) {
       </div>
     </section>
 
-    <section v-loading="walletLoading" class="wallet-section">
+    <section v-show="activeApiView === 'usage'" class="usage-pane" role="tabpanel">
+      <div class="section-heading usage-heading">
+        <h1>使用统计</h1>
+        <div class="heading-actions">
+          <el-button :loading="exporting" @click="handleExport">导出 CSV</el-button>
+          <el-button :loading="refreshing" @click="loadPage">刷新数据</el-button>
+        </div>
+      </div>
+
+      <section v-loading="walletLoading" class="wallet-section">
       <div class="wallet-heading">
         <div>
-          <p class="section-kicker">Account balance</p>
           <h2>余额与消费</h2>
           <p>当前为开放平台账户视图，仅展示人民币。充值成功后实时入账，开放 API 调用成功后自动扣费。</p>
         </div>
@@ -917,22 +951,10 @@ async function copyText(value: string) {
         </el-table>
       </div>
       <p class="wallet-disclaimer">当前充值接口为本地联调模拟支付：后端会创建充值订单、写入充值流水并更新钱包余额；后续接入真实支付渠道时复用订单和流水表。</p>
-    </section>
+      </section>
 
-    <section class="usage-section">
-      <div class="section-heading usage-heading">
-        <div>
-          <p class="section-kicker">Usage analytics</p>
-          <h2>使用统计</h2>
-          <p>{{ statsCoverageText }}</p>
-        </div>
-        <div class="heading-actions">
-          <el-button :loading="exporting" @click="handleExport">导出 CSV</el-button>
-          <el-button :loading="refreshing" @click="loadPage">刷新数据</el-button>
-        </div>
-      </div>
-
-      <div class="filter-bar">
+      <section class="usage-section">
+        <div class="filter-bar">
         <el-select v-model="filters.days" class="filter-control" aria-label="时间范围">
           <el-option v-for="option in timeOptions" :key="option.value" :label="option.label" :value="option.value" />
         </el-select>
@@ -1079,6 +1101,7 @@ async function copyText(value: string) {
         </div>
       </section>
     </section>
+    </section>
 
     <el-dialog v-model="rechargeDialogVisible" title="钱包充值" width="440px">
       <el-form label-position="top" @submit.prevent>
@@ -1182,18 +1205,58 @@ async function copyText(value: string) {
 <style scoped>
 .api-page {
   display: grid;
-  gap: 28px;
+  gap: 20px;
+}
+
+.function-tabs {
+  display: flex;
+  gap: 6px;
+  padding: 5px;
+  width: fit-content;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  background: #ffffff;
+  box-shadow: 0 6px 18px rgba(20, 65, 120, 0.05);
+}
+
+.function-tabs button {
+  min-width: 132px;
+  padding: 10px 18px;
+  border: 0;
+  border-radius: 7px;
+  color: var(--color-muted);
+  background: transparent;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.function-tabs button:hover {
+  color: var(--color-primary);
+  background: #f3f7fc;
+}
+
+.function-tabs button.active {
+  color: #ffffff;
+  background: var(--color-primary);
+  box-shadow: 0 4px 12px rgba(29, 111, 220, 0.2);
+}
+
+.function-tabs button:focus-visible {
+  outline: 3px solid rgba(29, 111, 220, 0.22);
+  outline-offset: 2px;
 }
 
 .key-section,
-.usage-section {
+.usage-section,
+.usage-pane {
   display: grid;
   gap: 18px;
 }
 
-.usage-section {
-  padding-top: 28px;
-  border-top: 1px solid var(--color-border);
+.usage-pane {
+  gap: 24px;
 }
 
 .section-heading,

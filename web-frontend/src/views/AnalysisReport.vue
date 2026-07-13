@@ -140,7 +140,6 @@ const username = computed(() => userStore.userInfo.nickname || userStore.userInf
 const pinnedSessions = computed(() => agentSessions.value.filter((session) => session.pinned && !session.archived))
 const recentSessions = computed(() => agentSessions.value.filter((session) => !session.pinned && !session.archived))
 const archivedSessions = computed(() => agentSessions.value.filter((session) => session.archived))
-const activeSessionTitle = computed(() => agentSessions.value.find((item) => item.sessionId === agentSessionId.value)?.title || '新的 Agent 会话')
 const connected = computed(() => agentTools.value.some((tool) => tool.enabled))
 const filteredCommands = computed(() => {
   const text = composerText.value.trim()
@@ -1290,7 +1289,6 @@ onMounted(() => {
           <span class="agent-mark">PV</span>
           <div>
             <h1>智能体工作台</h1>
-            <p>{{ activeSessionTitle }}</p>
           </div>
         </div>
         <div class="header-actions">
@@ -1728,14 +1726,9 @@ button {
 
 .agent-title h1 {
   margin: 0;
-  font-size: 20px;
+  font-size: var(--font-size-page-title);
+  line-height: var(--line-height-title);
   letter-spacing: 0;
-}
-
-.agent-title p {
-  margin: 2px 0 0;
-  color: #7a879a;
-  font-size: 13px;
 }
 
 .header-actions {

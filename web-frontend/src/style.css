@@ -79,6 +79,10 @@ body {
   --color-muted: #66758c;
   --color-surface: #ffffff;
   --shadow-panel: 0 10px 28px rgba(20, 65, 120, 0.08);
+  --font-size-page-title: 28px;
+  --font-size-section-title: 18px;
+  --font-size-subsection-title: 16px;
+  --line-height-title: 1.35;
   --admin-ink: #10274c;
   --admin-muted: var(--color-muted);
   --admin-line: var(--color-border);
@@ -126,6 +130,11 @@ a {
   grid-template-columns: 176px minmax(0, 1fr);
   min-height: 100vh;
   background: #f4f8fc;
+}
+
+.user-layout {
+  font-size: 14px;
+  line-height: 1.5;
 }
 
 .app-sidebar {
@@ -267,9 +276,11 @@ a {
   gap: 16px;
 }
 
+.page-title h1,
 .page-title h2 {
   margin: 0;
-  font-size: 20px;
+  font-size: var(--font-size-page-title);
+  line-height: var(--line-height-title);
 }
 
 .page-title p {
@@ -284,6 +295,45 @@ a {
   border-radius: 8px;
   background: var(--color-surface);
   box-shadow: var(--shadow-panel);
+}
+
+/* 用户端标题层级：页面标题 / 分区标题 / 卡片标题。 */
+.user-layout .app-content .page-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-width: 0;
+}
+
+.user-layout .app-content .page-heading h1,
+.user-layout .app-content .page-title h1,
+.user-layout .app-content .page-title h2,
+.user-layout .app-content .section-heading h1 {
+  margin: 0;
+  font-size: var(--font-size-page-title);
+  font-weight: 700;
+  line-height: var(--line-height-title);
+  letter-spacing: -0.01em;
+}
+
+.user-layout .app-content .panel-head h2,
+.user-layout .app-content .panel-head h3,
+.user-layout .app-content .section-head h2,
+.user-layout .app-content .section-heading h2,
+.user-layout .app-content .wallet-heading h2,
+.user-layout .app-content .chart-heading h3,
+.user-layout .app-content .weather-head h3 {
+  font-size: var(--font-size-section-title);
+  font-weight: 700;
+  line-height: var(--line-height-title);
+  letter-spacing: 0;
+}
+
+.user-layout .app-content .wallet-records-heading h3 {
+  font-size: var(--font-size-subsection-title);
+  font-weight: 700;
+  line-height: var(--line-height-title);
 }
 
 .admin-content .page-shell {

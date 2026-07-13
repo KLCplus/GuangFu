@@ -69,9 +69,9 @@ const filteredNews = computed(() => {
 })
 
 const stats = computed(() => [
-  { label: '新闻总数', value: String(total.value), note: '按当前筛选条件统计' },
-  { label: '当前页', value: String(filteredNews.value.length), note: '支持关键词本地过滤' },
-  { label: '未读通知', value: String(unreadCount.value), note: '来自通知接口或 mock 兜底' }
+  { label: '新闻总数', value: String(total.value) },
+  { label: '当前页', value: String(filteredNews.value.length) },
+  { label: '未读通知', value: String(unreadCount.value) }
 ])
 
 onMounted(() => {
@@ -206,18 +206,6 @@ function newsTypeTag(type?: string) {
   return 'info'
 }
 
-function sourceLabel(source: DataSource) {
-  if (source === 'remote') return '真实接口'
-  if (source === 'mixed') return '混合数据'
-  return '模拟数据'
-}
-
-function sourceType(source: DataSource) {
-  if (source === 'remote') return 'success'
-  if (source === 'mixed') return 'warning'
-  return 'info'
-}
-
 function publishTime(item: News) {
   return item.publishedAt || item.createdAt || '-'
 }
@@ -228,13 +216,6 @@ function publishTime(item: News) {
     <div class="page-heading">
       <div>
         <h1>新闻通知</h1>
-        <p>查看平台公告、模型更新和站内通知</p>
-      </div>
-      <div class="heading-actions">
-        <el-tag :type="sourceType(newsSource)" effect="light">新闻：{{ sourceLabel(newsSource) }}</el-tag>
-        <el-tag :type="sourceType(notificationSource)" effect="light">
-          通知：{{ sourceLabel(notificationSource) }}
-        </el-tag>
       </div>
     </div>
 
@@ -256,7 +237,6 @@ function publishTime(item: News) {
       <div v-for="item in stats" :key="item.label" class="overview-card">
         <span>{{ item.label }}</span>
         <strong>{{ item.value }}</strong>
-        <small>{{ item.note }}</small>
       </div>
     </div>
 
@@ -265,7 +245,6 @@ function publishTime(item: News) {
         <div class="panel-head">
           <div>
             <h2>新闻列表</h2>
-            <p>来源：GET /api/news，支持类型筛选和分页。</p>
           </div>
           <el-button :loading="loading" @click="fetchNews">刷新</el-button>
         </div>
@@ -316,7 +295,6 @@ function publishTime(item: News) {
         <div class="panel-head">
           <div>
             <h2>站内通知</h2>
-            <p>来源：GET /api/notifications。</p>
           </div>
           <el-badge :value="unreadCount" :hidden="unreadCount === 0">
             <el-button size="small" @click="readAllNotifications">全部已读</el-button>
@@ -442,7 +420,7 @@ function publishTime(item: News) {
 }
 
 .overview-card {
-  min-height: 112px;
+  min-height: 94px;
   padding: 18px;
 }
 
@@ -453,14 +431,10 @@ function publishTime(item: News) {
 
 .overview-card strong {
   display: block;
-  margin: 10px 0 6px;
+  margin-top: 10px;
   color: #10274c;
   font-size: 28px;
   line-height: 1;
-}
-
-.overview-card small {
-  color: var(--color-muted);
 }
 
 .news-layout {

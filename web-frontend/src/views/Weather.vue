@@ -84,7 +84,6 @@ function formatNumber(value?: number, suffix = '') {
     <div class="page-heading">
       <div>
         <h1>天气</h1>
-        <p>按电站经纬度读取和风天气实时天气与未来预报</p>
       </div>
       <div class="heading-actions">
         <el-select
