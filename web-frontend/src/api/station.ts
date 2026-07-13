@@ -16,8 +16,8 @@ export interface Station {
   province: string
   city: string
   address: string
-  longitude: number
-  latitude: number
+  longitude?: number
+  latitude?: number
   capacity: number
   status: StationStatus
   description?: string

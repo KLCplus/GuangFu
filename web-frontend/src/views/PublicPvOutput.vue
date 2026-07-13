@@ -15,9 +15,13 @@ const historyRows = ref<PvOutputStatus[]>([])
 const chartRef = ref<HTMLDivElement | null>(null)
 const weather = ref<CurrentWeather | null>(null)
 const forecasts = ref<WeatherForecastItem[]>([])
+const weatherError = ref('')
 let chart: echarts.ECharts | null = null
 
 const selectedStation = computed(() => stations.value.find((item) => item.id === selectedStationId.value) ?? stations.value[0])
+const selectedStationHasCoordinates = computed(() =>
+  selectedStation.value?.longitude != null && selectedStation.value?.latitude != null
+)
 
 const totalCapacityKw = computed(() => stations.value.reduce((sum, item) => sum + (item.systemSizeW ?? 0), 0) / 1000)
 const onlineCount = computed(() => stations.value.filter((item) => item.enabled).length)
@@ -54,19 +58,31 @@ async function fetchStatus() {
   try {
     const end = new Date()
     const start = new Date(end.getTime() - 7 * 24 * 60 * 60 * 1000)
-    const [latest, history, weatherResult, forecastResult] = await Promise.allSettled([
+    weather.value = null
+    forecasts.value = []
+    weatherError.value = ''
+    const [latest, history] = await Promise.allSettled([
       loadPvOutputLatestStatus(station.id),
       loadPvOutputHistory(station.id, {
         startTime: formatLocalDateTime(start),
         endTime: formatLocalDateTime(end)
-      }),
-      getPvOutputCurrentWeather(station.id),
-      getPvOutputForecast(station.id)
+      })
     ])
     latestStatus.value = latest.status === 'fulfilled' ? latest.value : null
     historyRows.value = history.status === 'fulfilled' ? history.value : []
-    weather.value = weatherResult.status === 'fulfilled' ? weatherResult.value : null
-    forecasts.value = forecastResult.status === 'fulfilled' ? forecastResult.value : []
+    if (selectedStationHasCoordinates.value) {
+      const [weatherResult, forecastResult] = await Promise.allSettled([
+        getPvOutputCurrentWeather(station.id),
+        getPvOutputForecast(station.id)
+      ])
+      weather.value = weatherResult.status === 'fulfilled' ? weatherResult.value : null
+      forecasts.value = forecastResult.status === 'fulfilled' ? forecastResult.value : []
+      if (weatherResult.status === 'rejected') {
+        weatherError.value = message(weatherResult.reason, '天气数据加载失败')
+      }
+    } else {
+      weatherError.value = '该公开电站未配置经纬度，无法获取真实天气。'
+    }
     await nextTick()
     renderChart()
   } catch (error) {
@@ -97,13 +113,6 @@ function renderChart() {
         symbol: 'none',
         areaStyle: { opacity: 0.12 },
         data: historyRows.value.map((item) => item.powerGenerationW ?? null)
-      },
-      {
-        name: '用电功率',
-        type: 'line',
-        smooth: true,
-        symbol: 'none',
-        data: historyRows.value.map((item) => item.powerConsumptionW ?? null)
       }
     ]
   })
@@ -190,16 +199,15 @@ function message(error: unknown, fallback: string) {
           </el-tag>
         </div>
 
-        <el-descriptions v-if="latestStatus" :column="3" border>
+        <el-descriptions v-if="latestStatus" :column="2" border>
           <el-descriptions-item label="采样时间">{{ latestStatus.sampleTime }}</el-descriptions-item>
           <el-descriptions-item label="发电功率">{{ latestStatus.powerGenerationW ?? '-' }} W</el-descriptions-item>
-          <el-descriptions-item label="用电功率">{{ latestStatus.powerConsumptionW ?? '-' }} W</el-descriptions-item>
           <el-descriptions-item label="发电量">{{ latestStatus.energyGenerationWh ?? '-' }} Wh</el-descriptions-item>
-          <el-descriptions-item label="温度">{{ latestStatus.temperatureC ?? '-' }} C</el-descriptions-item>
-          <el-descriptions-item label="电压">{{ latestStatus.voltageV ?? '-' }} V</el-descriptions-item>
+          <el-descriptions-item label="归一化输出">{{ latestStatus.normalisedOutput ?? '-' }} kWh/kW</el-descriptions-item>
         </el-descriptions>
         <el-empty v-else description="暂无入库状态数据，配置 API Key 后可由定时任务或管理端手动同步" />
 
+        <el-alert v-if="weatherError" class="weather-alert" :title="weatherError" type="warning" show-icon :closable="false" />
         <div v-if="weather" class="weather-mini">
           <div class="weather-mini-header">
             <span>🌤 当地天气</span>
@@ -327,6 +335,10 @@ function message(error: unknown, fallback: string) {
   width: 100%;
   height: 360px;
   margin-top: 18px;
+}
+
+.weather-alert {
+  margin-top: 16px;
 }
 
 .weather-mini {
