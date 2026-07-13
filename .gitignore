@@ -30,3 +30,12 @@ model-service/venv/
 *.log
 logs/
 .local/
+
+# Local secrets and environment
+.env
+.env.*
+backend/.env
+backend/.env.*
+backend/secrets/*.pem
+backend/secrets/*.key
+backend/secrets/*.p8
