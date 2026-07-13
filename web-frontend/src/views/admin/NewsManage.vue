@@ -43,8 +43,7 @@ type Mode = 'create' | 'edit'
 // ---- 筛选 ----
 const filters = reactive({
   keyword: '',
-  status: '' as '' | NewsStatus,
-  type: '' as '' | NewsType
+  status: '' as '' | NewsStatus
 })
 
 // ---- 分页 ----
@@ -83,8 +82,7 @@ const filteredRows = computed(() => {
       !keyword ||
       [row.title, row.summary, row.content, row.newsType].some((v) => v.toLowerCase().includes(keyword))
     const matchStatus = !filters.status || row.status === filters.status
-    const matchType = !filters.type || row.newsType === filters.type
-    return matchKeyword && matchStatus && matchType
+    return matchKeyword && matchStatus
   })
 })
 
@@ -112,17 +110,16 @@ function toPayload(f: NewsRow): NewsPayload {
     summary: f.summary,
     content: f.content,
     coverUrl: f.coverUrl || undefined,
-    newsType: f.newsType,
-    targetRole: f.targetRole
+    newsType: 'NEWS',
+    targetRole: 'ALL'
   }
 }
 
 async function fetchList() {
   loading.value = true
   try {
-    const params: AdminNewsQuery = { pageNum: 1, pageSize: 200 }
+    const params: AdminNewsQuery = { pageNum: 1, pageSize: 100, type: 'NEWS' }
     if (filters.status) params.status = filters.status
-    if (filters.type) params.type = filters.type
     const pageResult = await getAdminNewsList(params)
     rows.value = pageResult.records as NewsRow[]
     page.total = pageResult.total
@@ -247,21 +244,6 @@ function statusTag(status: NewsStatus) {
   return map[status] || 'info'
 }
 
-function typeLabel(type: NewsType) {
-  const map: Record<NewsType, string> = {
-    NEWS: '行业资讯',
-    NOTICE: '系统通知',
-    MODEL_UPDATE: '模型更新',
-    ALERT: '异常提醒'
-  }
-  return map[type] || type
-}
-
-function roleLabel(role: NewsTargetRole) {
-  const map: Record<string, string> = { ALL: '全部用户', USER: '普通用户', API_USER: 'API 用户', ADMIN: '管理员' }
-  return map[role] || role
-}
-
 function timeText(row: NewsRow) {
   return row.publishedAt || row.createdAt || '-'
 }
@@ -269,7 +251,6 @@ function timeText(row: NewsRow) {
 function resetFilters() {
   filters.keyword = ''
   filters.status = ''
-  filters.type = ''
   page.pageNum = 1
 }
 
@@ -281,6 +262,14 @@ onMounted(() => {
 
 <template>
   <div class="page-shell">
+    <div class="page-title">
+      <div>
+        <h2>新闻管理</h2>
+        <p>查看脚本采集的光伏行业资讯；需要修正采集结果时，可手动补录或编辑。</p>
+      </div>
+      <el-tag type="info" effect="plain">内容来源：采集脚本</el-tag>
+    </div>
+
     <!-- 统计卡片 -->
     <div class="stat-row">
       <div v-for="s in stats" :key="s.label" class="stat-card">
@@ -305,17 +294,11 @@ onMounted(() => {
           <el-option label="草稿" value="DRAFT" />
           <el-option label="已下线" value="OFFLINE" />
         </el-select>
-        <el-select v-model="filters.type" placeholder="类型筛选" clearable style="width: 130px" @change="page.pageNum = 1">
-          <el-option label="行业资讯" value="NEWS" />
-          <el-option label="系统通知" value="NOTICE" />
-          <el-option label="模型更新" value="MODEL_UPDATE" />
-          <el-option label="异常提醒" value="ALERT" />
-        </el-select>
       </div>
       <div class="toolbar-right">
         <el-button @click="resetFilters">重置</el-button>
         <el-button :loading="loading" @click="fetchList">刷新</el-button>
-        <el-button type="primary" @click="openCreate">新建新闻</el-button>
+        <el-button type="primary" @click="openCreate">手动补录</el-button>
       </div>
     </div>
 
@@ -324,13 +307,10 @@ onMounted(() => {
       <el-table v-loading="loading" :data="pagedRows" stripe size="default" style="width:100%">
         <el-table-column prop="newsId" label="ID" width="60" />
         <el-table-column prop="title" label="标题" min-width="180" show-overflow-tooltip />
-        <el-table-column label="类型" width="100">
-          <template #default="{ row }">
-            <el-tag size="small" type="info">{{ typeLabel(row.newsType) }}</el-tag>
+        <el-table-column label="来源" width="110">
+          <template #default>
+            <el-tag size="small" type="info" effect="plain">自动采集</el-tag>
           </template>
-        </el-table-column>
-        <el-table-column label="目标角色" width="110">
-          <template #default="{ row }">{{ roleLabel(row.targetRole) }}</template>
         </el-table-column>
         <el-table-column label="状态" width="90">
           <template #default="{ row }">
@@ -414,28 +394,7 @@ onMounted(() => {
             <el-button size="small">上传并插入正文图片</el-button>
           </el-upload>
         </el-form-item>
-        <el-row :gutter="16">
-          <el-col :span="12">
-            <el-form-item label="新闻类型">
-              <el-select v-model="form.newsType" style="width:100%">
-                <el-option label="行业资讯" value="NEWS" />
-                <el-option label="系统通知" value="NOTICE" />
-                <el-option label="模型更新" value="MODEL_UPDATE" />
-                <el-option label="异常提醒" value="ALERT" />
-              </el-select>
-            </el-form-item>
-          </el-col>
-          <el-col :span="12">
-            <el-form-item label="目标角色">
-              <el-select v-model="form.targetRole" style="width:100%">
-                <el-option label="全部用户" value="ALL" />
-                <el-option label="普通用户" value="USER" />
-                <el-option label="API 用户" value="API_USER" />
-                <el-option label="管理员" value="ADMIN" />
-              </el-select>
-            </el-form-item>
-          </el-col>
-        </el-row>
+        <div class="news-source-note">手动补录的内容也会作为行业新闻展示给全部用户。</div>
         <el-form-item label="封面图片">
           <el-upload :show-file-list="false" accept="image/jpeg,image/png,image/webp" :http-request="uploadCoverFile">
             <el-button :disabled="!editingId">上传 OSS 封面</el-button>
@@ -499,6 +458,16 @@ onMounted(() => {
   display: flex;
   justify-content: flex-end;
   margin-top: 14px;
+}
+
+.news-source-note {
+  margin: 2px 0 18px;
+  padding: 10px 12px;
+  border: 1px solid #d8e3ef;
+  border-radius: 7px;
+  background: #f6f9fc;
+  color: var(--admin-muted);
+  font-size: 13px;
 }
 
 @media (max-width: 760px) {

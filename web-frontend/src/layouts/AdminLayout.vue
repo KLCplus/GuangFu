@@ -12,7 +12,7 @@ const menus = [
   { path: '/admin/pvoutput', label: 'PVOutput' },
   { path: '/admin/models', label: '模型' },
   { path: '/admin/news', label: '新闻管理' },
-  { path: '/admin/notifications', label: '站内通知' }
+  { path: '/admin/announcements', label: '公告管理' }
 ]
 
 const activePath = computed(() => {

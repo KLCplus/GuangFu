@@ -267,7 +267,6 @@ function newsTypeTag(type?: string) {
   if (type === 'NOTICE') return 'warning'
   return 'info'
 }
-}
 
 function rowIcon(type?: string) {
   if (type === 'MODEL_UPDATE') return Cpu
