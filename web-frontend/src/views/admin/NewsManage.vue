@@ -64,7 +64,7 @@ const emptyForm = (): NewsRow => ({
   summary: '',
   content: '',
   coverUrl: '',
-  newsType: 'INDUSTRY_NEWS',
+  newsType: 'NEWS',
   targetRole: 'ALL',
   status: 'DRAFT',
   publishedAt: '',
@@ -158,14 +158,23 @@ async function submitForm() {
     return
   }
 
-    saving.value = true
-    try {
-      if (mode.value === 'create') {
-      await createNews(toPayload(form))
-      await fetchList()
+  saving.value = true
+  try {
+    const payload = toPayload(form)
+    if (mode.value === 'create') {
+      const created = await createNews(payload)
+      rows.value.unshift({
+        ...form,
+        ...payload,
+        ...created,
+        coverUrl: payload.coverUrl ?? '',
+        status: 'DRAFT',
+        publishedAt: '',
+        createdAt: new Date().toISOString()
+      })
       ElMessage.success('新闻创建成功')
     } else {
-      await updateNews(editingId.value!, toPayload(form))
+      await updateNews(editingId.value!, payload)
       const idx = rows.value.findIndex((r) => r.newsId === editingId.value)
       if (idx >= 0) Object.assign(rows.value[idx], form)
       ElMessage.success('新闻更新成功')
@@ -239,7 +248,12 @@ function statusTag(status: NewsStatus) {
 }
 
 function typeLabel(type: NewsType) {
-  const map: Record<string, string> = { MODEL_UPDATE: '模型更新', SYSTEM_NOTICE: '系统通知', INDUSTRY_NEWS: '行业资讯' }
+  const map: Record<NewsType, string> = {
+    NEWS: '行业资讯',
+    NOTICE: '系统通知',
+    MODEL_UPDATE: '模型更新',
+    ALERT: '异常提醒'
+  }
   return map[type] || type
 }
 
@@ -292,9 +306,10 @@ onMounted(() => {
           <el-option label="已下线" value="OFFLINE" />
         </el-select>
         <el-select v-model="filters.type" placeholder="类型筛选" clearable style="width: 130px" @change="page.pageNum = 1">
+          <el-option label="行业资讯" value="NEWS" />
+          <el-option label="系统通知" value="NOTICE" />
           <el-option label="模型更新" value="MODEL_UPDATE" />
-          <el-option label="系统通知" value="SYSTEM_NOTICE" />
-          <el-option label="行业资讯" value="INDUSTRY_NEWS" />
+          <el-option label="异常提醒" value="ALERT" />
         </el-select>
       </div>
       <div class="toolbar-right">
@@ -403,9 +418,10 @@ onMounted(() => {
           <el-col :span="12">
             <el-form-item label="新闻类型">
               <el-select v-model="form.newsType" style="width:100%">
+                <el-option label="行业资讯" value="NEWS" />
+                <el-option label="系统通知" value="NOTICE" />
                 <el-option label="模型更新" value="MODEL_UPDATE" />
-                <el-option label="系统通知" value="SYSTEM_NOTICE" />
-                <el-option label="行业资讯" value="INDUSTRY_NEWS" />
+                <el-option label="异常提醒" value="ALERT" />
               </el-select>
             </el-form-item>
           </el-col>

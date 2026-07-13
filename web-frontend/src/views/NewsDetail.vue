@@ -73,10 +73,7 @@ function newsTypeLabel(type?: string) {
     NEWS: '新闻',
     NOTICE: '公告',
     MODEL_UPDATE: '模型更新',
-    ALERT: '异常提醒',
-    SYSTEM_NOTICE: '系统通知',
-    INDUSTRY_NEWS: '行业资讯',
-    OPERATION: '运营消息'
+    ALERT: '异常提醒'
   }
   return labels[type ?? ''] ?? type ?? '新闻'
 }
@@ -84,7 +81,7 @@ function newsTypeLabel(type?: string) {
 function newsTypeTag(type?: string) {
   if (type === 'ALERT') return 'danger'
   if (type === 'MODEL_UPDATE') return 'success'
-  if (type === 'NOTICE' || type === 'SYSTEM_NOTICE') return 'warning'
+  if (type === 'NOTICE') return 'warning'
   return 'info'
 }
 

@@ -76,7 +76,8 @@ const routes: RouteRecordRaw[] = [
       { path: 'models', name: 'AdminModels', component: () => import('../views/admin/ModelManage.vue'), meta: { title: '模型' } },
 
       { path: 'api-keys', redirect: '/admin/users-apis' },
-      { path: 'news', component: () => import('../views/admin/NewsManage.vue'), meta: { title: '新闻管理' } }
+      { path: 'news', component: () => import('../views/admin/NewsManage.vue'), meta: { title: '新闻管理' } },
+      { path: 'notifications', name: 'AdminNotifications', component: () => import('../views/admin/NotificationManage.vue'), meta: { title: '站内通知' } }
     ]
   },
   {
