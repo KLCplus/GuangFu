@@ -60,12 +60,10 @@ const routes: RouteRecordRaw[] = [
     meta: { requiresAuth: true, roles: ['ADMIN'] },
     children: [
       { path: '', redirect: '/admin/users-apis' },
-      { path: 'users-apis', name: 'AdminUsersApis', component: () => import('../views/admin/UsersApisManage.vue'), meta: { title: '用户/API' } },
-      { path: 'stations', name: 'AdminStations', component: () => import('../views/admin/StationManage.vue'), meta: { title: '电站' } },
+      { path: 'users-apis', name: 'AdminUsersApis', component: () => import('../views/admin/UsersApisManage.vue'), meta: { title: 'API 管理' } },
       { path: 'pvoutput', name: 'AdminPvOutput', component: () => import('../views/admin/PvOutputManage.vue'), meta: { title: 'PVOutput' } },
       { path: 'models', name: 'AdminModels', component: () => import('../views/admin/ModelManage.vue'), meta: { title: '模型' } },
 
-      { path: 'users', redirect: '/admin/users-apis' },
       { path: 'api-keys', redirect: '/admin/users-apis' },
       { path: 'news', component: () => import('../views/admin/NewsManage.vue'), meta: { title: '新闻管理' } }
     ]

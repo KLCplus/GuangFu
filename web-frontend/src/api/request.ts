@@ -92,9 +92,6 @@ service.interceptors.response.use(
       localStorage.removeItem('userInfo')
       window.location.href = '/login'
     }
-    if (status === 403) {
-      window.location.href = '/403'
-    }
     return Promise.reject(new Error(getErrorMessage(error)))
   }
 )

@@ -8,8 +8,7 @@ const router = useRouter()
 const userStore = useUserStore()
 
 const menus = [
-  { path: '/admin/users-apis', label: '用户/API' },
-  { path: '/admin/stations', label: '电站' },
+  { path: '/admin/users-apis', label: 'API 管理' },
   { path: '/admin/pvoutput', label: 'PVOutput' },
   { path: '/admin/models', label: '模型' },
   { path: '/admin/news', label: '新闻管理' }
@@ -187,6 +186,7 @@ function logout() {
 }
 
 .admin-main {
+  height: 100vh;
   min-width: 0;
   max-width: 100%;
   overflow-x: hidden;
@@ -229,7 +229,10 @@ function logout() {
   min-width: 0;
   max-width: 100%;
   overflow-x: hidden;
-  padding: 24px 28px 36px;
+  height: 100%;
+  padding: 18px 22px 22px;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
 }
 
 @media (max-width: 900px) {

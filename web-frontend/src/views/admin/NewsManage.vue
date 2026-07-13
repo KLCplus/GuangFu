@@ -30,12 +30,6 @@ interface NewsRow {
   createdAt: string
 }
 
-interface StatsItem {
-  label: string
-  value: string | number
-  color: string
-}
-
 type Mode = 'create' | 'edit'
 
 // ---- 筛选 ----
@@ -51,7 +45,6 @@ const page = reactive({ pageNum: 1, pageSize: 10, total: 0 })
 // ---- 状态 ----
 const loading = ref(false)
 const saving = ref(false)
-const remoteReady = ref(false)
 const dialogVisible = ref(false)
 const mode = ref<Mode>('create')
 const editingId = ref<number>()
@@ -72,71 +65,7 @@ const emptyForm = (): NewsRow => ({
 
 const form = reactive<NewsRow>(emptyForm())
 
-// ---- Mock 兜底数据 ----
-const mockRows: NewsRow[] = [
-  {
-    newsId: 1,
-    title: '平台 v2.3 模型更新通知',
-    summary: '新增 Transformer 短时预测、SimVP 云图预测模型，优化时序预测精度',
-    content: '本次更新新增了 Transformer 短时预测模型和 SimVP 云图预测模型。时序预测在 15min 粒度下 MAPE 降低约 12%，推理耗时优化 30%。新模型已在广场上架，欢迎试用。',
-    coverUrl: '',
-    newsType: 'MODEL_UPDATE',
-    targetRole: 'ALL',
-    status: 'PUBLISHED',
-    publishedAt: '2026-07-09 14:20:00',
-    createdAt: '2026-07-09 10:00:00'
-  },
-  {
-    newsId: 2,
-    title: '系统维护公告',
-    summary: '7 月 15 日凌晨 2:00-4:00 例行维护',
-    content: '平台将于 2026 年 7 月 15 日凌晨 2:00 至 4:00 进行例行维护。维护期间预测 API 可能短暂不可用，建议错开该时段调用。如有问题请联系管理员。',
-    coverUrl: '',
-    newsType: 'SYSTEM_NOTICE',
-    targetRole: 'ALL',
-    status: 'PUBLISHED',
-    publishedAt: '2026-07-08 09:00:00',
-    createdAt: '2026-07-08 08:30:00'
-  },
-  {
-    newsId: 3,
-    title: '光伏行业政策解读：分布式光伏补贴新规',
-    summary: '国家能源局发布最新分布式光伏补贴调整方案',
-    content: '国家能源局于近日发布了分布式光伏发电项目补贴调整方案。新规对户用和工商业分布式项目分别制定了差异化补贴标准，自 2026 年 8 月 1 日起执行。平台已同步更新电站收益测算模型。',
-    coverUrl: '',
-    newsType: 'INDUSTRY_NEWS',
-    targetRole: 'ALL',
-    status: 'PUBLISHED',
-    publishedAt: '2026-07-06 16:00:00',
-    createdAt: '2026-07-06 10:30:00'
-  },
-  {
-    newsId: 4,
-    title: 'API 额度调整预告',
-    summary: '下月起 API 免费额度将调整，请关注账户余额',
-    content: '为保障服务质量，自 2026 年 8 月 1 日起，免费 API 调用额度将从每月 1000 次调整为 500 次。付费用户不受影响。请提前规划 API 使用，如有需要可在广场购买更高额度套餐。',
-    coverUrl: '',
-    newsType: 'SYSTEM_NOTICE',
-    targetRole: 'USER',
-    status: 'DRAFT',
-    publishedAt: '',
-    createdAt: '2026-07-07 15:00:00'
-  },
-  {
-    newsId: 5,
-    title: '已废弃：旧版 API 迁移说明',
-    summary: 'v1 预测接口已停用，请迁移至 v2',
-    content: 'v1 版本预测接口 /openapi/v1/predict 已于 2026 年 6 月 30 日停止服务。所有用户请迁移至 v2 接口，文档详见 API 页面。',
-    coverUrl: '',
-    newsType: 'SYSTEM_NOTICE',
-    targetRole: 'API_USER',
-    status: 'OFFLINE',
-    publishedAt: '2026-06-15 10:00:00',
-    createdAt: '2026-06-10 14:00:00'
-  }
-]
-
-const rows = ref<NewsRow[]>([...mockRows])
+const rows = ref<NewsRow[]>([])
 
 // ---- 计算属性 ----
 const filteredRows = computed(() => {
@@ -158,16 +87,6 @@ const pagedRows = computed(() => {
 
 const totalFiltered = computed(() => filteredRows.value.length)
 
-const stats = computed<StatsItem[]>(() => {
-  const all = rows.value
-  return [
-    { label: '全部', value: all.length, color: '#1d6fdc' },
-    { label: '已发布', value: all.filter((r) => r.status === 'PUBLISHED').length, color: '#52c41a' },
-    { label: '草稿', value: all.filter((r) => r.status === 'DRAFT').length, color: '#faad14' },
-    { label: '已下线', value: all.filter((r) => r.status === 'OFFLINE').length, color: '#999' }
-  ]
-})
-
 // ---- API 操作 ----
 function toPayload(f: NewsRow): NewsPayload {
   return {
@@ -183,17 +102,16 @@ function toPayload(f: NewsRow): NewsPayload {
 async function fetchList() {
   loading.value = true
   try {
-    const params: AdminNewsQuery = { pageNum: 1, pageSize: 200 }
+    const params: AdminNewsQuery = { pageNum: 1, pageSize: 100 }
     if (filters.status) params.status = filters.status
     if (filters.type) params.type = filters.type
     const pageResult = await getAdminNewsList(params)
     rows.value = pageResult.records as NewsRow[]
     page.total = pageResult.total
-    remoteReady.value = true
-  } catch {
-    if (!remoteReady.value) {
-      ElMessage.info('新闻接口暂不可用，当前展示模拟数据')
-    }
+  } catch (error) {
+    rows.value = []
+    page.total = 0
+    ElMessage.error(error instanceof Error ? error.message : '新闻列表加载失败')
   } finally {
     loading.value = false
   }
@@ -236,9 +154,8 @@ async function submitForm() {
       ElMessage.success('新闻更新成功')
     }
     dialogVisible.value = false
-    remoteReady.value = true
-  } catch {
-    ElMessage.error(mode.value === 'create' ? '创建失败' : '更新失败')
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : mode.value === 'create' ? '创建失败' : '更新失败')
   } finally {
     saving.value = false
   }
@@ -250,12 +167,8 @@ async function handlePublish(row: NewsRow) {
     row.status = 'PUBLISHED'
     row.publishedAt = new Date().toISOString().replace('T', ' ').slice(0, 19)
     ElMessage.success('已发布')
-    remoteReady.value = true
-  } catch {
-    // 模拟操作
-    row.status = 'PUBLISHED'
-    row.publishedAt = new Date().toISOString().replace('T', ' ').slice(0, 19)
-    ElMessage.success('已发布（模拟）')
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : '发布失败')
   }
 }
 
@@ -264,10 +177,8 @@ async function handleOffline(row: NewsRow) {
     await offlineNews(row.newsId)
     row.status = 'OFFLINE'
     ElMessage.success('已下线')
-    remoteReady.value = true
-  } catch {
-    row.status = 'OFFLINE'
-    ElMessage.success('已下线（模拟）')
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : '下线失败')
   }
 }
 
@@ -286,10 +197,8 @@ async function handleDelete(row: NewsRow) {
     await deleteNews(row.newsId)
     rows.value = rows.value.filter((r) => r.newsId !== row.newsId)
     ElMessage.success('已删除')
-    remoteReady.value = true
-  } catch {
-    rows.value = rows.value.filter((r) => r.newsId !== row.newsId)
-    ElMessage.success('已删除（模拟）')
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : '删除失败')
   }
 }
 
@@ -333,11 +242,9 @@ onMounted(() => {
 
 <template>
   <div class="page-shell">
-    <!-- 统计卡片 -->
-    <div class="stat-row">
-      <div v-for="s in stats" :key="s.label" class="stat-card">
-        <span class="stat-label">{{ s.label }}</span>
-        <span class="stat-value" :style="{ color: s.color }">{{ s.value }}</span>
+    <div class="page-title">
+      <div>
+        <h2>新闻管理</h2>
       </div>
     </div>
 
@@ -372,7 +279,14 @@ onMounted(() => {
 
     <!-- 数据表格 -->
     <div class="page-section" style="padding:0">
-      <el-table v-loading="loading" :data="pagedRows" stripe size="default" style="width:100%">
+      <el-table
+        v-loading="loading"
+        :data="pagedRows"
+        empty-text="暂无新闻"
+        max-height="calc(100vh - 238px)"
+        stripe
+        style="width:100%"
+      >
         <el-table-column prop="newsId" label="ID" width="60" />
         <el-table-column prop="title" label="标题" min-width="180" show-overflow-tooltip />
         <el-table-column label="类型" width="100">
@@ -435,6 +349,7 @@ onMounted(() => {
       v-model="dialogVisible"
       :title="mode === 'create' ? '新建新闻' : '编辑新闻'"
       width="680px"
+      class="news-dialog"
       :close-on-click-modal="false"
       destroy-on-close
     >
@@ -446,7 +361,7 @@ onMounted(() => {
           <el-input
             v-model="form.summary"
             type="textarea"
-            :rows="2"
+            :rows="1"
             placeholder="简要摘要，将展示在列表卡片中"
             maxlength="256"
             show-word-limit
@@ -456,7 +371,7 @@ onMounted(() => {
           <el-input
             v-model="form.content"
             type="textarea"
-            :rows="5"
+            :rows="3"
             placeholder="新闻正文内容（支持纯文本）"
             maxlength="4096"
             show-word-limit
@@ -498,34 +413,6 @@ onMounted(() => {
 </template>
 
 <style scoped>
-.stat-row {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 14px;
-}
-
-.stat-card {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 18px;
-  border: 1px solid var(--admin-line);
-  border-radius: 8px;
-  background: var(--admin-surface);
-  box-shadow: var(--admin-shadow);
-}
-
-.stat-label {
-  color: var(--admin-muted);
-  font-size: 13px;
-}
-
-.stat-value {
-  font-size: 28px;
-  font-weight: 700;
-  line-height: 1;
-}
-
 .toolbar-left {
   display: flex;
   align-items: center;
@@ -542,14 +429,17 @@ onMounted(() => {
 .pagination-row {
   display: flex;
   justify-content: flex-end;
-  margin-top: 14px;
+  margin-top: 4px;
+}
+
+:deep(.news-dialog .el-dialog__body) {
+  max-height: calc(86vh - 120px);
+  overflow-y: auto;
+  padding-top: 12px;
+  padding-bottom: 8px;
 }
 
 @media (max-width: 760px) {
-  .stat-row {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
   .toolbar {
     flex-direction: column;
   }

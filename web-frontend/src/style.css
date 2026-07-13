@@ -287,17 +287,17 @@ a {
 }
 
 .admin-content .page-shell {
-  gap: 18px;
+  gap: 12px;
 }
 
 .admin-content .page-title {
   align-items: flex-start;
-  padding: 2px 0 4px;
+  padding: 0;
 }
 
 .admin-content .page-title h2 {
   color: var(--admin-ink);
-  font-size: 24px;
+  font-size: 22px;
   font-weight: 800;
   letter-spacing: 0;
 }
@@ -310,6 +310,8 @@ a {
 }
 
 .admin-content .page-section {
+  min-height: 0;
+  padding: 14px;
   max-width: 100%;
   overflow: hidden;
   border-color: var(--admin-line);
@@ -323,20 +325,20 @@ a {
 
 .admin-content .toolbar {
   align-items: flex-start;
-  margin-bottom: 16px;
+  margin-bottom: 10px;
 }
 
 .admin-content .summary-grid,
 .admin-content .stat-row {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 14px;
+  gap: 10px;
 }
 
 .admin-content .summary-card,
 .admin-content .stat-card {
   position: relative;
-  min-height: 98px;
+  min-height: 62px;
   overflow: hidden;
   border: 1px solid var(--admin-line);
   border-radius: 8px;
@@ -355,7 +357,7 @@ a {
 .admin-content .stat-value {
   color: var(--admin-ink);
   font-family: "JetBrains Mono", "SFMono-Regular", Consolas, monospace;
-  font-size: 28px;
+  font-size: 22px;
   font-weight: 800;
   letter-spacing: 0;
 }
