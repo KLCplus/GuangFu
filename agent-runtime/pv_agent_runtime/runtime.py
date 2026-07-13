@@ -32,6 +32,22 @@ class PhotovoltaicAgentRuntime:
         context["memories"] = memories
         station_id = int(context.get("stationId") or self._extract_station_id(task) or self._default_station_id(memories) or 1)
         state = AgentState(session_id=context.get("sessionId"), user_task=task, selected_skill=skill.name, memories=memories)
+        explicit_tool = self._explicit_tool_step(task, context)
+        if explicit_tool:
+            state.plan = [
+                PlanStep("understand", "Understand", "理解任务", "识别用户要查询或执行的平台功能"),
+                explicit_tool,
+                PlanStep("synthesize", "Synthesize", "生成结论", "基于工具结果回答用户"),
+            ]
+            return state
+
+        manager_steps = self._manager_steps(task, context, station_id)
+        if manager_steps:
+            state.plan = [PlanStep("understand", "Understand", "理解任务", "识别项目管家请求")]
+            state.plan.extend(manager_steps)
+            state.plan.append(PlanStep("synthesize", "Synthesize", "生成结论", "基于工具结果回答用户"))
+            return state
+
         state.plan = [
             PlanStep("understand", "Understand", "理解任务", "识别电站运行分析目标"),
             PlanStep("station", "Collect", "查询电站", "确认电站基础信息", "station.detail", {"stationId": station_id}),
@@ -251,6 +267,110 @@ class PhotovoltaicAgentRuntime:
         message = choices[0].get("message") or {}
         content = message.get("content")
         return content.strip() if isinstance(content, str) else ""
+
+
+    def _explicit_tool_step(self, task: str, context: dict[str, Any]) -> PlanStep | None:
+        tool_name = context.get("preferredTool")
+        if not isinstance(tool_name, str) or tool_name not in self.router.capabilities:
+            return None
+        arguments = context.get("toolArguments") if isinstance(context.get("toolArguments"), dict) else {}
+        return PlanStep("tool-explicit", "Collect", self._tool_title(tool_name), "按用户指定工具执行", tool_name, arguments)
+
+    def _manager_steps(self, task: str, context: dict[str, Any], station_id: int) -> list[PlanStep]:
+        text = task.lower()
+        steps: list[PlanStep] = []
+        task_id = self._extract_task_id(task)
+        report_id = self._extract_report_id(task)
+        model_id = self._extract_model_id(task)
+
+        def add(step_id: str, title: str, tool_name: str, arguments: dict[str, Any] | None = None):
+            steps.append(PlanStep(step_id, "Collect", title, self._tool_title(tool_name), tool_name, arguments or {}))
+
+        if "电站列表" in task or "所有电站" in task or "我的电站" in task:
+            add("station-list", "查询电站列表", "station.list")
+        elif any(word in task for word in ("电站", "站点")) and not any(word in task for word in ("运行", "分析", "天气", "预测")):
+            add("station-detail", "查询电站", "station.detail", {"stationId": station_id})
+
+        if "城市天气" in task or "当地天气" in task or "天气" in task and "电站" not in task and not self._extract_station_id(task):
+            location = context.get("location") or self._extract_location(task)
+            add("weather-location", "查询地点天气", "weather.location", {"location": location} if location else {})
+
+        if "预测详情" in task and task_id:
+            add("prediction-detail", "查询预测详情", "prediction.detail", {"taskId": task_id})
+        elif "预测" in task and not any(word in task for word in ("运行", "综合分析")):
+            add("prediction-list", "查询预测列表", "prediction.list", {"stationId": station_id})
+
+        if "报告详情" in task and report_id:
+            add("report-detail", "查询报告详情", "report.detail", {"reportId": report_id})
+        elif "历史报告" in task or "报告列表" in task or ("报告" in task and "生成" not in task and "创建" not in task):
+            add("report-list", "查询报告列表", "report.list", {"stationId": station_id} if self._extract_station_id(task) else {})
+        elif "会话报告" in task or "工作报告" in task:
+            add("conversation-report", "生成会话报告", "report.conversation")
+
+        if "模型详情" in task and model_id:
+            add("model-detail", "查询模型详情", "model.detail", {"modelId": model_id})
+        elif "模型" in task and "运行" not in task and "预测" not in task:
+            add("model-list", "查询模型列表", "model.list")
+
+        if "api" in text or "接口" in task:
+            if "用量" in task or "调用" in task or "日志" in task:
+                add("api-usage", "查询 API 用量", "api.usage")
+            elif "创建" in task or "新增" in task:
+                add("api-create", "创建 API Key", "api.create", {"name": "Agent 创建的 API Key"})
+            elif "重置" in task:
+                add("api-reset", "重置 API Key", "api.reset", self._id_argument(task, "apiKeyId"))
+            elif "删除" in task:
+                add("api-delete", "删除 API Key", "api.delete", self._id_argument(task, "apiKeyId"))
+            else:
+                add("api-list", "查询 API Key", "api.list")
+
+        if "钱包" in task or "余额" in task or "账单" in task:
+            add("wallet-balance", "查询钱包余额", "wallet.balance")
+
+        if "市场" in task or "套餐" in task or "购买" in task:
+            if "购买" in task:
+                add("marketplace-purchase", "购买套餐", "marketplace.purchase", self._id_argument(task, "planId"))
+            else:
+                add("marketplace-list", "查询套餐", "marketplace.list")
+
+        if "新闻" in task or "通知" in task or "公告" in task:
+            add("news-list", "查询新闻通知", "news.list")
+
+        if "管理员" in task or "admin" in text:
+            if "api" in text or "接口" in task:
+                add("admin-user-api-list", "管理员查询用户 API", "admin.userApi.list")
+
+        return steps
+
+    def _tool_title(self, tool_name: str) -> str:
+        return self.router.capabilities.get(tool_name).description if tool_name in self.router.capabilities else tool_name
+
+    def _extract_task_id(self, task: str) -> int | None:
+        if "任务" not in task and "task" not in task.lower():
+            return None
+        return self._extract_station_id(task)
+
+    def _extract_report_id(self, task: str) -> int | None:
+        if "报告" not in task and "report" not in task.lower():
+            return None
+        return self._extract_station_id(task)
+
+    def _extract_model_id(self, task: str) -> int | None:
+        if "模型" not in task and "model" not in task.lower():
+            return None
+        return self._extract_station_id(task)
+
+    def _id_argument(self, task: str, key: str) -> dict[str, Any]:
+        value = self._extract_station_id(task)
+        return {key: value} if value else {}
+
+    def _extract_location(self, task: str) -> str | None:
+        for suffix in ("天气", "的天气"):
+            if suffix in task:
+                value = task.split(suffix)[0].strip(" ，,。查询查看")
+                if value and len(value) <= 20:
+                    return value
+        return None
 
     def _extract_station_id(self, task: str) -> int | None:
         digits = "".join(ch if ch.isdigit() else " " for ch in task).split()

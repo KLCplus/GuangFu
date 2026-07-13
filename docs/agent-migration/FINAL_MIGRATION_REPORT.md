@@ -16,6 +16,7 @@ This is not final acceptance. It records the current migration checkpoint.
 - Approval-required report generation flow with `ApprovalActionCard`, `agent_approval`, and approved continuation.
 - Migrated E2E script at `scripts/migrated-agent-e2e.mjs`.
 - Vue `/reports` Agent workbench renders migrated UI instructions through a whitelisted `PvGenerativeUi` component.
+- Migrated runtime now has a broad platform tool catalog and basic project-manager planner for station/weather/prediction/report/model/cloud/API/wallet/marketplace/news/admin requests.
 
 ## Verified
 

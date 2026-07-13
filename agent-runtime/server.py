@@ -32,7 +32,7 @@ class RuntimeHandler(BaseHTTPRequestHandler):
             context = payload.get("context") or {}
             if payload.get("sessionId") is not None:
                 context.setdefault("sessionId", payload.get("sessionId"))
-            for key in ("userId", "username", "roles", "approved"):
+            for key in ("userId", "username", "roles", "approved", "preferredTool", "toolArguments", "allowedTools"):
                 if payload.get(key) is not None:
                     context.setdefault(key, payload.get(key))
         except Exception as exc:

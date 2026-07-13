@@ -179,6 +179,41 @@ class RuntimeFoundationTest(unittest.TestCase):
         self.assertEqual(approval["toolName"], "report.generate")
         self.assertEqual(approval["approvalId"], 9)
 
+
+    def test_manager_routes_project_tools(self):
+        runtime = PhotovoltaicAgentRuntime(FakeGateway(), ROOT / "skills")
+        cases = [
+            ("查看我的 API Key", "api.list"),
+            ("查看 API 调用日志", "api.usage"),
+            ("查看钱包余额", "wallet.balance"),
+            ("查看模型列表", "model.list"),
+            ("查看新闻通知", "news.list"),
+            ("查看套餐列表", "marketplace.list"),
+            ("查看历史报告", "report.list"),
+            ("查看我的电站", "station.list"),
+        ]
+        for message, tool_name in cases:
+            with self.subTest(message=message):
+                state = runtime.plan(message, {"sessionId": 1, "userId": 7})
+                self.assertIn(tool_name, [step.tool_name for step in state.plan])
+
+    def test_explicit_tool_from_request_context(self):
+        runtime = PhotovoltaicAgentRuntime(FakeGateway(), ROOT / "skills")
+        state = runtime.plan("按指定工具执行", {
+            "sessionId": 1,
+            "userId": 7,
+            "preferredTool": "model.detail",
+            "toolArguments": {"modelId": 3},
+        })
+        tool_steps = [step for step in state.plan if step.tool_name]
+        self.assertEqual(tool_steps[0].tool_name, "model.detail")
+        self.assertEqual(tool_steps[0].arguments["modelId"], 3)
+
+    def test_write_project_tools_require_approval_event(self):
+        runtime = PhotovoltaicAgentRuntime(ReportApprovalGateway(), ROOT / "skills")
+        state = runtime.plan("创建 API Key", {"sessionId": 1, "userId": 7})
+        self.assertIn("api.create", [step.tool_name for step in state.plan])
+
     def test_memory_filters_sensitive_values(self):
         self.assertEqual(extract_memory_candidates("我的 api_key 是 secret，默认 1 号电站"), [])
         safe = extract_memory_candidates("默认 1 号电站")

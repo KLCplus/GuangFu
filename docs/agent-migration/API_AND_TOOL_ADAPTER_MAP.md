@@ -2,11 +2,27 @@
 
 | Tool | Spring source today | Internal gateway target | Runtime use |
 |---|---|---|---|
+| `station.list` | `StationListTool` | `/api/internal/agent/tools/station.list/execute` | List accessible stations |
 | `station.detail` | `StationDetailTool` / `StationService.detail` | `/api/internal/agent/tools/station.detail/execute` | Required for first chain |
+| `station.create/update/disable/delete` | Station write tools | `/api/internal/agent/tools/{tool}/execute` | Admin/write, approval required |
 | `weather.current` | `WeatherCurrentTool` / `WeatherService.current` | `/api/internal/agent/tools/weather.current/execute` | Required for first chain |
+| `weather.location` | `WeatherLocationTool` | `/api/internal/agent/tools/weather.location/execute` | Location weather query |
 | `prediction.list` | `PredictionListTool` / `PredictionService.history` | `/api/internal/agent/tools/prediction.list/execute` | Required for first chain |
 | `prediction.detail` | `PredictionDetailTool` / `PredictionService.detail/results` | `/api/internal/agent/tools/prediction.detail/execute` | Optional follow-up when list has records |
+| `report.list/detail` | Report read tools | `/api/internal/agent/tools/{tool}/execute` | Report lookup |
 | `report.generate` | `ReportGenerateTool` / `AnalysisService.report` | `/api/internal/agent/tools/report.generate/execute` | Approval required |
+| `report.conversation` | `ConversationReportTool` | `/api/internal/agent/tools/report.conversation/execute` | Conversation work report |
+| `model.list/detail` | Model read tools | `/api/internal/agent/tools/{tool}/execute` | Model catalog lookup |
+| `model.run` | `ModelRunTool` | `/api/internal/agent/tools/model.run/execute` | Cost/write, approval required |
+| `cloud.predict` | `CloudPredictTool` | `/api/internal/agent/tools/cloud.predict/execute` | Cost, approval required |
+| `api.list/usage` | API read tools | `/api/internal/agent/tools/{tool}/execute` | API key summaries and usage |
+| `api.create/reset/delete` | API write tools | `/api/internal/agent/tools/{tool}/execute` | Approval required; full keys are not exposed |
+| `wallet.balance` | `WalletBalanceTool` | `/api/internal/agent/tools/wallet.balance/execute` | Wallet summary |
+| `marketplace.list` | `MarketplaceListTool` | `/api/internal/agent/tools/marketplace.list/execute` | Marketplace packages |
+| `marketplace.purchase` | disabled purchase tool | `/api/internal/agent/tools/marketplace.purchase/execute` | Registered but disabled until real purchase API exists |
+| `news.list` | `NewsListTool` | `/api/internal/agent/tools/news.list/execute` | News/notification lookup |
+| `admin.userApi.list` | `AdminUserApiListTool` | `/api/internal/agent/tools/admin.userApi.list/execute` | Admin, approval required |
+| `admin.station.manage/admin.model.manage` | disabled broad admin tools | `/api/internal/agent/tools/{tool}/execute` | Registered as disabled; use precise station/model tools |
 
 Gateway request:
 

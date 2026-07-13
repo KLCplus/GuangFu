@@ -87,6 +87,15 @@ public class MigratedAgentRuntimeProxyService {
             payload.put("roles", roles(user));
             payload.put("message", request.message());
             payload.put("context", request.context() == null ? Map.of() : request.context());
+            if (request.preferredTool() != null && !request.preferredTool().isBlank()) {
+                payload.put("preferredTool", request.preferredTool());
+            }
+            if (request.toolArguments() != null && !request.toolArguments().isEmpty()) {
+                payload.put("toolArguments", request.toolArguments());
+            }
+            if (request.allowedTools() != null && !request.allowedTools().isEmpty()) {
+                payload.put("allowedTools", request.allowedTools());
+            }
 
             HttpRequest httpRequest = HttpRequest.newBuilder()
                 .uri(URI.create(runtimeUrl.replaceAll("/+$", "") + "/run/stream"))

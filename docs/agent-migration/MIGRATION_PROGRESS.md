@@ -29,6 +29,8 @@
 - Added `scripts/migrated-agent-e2e.mjs` and verified migrated analysis, UI instructions, report approval, approval continuation, and report generation end-to-end.
 - Migrated E2E passed locally with `reportId=5`.
 - Added Vue whitelisted Generative UI renderer component and wired `/reports` Agent workbench to render migrated `ui_instruction` cards without model-generated HTML.
+- Expanded migrated runtime capability catalog and rule planner across station, weather, prediction, report, model, cloud, API, wallet, marketplace, news, and admin tools.
+- Added request-level `preferredTool`/`toolArguments` passthrough for precise tool execution from platform UI/API.
 
 ## Not Complete
 
