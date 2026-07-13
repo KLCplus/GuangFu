@@ -8,6 +8,7 @@ import com.example.pvplatform.module.model.dto.UpdateModelRequest;
 import com.example.pvplatform.module.model.vo.ModelDetailVO;
 import com.example.pvplatform.module.model.vo.ModelListItemVO;
 import com.example.pvplatform.module.model.vo.ModelMetricVO;
+import com.example.pvplatform.module.model.vo.MiniappModelVO;
 import com.example.pvplatform.persistence.entity.ModelInfoDO;
 import com.example.pvplatform.persistence.entity.ModelMetricDO;
 import com.example.pvplatform.persistence.mapper.ModelInfoMapper;
@@ -80,9 +81,39 @@ public class ModelService {
         return toDetailVO(model);
     }
 
+    // ── 小程序公开展示接口 ────────────────────────────────────
+
+    @Cacheable(cacheNames = "model:miniapp-public-list", key = "#type == null ? 'all' : #type")
+    public List<MiniappModelVO> miniappPublicList(String type) {
+        var query = Wrappers.<ModelInfoDO>lambdaQuery()
+                .eq(ModelInfoDO::getStatus, "ONLINE")
+                .eq(ModelInfoDO::getMarketplaceVisible, true)
+                .eq(type != null && !type.isBlank(), ModelInfoDO::getModelType, type)
+                .orderByDesc(ModelInfoDO::getIsFeatured)
+                .orderByAsc(ModelInfoDO::getSortOrder)
+                .orderByAsc(ModelInfoDO::getModelId);
+        return modelInfoMapper.selectList(query).stream()
+                .map(this::toMiniappModelVO)
+                .toList();
+    }
+
+    @Cacheable(cacheNames = "model:miniapp-public-detail", key = "#modelId")
+    public MiniappModelVO miniappPublicDetail(Long modelId) {
+        ModelInfoDO model = modelInfoMapper.selectOne(Wrappers.<ModelInfoDO>lambdaQuery()
+                .eq(ModelInfoDO::getModelId, modelId)
+                .eq(ModelInfoDO::getStatus, "ONLINE")
+                .eq(ModelInfoDO::getMarketplaceVisible, true)
+                .last("LIMIT 1"));
+        if (model == null) {
+            throw new BusinessException(404, "模型不存在或尚未上线");
+        }
+        return toMiniappModelVO(model);
+    }
+
     // ── 管理员接口 ──────────────────────────────────────────────
 
-    @CacheEvict(cacheNames = {"model:list", "model:admin-list", "model:detail"}, allEntries = true)
+    @CacheEvict(cacheNames = {"model:list", "model:admin-list", "model:detail",
+        "model:miniapp-public-list", "model:miniapp-public-detail"}, allEntries = true)
     public Long create(CreateModelRequest request) {
         validationService.validateCreate(
             request.modelCode(), request.modelType(), null,
@@ -112,7 +143,8 @@ public class ModelService {
         return model.getModelId();
     }
 
-    @CacheEvict(cacheNames = {"model:list", "model:admin-list", "model:detail"}, allEntries = true)
+    @CacheEvict(cacheNames = {"model:list", "model:admin-list", "model:detail",
+        "model:miniapp-public-list", "model:miniapp-public-detail"}, allEntries = true)
     public void update(Long modelId, UpdateModelRequest request) {
         ModelInfoDO existing = requireModel(modelId);
 
@@ -141,7 +173,8 @@ public class ModelService {
         modelInfoMapper.updateById(model);
     }
 
-    @CacheEvict(cacheNames = {"model:list", "model:admin-list", "model:detail"}, allEntries = true)
+    @CacheEvict(cacheNames = {"model:list", "model:admin-list", "model:detail",
+        "model:miniapp-public-list", "model:miniapp-public-detail"}, allEntries = true)
     public void updateStatus(Long modelId, String newStatus) {
         ModelInfoDO existing = requireModel(modelId);
         validationService.validateStatusTransition(existing.getStatus(), newStatus);
@@ -216,6 +249,14 @@ public class ModelService {
             parseStringList(m.getLimitations()), parseStringList(m.getSupportedInputModes()),
             parseObject(m.getReferenceInfo()), visible(m), Boolean.TRUE.equals(m.getIsFeatured()),
             sortOrder(m), metrics(m.getModelId()), m.getCreatedAt(), m.getUpdatedAt());
+    }
+
+    private MiniappModelVO toMiniappModelVO(ModelInfoDO m) {
+        return new MiniappModelVO(m.getModelId(), m.getModelName(), m.getModelType(),
+            m.getModelVersion(), m.getStatus(), firstText(m.getShortDescription(), m.getDescription()),
+            parseStringList(m.getTags()), m.getModelFamily(), m.getProvider(), m.getReleaseYear(),
+            parseStringList(m.getCapabilities()), parseStringList(m.getApplicableScenarios()),
+            parseStringList(m.getAdvantages()), parseStringList(m.getLimitations()));
     }
 
     private List<ModelMetricVO> metrics(Long modelId) {

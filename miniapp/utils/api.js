@@ -23,6 +23,11 @@ const modelApi = {
   detail: (id) => get(`/api/models/${id}`)
 }
 
+const miniappModelApi = {
+  list: (params) => get('/api/miniapp/models', params),
+  detail: (id) => get(`/api/miniapp/models/${id}`)
+}
+
 const newsApi = {
   list: (params) => get('/api/news', params),
   detail: (id) => get(`/api/news/${id}`),
@@ -32,4 +37,4 @@ const newsApi = {
   markAllRead: () => put('/api/notifications/read-all')
 }
 
-module.exports = { authApi, openApi, modelApi, newsApi }
+module.exports = { authApi, openApi, modelApi, miniappModelApi, newsApi }
