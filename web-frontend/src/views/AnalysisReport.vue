@@ -64,6 +64,7 @@ interface PvUiInstruction {
 
 interface ChatMessage {
   id: number
+  anchorId: string
   role: MessageRole
   kind: MessageKind
   content: string
@@ -96,6 +97,8 @@ const showSlashMenu = ref(false)
 const slashActiveIndex = ref(0)
 const composerText = ref('')
 const composerRef = ref<HTMLTextAreaElement>()
+const messageStreamRef = ref<HTMLElement>()
+const activeQuestionId = ref('')
 const loadingHistory = ref(false)
 const loadingMessages = ref(false)
 const running = ref(false)
@@ -138,6 +141,13 @@ const filteredCommands = computed(() => {
   const command = text.split(/\s+/)[0]
   return slashCommands.filter((item) => item.command.includes(command))
 })
+const questionAnchors = computed(() => messages.value
+  .filter((message) => message.role === 'user' && message.content.trim())
+  .map((message, index) => ({
+    id: message.anchorId,
+    index: index + 1,
+    title: compactQuestion(message.content)
+  })))
 
 function nowTime() {
   return new Date().toLocaleString('zh-CN', {
@@ -161,6 +171,16 @@ function firstNumber(...values: unknown[]) {
     if (Number.isFinite(number) && number > 0) return number
   }
   return null
+}
+
+function messageAnchorId(id: number) {
+  return `agent-message-${String(id).replace(/[^\w-]/g, '-')}`
+}
+
+function compactQuestion(value: string) {
+  const text = value.replace(/\s+/g, ' ').trim()
+  if (!text) return '未命名问题'
+  return text.length > 34 ? `${text.slice(0, 34)}...` : text
 }
 
 function recordValue(value: unknown): Record<string, unknown> {
@@ -268,8 +288,10 @@ function activeStep(message: ChatMessage) {
 }
 
 function createSystemMessage(): ChatMessage {
+  const id = Date.now()
   return {
-    id: Date.now(),
+    id,
+    anchorId: messageAnchorId(id),
     role: 'system',
     kind: 'text',
     content: '说出你要完成的任务。业务数据会由 Agent 自动选择工具查询。',
@@ -277,26 +299,56 @@ function createSystemMessage(): ChatMessage {
   }
 }
 
-function addMessage(message: Omit<ChatMessage, 'id' | 'time'>) {
+function addMessage(message: Omit<ChatMessage, 'id' | 'time' | 'anchorId'> & { anchorId?: string }) {
+  const id = Date.now() + Math.random()
   const item: ChatMessage = {
     ...message,
-    id: Date.now() + Math.random(),
+    id,
+    anchorId: message.anchorId || messageAnchorId(id),
     time: nowTime()
   }
   messages.value.push(item)
+  if (item.role === 'user') activeQuestionId.value = item.anchorId
   scrollToBottom('smooth', true)
   return item
 }
 
 function scrollToBottom(behavior: ScrollBehavior = 'smooth', force = false) {
   nextTick(() => {
-    const stream = document.querySelector('.message-stream')
+    const stream = messageStreamRef.value
     if (!stream) return
-    const distance = stream.scrollHeight - stream.scrollTop - stream.clientHeight
-    if (force || distance < 180) {
-      stream.scrollTo({ top: stream.scrollHeight, behavior })
-    }
+    requestAnimationFrame(() => {
+      const distance = stream.scrollHeight - stream.scrollTop - stream.clientHeight
+      if (force || distance < 220) {
+        stream.scrollTo({ top: stream.scrollHeight, behavior })
+      }
+    })
   })
+}
+
+function scrollToMessage(anchorId: string) {
+  const element = document.getElementById(anchorId)
+  if (!element) return
+  activeQuestionId.value = anchorId
+  element.scrollIntoView({ behavior: 'smooth', block: 'start' })
+}
+
+function onMessageScroll() {
+  const stream = messageStreamRef.value
+  if (!stream || questionAnchors.value.length === 0) return
+  const top = stream.getBoundingClientRect().top
+  let best = questionAnchors.value[0].id
+  let bestDistance = Number.POSITIVE_INFINITY
+  for (const question of questionAnchors.value) {
+    const element = document.getElementById(question.id)
+    if (!element) continue
+    const distance = Math.abs(element.getBoundingClientRect().top - top - 16)
+    if (distance < bestDistance) {
+      bestDistance = distance
+      best = question.id
+    }
+  }
+  activeQuestionId.value = best
 }
 
 function activeAssistant() {
@@ -412,6 +464,19 @@ function humanError(error: unknown) {
 
 function sessionTime(session: AgentSession) {
   return firstText(session.updatedAt, session.createdAt) || '无时间'
+}
+
+function sessionTitle(session: AgentSession) {
+  const title = firstText(session.title)
+  if (!title || title === '新的 Agent 会话') return '未命名任务'
+  return title
+}
+
+function sessionDescription(session: AgentSession) {
+  const status = sessionStatus(session)
+  const time = sessionTime(session)
+  if (!firstText(session.title) || session.title === '新的 Agent 会话') return `${status} · 等待首次提问 · ${time}`
+  return `${status} · 最近更新 ${time}`
 }
 
 function sessionStatus(session: AgentSession) {
@@ -540,6 +605,7 @@ function mapHistoryMessage(record: AgentMessageRecord): ChatMessage {
   const tools = (record.toolCalls || []).filter((tool) => tool.status !== 'AWAITING_APPROVAL').map(mapToolRecord)
   return {
     id: record.messageId,
+    anchorId: messageAnchorId(record.messageId),
     role,
     kind: pendingApproval ? 'approval' : tools.some((tool) => tool.status === 'failed') ? 'error' : 'text',
     content: record.content || (pendingApproval ? 'Agent 需要你的确认' : ''),
@@ -1103,8 +1169,8 @@ onMounted(() => {
             >
               <span class="status-dot"></span>
               <span class="session-text">
-                <strong>{{ session.title }}</strong>
-                <small>{{ sessionTime(session) }} · {{ sessionStatus(session) }}</small>
+                <strong>{{ sessionTitle(session) }}</strong>
+                <small>{{ sessionDescription(session) }}</small>
               </span>
               <el-dropdown trigger="click" @command="(cmd: string) => handleSessionCommand(cmd, session)">
                 <span class="more-button" @click.stop>...</span>
@@ -1133,8 +1199,8 @@ onMounted(() => {
             >
               <span class="status-dot"></span>
               <span class="session-text">
-                <strong>{{ session.title }}</strong>
-                <small>{{ sessionTime(session) }} · {{ sessionStatus(session) }}</small>
+                <strong>{{ sessionTitle(session) }}</strong>
+                <small>{{ sessionDescription(session) }}</small>
               </span>
               <el-dropdown trigger="click" @command="(cmd: string) => handleSessionCommand(cmd, session)">
                 <span class="more-button" @click.stop>...</span>
@@ -1166,8 +1232,8 @@ onMounted(() => {
             >
               <span class="status-dot muted"></span>
               <span class="session-text">
-                <strong>{{ session.title }}</strong>
-                <small>{{ sessionTime(session) }} · 已归档</small>
+                <strong>{{ sessionTitle(session) }}</strong>
+                <small>{{ sessionDescription(session) }}</small>
               </span>
               <el-dropdown trigger="click" @command="(cmd: string) => handleSessionCommand(cmd, session)">
                 <span class="more-button" @click.stop>...</span>
@@ -1213,10 +1279,16 @@ onMounted(() => {
         </div>
       </header>
 
-      <section v-loading="loadingMessages" class="message-stream">
+      <section
+        ref="messageStreamRef"
+        v-loading="loadingMessages"
+        class="message-stream"
+        @scroll="onMessageScroll"
+      >
         <div
           v-for="message in messages"
           :key="message.id"
+          :id="message.anchorId"
           class="message-row"
           :class="[`role-${message.role}`, `kind-${message.kind}`]"
         >
@@ -1236,7 +1308,11 @@ onMounted(() => {
               </div>
             </div>
 
-            <div v-if="message.steps?.length" class="run-card">
+            <details v-if="message.steps?.length" class="run-card">
+              <summary>
+                <span>执行轨迹</span>
+                <em>{{ message.steps.length }} 个步骤</em>
+              </summary>
               <div class="run-steps">
                 <div v-for="step in message.steps" :key="step.key" class="run-step" :class="step.status">
                   <span>{{ stepMark(step.status) }}</span>
@@ -1246,7 +1322,7 @@ onMounted(() => {
                   </div>
                 </div>
               </div>
-            </div>
+            </details>
 
             <div
               v-if="message.content"
@@ -1292,7 +1368,7 @@ onMounted(() => {
             </div>
 
             <div v-if="message.finalActions && message.role === 'assistant'" class="final-actions">
-              <button type="button" @click="continueWith('总结当前聊天内容并生成正式 Markdown 工作报告，包含电子签名栏')">生成报告</button>
+              <button class="primary-action" type="button" @click="continueWith('总结当前聊天内容并生成正式 Markdown 工作报告，包含电子签名栏')">生成报告</button>
               <button v-if="isFormalReport(message)" type="button" @click="openSignatureDialog(message)">填写签名</button>
               <button v-if="isFormalReport(message)" type="button" @click="printReport(message)">打印报告</button>
               <button type="button" @click="copyMessage(message)">复制结论</button>
@@ -1301,6 +1377,19 @@ onMounted(() => {
           </article>
         </div>
       </section>
+
+      <nav v-if="questionAnchors.length > 0" class="question-rail" aria-label="问题定位">
+        <button
+          v-for="question in questionAnchors"
+          :key="question.id"
+          type="button"
+          :class="{ active: activeQuestionId === question.id }"
+          @click="scrollToMessage(question.id)"
+        >
+          <span>{{ question.index }}</span>
+          <strong>{{ question.title }}</strong>
+        </button>
+      </nav>
 
       <section class="composer-wrap">
         <div v-if="showSlashMenu && filteredCommands.length > 0" class="slash-menu">
@@ -1447,6 +1536,26 @@ button {
   min-height: 0;
   flex: 1;
   overflow: auto;
+  scrollbar-gutter: stable;
+}
+
+.sessions::-webkit-scrollbar,
+.message-stream::-webkit-scrollbar {
+  width: 10px;
+}
+
+.sessions::-webkit-scrollbar-thumb,
+.message-stream::-webkit-scrollbar-thumb {
+  border: 3px solid transparent;
+  border-radius: 999px;
+  background: rgba(99, 116, 145, 0.34);
+  background-clip: content-box;
+}
+
+.sessions::-webkit-scrollbar-thumb:hover,
+.message-stream::-webkit-scrollbar-thumb:hover {
+  background: rgba(74, 89, 116, 0.48);
+  background-clip: content-box;
 }
 
 .session-group {
@@ -1464,7 +1573,7 @@ button {
 
 .session-item {
   width: 100%;
-  min-height: 54px;
+  min-height: 62px;
   display: grid;
   grid-template-columns: 10px minmax(0, 1fr) 24px;
   align-items: center;
@@ -1497,7 +1606,7 @@ button {
 .session-text {
   min-width: 0;
   display: grid;
-  gap: 3px;
+  gap: 5px;
 }
 
 .session-text strong,
@@ -1514,6 +1623,7 @@ button {
 .session-text small {
   color: #7a879a;
   font-size: 12px;
+  line-height: 1.35;
 }
 
 .more-button {
@@ -1532,6 +1642,7 @@ button {
 }
 
 .chat-stage {
+  position: relative;
   min-width: 0;
   min-height: 0;
   height: 100%;
@@ -1617,9 +1728,10 @@ button {
   min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
-  padding: 28px 40px 152px;
+  padding: 28px 248px 28px 40px;
   scroll-behavior: smooth;
   overscroll-behavior: contain;
+  scrollbar-gutter: stable;
 }
 
 .message-row {
@@ -1628,6 +1740,7 @@ button {
   margin: 0 auto 22px;
   width: 100%;
   max-width: 1120px;
+  scroll-margin-top: 18px;
 }
 
 .message-row.role-user {
@@ -1655,7 +1768,7 @@ button {
 
 .role-user .message-bubble {
   max-width: min(720px, calc(100% - 56px));
-  padding: 12px 16px;
+  padding: 13px 16px 14px;
   border: 1px solid rgba(86, 128, 210, 0.18);
   background: #edf4ff;
   color: #1c2c46;
@@ -1686,6 +1799,8 @@ button {
 
 .role-user .message-meta {
   color: #647798;
+  justify-content: flex-end;
+  margin-bottom: 8px;
 }
 
 .message-text {
@@ -1717,15 +1832,12 @@ button {
 }
 
 .process-strip {
-  position: sticky;
-  top: 0;
-  z-index: 2;
   display: grid;
   grid-template-columns: 24px minmax(0, 1fr);
   gap: 10px;
   align-items: center;
-  max-width: 280px;
-  padding: 10px 12px;
+  max-width: 440px;
+  padding: 9px 11px;
   border: 1px solid rgba(130, 150, 180, 0.18);
   border-radius: 12px;
   background: rgba(255, 255, 255, 0.96);
@@ -1739,6 +1851,10 @@ button {
 
 .process-strip small {
   color: #6b778c;
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .process-pulse {
@@ -1765,10 +1881,41 @@ button {
 }
 
 .run-card {
-  max-width: 300px;
-  border-left: 2px solid rgba(29, 111, 220, 0.22);
-  background: transparent;
+  max-width: 560px;
+  border: 1px solid rgba(130, 150, 180, 0.16);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.72);
   overflow: hidden;
+}
+
+.run-card summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 9px 12px;
+  color: #40506b;
+  cursor: pointer;
+  list-style: none;
+}
+
+.run-card summary::-webkit-details-marker {
+  display: none;
+}
+
+.run-card summary span {
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.run-card summary em {
+  color: #7a879a;
+  font-size: 12px;
+  font-style: normal;
+}
+
+.run-card[open] summary {
+  border-bottom: 1px solid rgba(130, 150, 180, 0.12);
 }
 
 .run-steps {
@@ -2045,19 +2192,26 @@ button {
 .final-actions {
   gap: 8px;
   flex-wrap: wrap;
+  max-width: 820px;
 }
 
 .final-actions button {
   min-height: 34px;
-  border: 1px solid rgba(130, 150, 180, 0.18);
-  border-radius: 8px;
-  padding: 7px 13px;
-  background: #f8fbff;
-  color: #34445f;
+  border: 1px solid rgba(94, 112, 144, 0.18);
+  border-radius: 999px;
+  padding: 7px 14px;
+  background: rgba(255, 255, 255, 0.92);
+  color: #2b3950;
   cursor: pointer;
+  box-shadow: 0 8px 22px rgba(70, 96, 140, 0.06);
 }
 
-.final-actions button:first-child {
+.final-actions button:hover {
+  border-color: rgba(29, 111, 220, 0.34);
+  color: #1d6fdc;
+}
+
+.final-actions button.primary-action {
   border-color: #1f6eea;
   background: #1f6eea;
   color: #fff;
@@ -2067,7 +2221,7 @@ button {
   position: relative;
   max-width: 980px;
   width: calc(100% - 64px);
-  margin: -122px auto 18px;
+  margin: 0 auto 18px;
   pointer-events: none;
 }
 
@@ -2083,6 +2237,71 @@ button {
   background: rgba(255, 255, 255, 0.98);
   box-shadow: 0 18px 44px rgba(70, 96, 140, 0.14);
   pointer-events: auto;
+}
+
+.question-rail {
+  position: absolute;
+  top: 78px;
+  right: 22px;
+  bottom: 98px;
+  z-index: 4;
+  width: 198px;
+  display: grid;
+  align-content: start;
+  gap: 6px;
+  overflow-y: auto;
+  padding: 2px 2px 12px;
+  opacity: 0.38;
+  transition: opacity 0.18s ease, transform 0.18s ease;
+  scrollbar-width: thin;
+}
+
+.question-rail:hover,
+.question-rail:focus-within {
+  opacity: 1;
+}
+
+.question-rail button {
+  min-height: 40px;
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+  border: 1px solid rgba(130, 150, 180, 0.14);
+  border-radius: 10px;
+  padding: 7px 9px;
+  background: rgba(255, 255, 255, 0.78);
+  color: #5e6d84;
+  text-align: left;
+  cursor: pointer;
+  box-shadow: 0 8px 22px rgba(70, 96, 140, 0.06);
+}
+
+.question-rail button:hover,
+.question-rail button.active {
+  border-color: rgba(29, 111, 220, 0.34);
+  background: rgba(239, 246, 255, 0.98);
+  color: #1d4f9f;
+}
+
+.question-rail span {
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: rgba(29, 111, 220, 0.10);
+  color: #1d6fdc;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.question-rail strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
 }
 
 .composer textarea {
@@ -2275,6 +2494,10 @@ button {
   .message-stream {
     padding-left: 16px;
     padding-right: 16px;
+  }
+
+  .question-rail {
+    display: none;
   }
 
   .composer-wrap {
