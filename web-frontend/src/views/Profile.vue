@@ -400,7 +400,6 @@ function recordTypeLabel(type: string) {
     <div class="page-heading">
       <div>
         <h1>我的</h1>
-        <p>管理个人资料、安全设置、API 权益和钱包信息</p>
       </div>
       <div class="heading-actions">
         <el-tag :type="sourceType(dataSource)" effect="light">{{ sourceLabel(dataSource) }}</el-tag>

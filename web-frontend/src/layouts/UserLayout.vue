@@ -36,7 +36,7 @@ function logout() {
 </script>
 
 <template>
-  <div class="app-layout">
+  <div class="app-layout user-layout">
     <aside class="app-sidebar">
       <router-link class="app-logo" to="/dashboard">
         <span class="brand-mark">PV</span>

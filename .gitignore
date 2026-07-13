@@ -39,3 +39,7 @@ backend/.env.*
 backend/secrets/*.pem
 backend/secrets/*.key
 backend/secrets/*.p8
+
+# Windows local launcher
+/start-local.ps1
+/start-local.cmd

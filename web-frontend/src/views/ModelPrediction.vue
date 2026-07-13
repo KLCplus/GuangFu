@@ -281,6 +281,10 @@ function formatDateTime(date: Date) {
 
 <template>
   <section class="page-shell model-page" v-loading="loading">
+    <div class="page-heading">
+      <h1>模型预测</h1>
+    </div>
+
     <section class="page-section control-panel">
       <div class="control-grid">
         <div class="control-group">

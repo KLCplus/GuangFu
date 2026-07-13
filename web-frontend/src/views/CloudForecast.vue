@@ -277,6 +277,10 @@ function createCloudSvg(index: number, type: 'history' | 'forecast') {
 
 <template>
   <section class="page-shell cloud-page">
+    <div class="page-heading">
+      <h1>云图预测</h1>
+    </div>
+
     <div class="cloud-layout">
       <section class="page-section upload-panel">
         <div class="panel-head">

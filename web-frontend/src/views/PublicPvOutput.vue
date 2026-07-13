@@ -132,9 +132,7 @@ function message(error: unknown, fallback: string) {
   <div class="page-shell public-pvoutput">
     <div class="page-title">
       <div>
-        <p class="page-kicker">PVOutput</p>
-        <h2>公开电站展示</h2>
-        <p>后端定时拉取 PVOutput API，入库后由本页面读取数据库展示。</p>
+        <h1>公开电站</h1>
       </div>
       <el-button :loading="loading" @click="fetchStations">刷新列表</el-button>
     </div>

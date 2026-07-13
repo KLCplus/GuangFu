@@ -422,6 +422,10 @@ function formatSchema(value?: string | Record<string, unknown>) {
 
 <template>
   <section class="page-shell marketplace-page">
+    <div class="page-heading">
+      <h1>模型广场</h1>
+    </div>
+
     <section class="marketplace-toolbar" aria-label="模型搜索与筛选">
       <el-button class="filter-toggle" plain @click="filterVisible = !filterVisible">
         <span class="filter-icon" aria-hidden="true">☷</span>
