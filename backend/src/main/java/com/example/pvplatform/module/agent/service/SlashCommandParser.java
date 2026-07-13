@@ -88,8 +88,15 @@ public class SlashCommandParser {
             case "/wallet" -> toolName = "wallet.balance";
             case "/profile" -> toolName = "user.profile";
             case "/cloud" -> toolName = "cloud.predict";
+            case "/dashboard" -> toolName = "dashboard.overview";
+            case "/pv" -> {
+                Long stationId = positiveLong(arg);
+                toolName = "pv.realtime";
+                if (stationId != null) args.put("stationId", stationId);
+            }
+            case "/notify" -> toolName = "notification.list";
             default -> {
-                return new AgentToolIntent(false, null, Map.of(), text, "未知命令：" + command + "。可用命令：/station /weather /predict /report /model /api /news /wallet /profile /cloud", "未知 slash command", "slash", false);
+                return new AgentToolIntent(false, null, Map.of(), text, "未知命令：" + command + "。可用命令：/station /weather /predict /report /model /api /news /wallet /profile /cloud /dashboard /pv /notify", "未知 slash command", "slash", false);
             }
         }
         enrichDefaults(toolName, args, context);
@@ -100,16 +107,42 @@ public class SlashCommandParser {
 
     public AgentToolIntent natural(String text, Map<String, Object> context) {
         String lower = text == null ? "" : text.toLowerCase(Locale.ROOT);
-        boolean business = lower.matches(".*(电站|station|天气|weather|预测|prediction|任务|task|报告|report|api|模型|model|云图|cloud|钱包|余额|市场|套餐|新闻|通知|公告|个人|资料|用户|profile|账号|账户).*");
+        boolean business = lower.matches(".*(电站|station|天气|weather|预测|prediction|任务|task|报告|report|api|模型|model|云图|cloud|钱包|余额|市场|套餐|新闻|通知|公告|个人|资料|用户|profile|账号|账户|仪表盘|dashboard|实时功率|历史功率|功率曲线|已读|昵称|邮箱|手机号|修改|更新).*");
         if (!business) return AgentToolIntent.none(false);
 
         Map<String, Object> args = new LinkedHashMap<>();
         String toolName = null;
-        if (lower.contains("个人") || lower.contains("资料") || lower.contains("用户信息")
+        if (hasAny(lower, "修改个人", "更新个人", "改昵称", "改邮箱", "改手机号", "修改昵称", "修改邮箱", "修改手机号", "昵称改", "邮箱改", "手机号改")) {
+            toolName = "user.profile.update";
+            args.putAll(profileUpdateArgs(text));
+        } else if (lower.contains("个人") || lower.contains("资料") || lower.contains("用户信息")
             || lower.contains("账号") || lower.contains("账户信息") || lower.contains("profile")) {
             toolName = "user.profile";
+        } else if (lower.contains("仪表盘") || lower.contains("dashboard") || lower.contains("概览")) {
+            toolName = "dashboard.overview";
+            putNumber(args, "stationId", extractStationId(text), contextNumber(context, "stationId", "currentStationId"));
+        } else if (hasAny(lower, "实时功率", "实时数据", "当前功率", "最新功率")) {
+            toolName = "pv.realtime";
+            putNumber(args, "stationId", extractStationId(text), contextNumber(context, "stationId", "currentStationId"));
+        } else if (hasAny(lower, "历史功率", "历史数据", "功率曲线", "发电历史")) {
+            toolName = "pv.history";
+            putNumber(args, "stationId", extractStationId(text), contextNumber(context, "stationId", "currentStationId"));
         } else if (lower.contains("新闻") || lower.contains("通知") || lower.contains("公告")) {
-            toolName = "news.list";
+            if (hasAny(lower, "全部已读", "全部通知已读", "通知全部已读")) {
+                toolName = "notification.markAllRead";
+            } else if (hasAny(lower, "标记通知", "通知已读", "设为已读")) {
+                toolName = "notification.markRead";
+                putNumber(args, "notificationId", extractTaskId(text), null);
+            } else if (lower.contains("未读通知") || lower.contains("未读消息")) {
+                toolName = "notification.unreadCount";
+            } else if (lower.contains("通知")) {
+                toolName = "notification.list";
+            } else if (lower.contains("详情")) {
+                toolName = "news.detail";
+                putNumber(args, "newsId", extractTaskId(text), null);
+            } else {
+                toolName = "news.list";
+            }
         } else if (lower.contains("钱包") || lower.contains("余额") || lower.contains("账单")) {
             toolName = "wallet.balance";
         } else if (lower.contains("市场") || lower.contains("套餐")) {
@@ -119,7 +152,13 @@ public class SlashCommandParser {
         } else if (lower.contains("天气") || lower.contains("weather")) {
             Long stationId = extractStationId(text);
             String location = extractLocation(text);
-            if (stationId != null || mentionsStation(lower)) {
+            if (lower.contains("预报") && (stationId != null || mentionsStation(lower))) {
+                toolName = "weather.forecast";
+                if (stationId != null) args.put("stationId", stationId);
+            } else if (lower.contains("预报")) {
+                toolName = "weather.locationForecast";
+                if (location != null) args.put("location", location);
+            } else if (stationId != null || mentionsStation(lower)) {
                 toolName = "weather.current";
                 if (stationId != null) args.put("stationId", stationId);
             } else if (location != null) {
@@ -179,8 +218,14 @@ public class SlashCommandParser {
         if (("station.detail".equals(toolName) || "weather.current".equals(toolName) || "report.generate".equals(toolName)) && args.get("stationId") == null) {
             return "请提供电站 ID，例如 /weather 2 或“查看 2 号电站信息”。";
         }
+        if (("pv.realtime".equals(toolName) || "pv.history".equals(toolName) || "weather.forecast".equals(toolName)) && args.get("stationId") == null) {
+            return "请提供电站 ID，例如“查询 2 号电站实时功率”。";
+        }
         if ("weather.location".equals(toolName) && (args.get("location") == null || String.valueOf(args.get("location")).isBlank())) {
             return "请提供城市或地点，例如 /weather 成都 或“查询成都天气”。";
+        }
+        if ("weather.locationForecast".equals(toolName) && (args.get("location") == null || String.valueOf(args.get("location")).isBlank())) {
+            return "请提供城市或地点，例如“查询成都天气预报”。";
         }
         if ("prediction.detail".equals(toolName) && args.get("taskId") == null) {
             return "请提供预测任务 ID，例如 /predict 8 或“解释任务 8 的预测结果”。";
@@ -190,6 +235,12 @@ public class SlashCommandParser {
         }
         if ("model.run".equals(toolName)) {
             return "运行模型需要 stationId、modelId、30 帧 numericValues 和 30 张 inputImages，请在预测页面准备输入后发起。";
+        }
+        if ("user.profile.update".equals(toolName) && args.isEmpty()) {
+            return "请说明要修改的个人资料字段，例如昵称、邮箱或手机号。";
+        }
+        if ("notification.markRead".equals(toolName) && args.get("notificationId") == null) {
+            return "请提供通知 ID，例如“将通知 3 标记为已读”。";
         }
         return "";
     }
@@ -202,6 +253,11 @@ public class SlashCommandParser {
             case "station.list" -> "查询当前用户可访问电站列表";
             case "weather.current" -> "查询 " + stationId + " 号电站当前天气";
             case "weather.location" -> "查询 " + args.get("location") + " 当前天气";
+            case "weather.forecast" -> "查询 " + stationId + " 号电站天气预报";
+            case "weather.locationForecast" -> "查询 " + args.get("location") + " 天气预报";
+            case "dashboard.overview" -> "查询仪表盘概览";
+            case "pv.realtime" -> "查询 " + stationId + " 号电站实时功率";
+            case "pv.history" -> "查询 " + stationId + " 号电站历史功率";
             case "prediction.detail" -> "解释任务 " + taskId + " 的预测结果";
             case "prediction.list" -> "查询预测任务列表";
             case "report.generate" -> "生成 " + stationId + " 号电站综合分析报告";
@@ -209,9 +265,15 @@ public class SlashCommandParser {
             case "api.usage" -> "查询 API 使用情况";
             case "api.list" -> "查询 API Key 列表";
             case "news.list" -> "查询新闻通知";
+            case "news.detail" -> "查询新闻详情";
+            case "notification.list" -> "查询通知列表";
+            case "notification.unreadCount" -> "查询未读通知数";
+            case "notification.markRead" -> "标记通知已读";
+            case "notification.markAllRead" -> "全部通知已读";
             case "wallet.balance" -> "查询钱包余额";
             case "marketplace.list" -> "查询市场套餐";
             case "user.profile" -> "查询个人信息";
+            case "user.profile.update" -> "修改个人资料";
             case "cloud.predict" -> "运行云图预测";
             case "model.run" -> "运行预测模型";
             case "model.detail" -> "查询模型 " + args.get("modelId") + " 详情";
@@ -248,6 +310,27 @@ public class SlashCommandParser {
         if (value.isBlank() || mentionsStation(value.toLowerCase(Locale.ROOT))) return null;
         if (value.matches(".*\\d+.*")) return null;
         return cleanLocation(value);
+    }
+
+    private Map<String, Object> profileUpdateArgs(String text) {
+        Map<String, Object> args = new LinkedHashMap<>();
+        String value = afterMarker(text, "昵称");
+        if (value != null) args.put("nickname", value);
+        value = afterMarker(text, "邮箱");
+        if (value != null) args.put("email", value);
+        value = afterMarker(text, "手机号");
+        if (value == null) value = afterMarker(text, "手机");
+        if (value != null) args.put("phone", value);
+        return args;
+    }
+
+    private String afterMarker(String text, String marker) {
+        if (text == null || !text.contains(marker)) return null;
+        String value = text.substring(text.indexOf(marker) + marker.length())
+            .replaceFirst("^(改成|改为|修改为|设为|设置为|为|成|是)", "")
+            .replaceAll("[，,。？?！!].*$", "")
+            .trim();
+        return value.isBlank() ? null : value;
     }
 
     private String cleanLocation(String value) {

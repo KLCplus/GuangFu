@@ -130,7 +130,10 @@ const slashCommands: SlashCommand[] = [
   { command: '/news', label: '新闻通知', hint: '查看平台新闻和公告', template: '查看新闻通知' },
   { command: '/wallet', label: '钱包余额', hint: '查看开放平台钱包', template: '查看钱包余额' },
   { command: '/profile', label: '个人信息', hint: '查看当前账号资料', template: '查看我的个人信息' },
-  { command: '/cloud', label: '云图预测', hint: '说明云图预测输入要求', template: '运行云图预测' }
+  { command: '/cloud', label: '云图预测', hint: '说明云图预测输入要求', template: '运行云图预测' },
+  { command: '/dashboard', label: '平台概览', hint: '查看仪表盘状态', template: '查看仪表盘概览' },
+  { command: '/pv', label: '实时功率', hint: '查询电站实时功率', template: '查询 1 号电站实时功率' },
+  { command: '/notify', label: '通知', hint: '查看通知和未读数', template: '查看未读通知' }
 ]
 
 const username = computed(() => userStore.userInfo.nickname || userStore.userInfo.username || 'User')
@@ -518,6 +521,11 @@ function toolTitle(toolName: string, displayName?: string) {
     'station.detail': '查询电站信息',
     'weather.current': '获取电站天气',
     'weather.location': '获取城市天气',
+    'weather.forecast': '获取天气预报',
+    'weather.locationForecast': '获取地点天气预报',
+    'dashboard.overview': '查询仪表盘概览',
+    'pv.realtime': '查询实时功率',
+    'pv.history': '查询历史功率',
     'prediction.list': '读取预测任务',
     'prediction.detail': '读取预测结果',
     'report.generate': '生成综合分析报告',
@@ -529,10 +537,16 @@ function toolTitle(toolName: string, displayName?: string) {
     'api.usage': '查看 API 使用情况',
     'api.list': '查询 API 服务',
     'user.profile': '查询个人信息',
+    'user.profile.update': '修改个人资料',
     'wallet.balance': '查询钱包余额',
     'marketplace.list': '查询市场套餐',
     'marketplace.purchase': '购买市场套餐',
     'news.list': '查询新闻通知',
+    'news.detail': '查询新闻详情',
+    'notification.list': '查询通知列表',
+    'notification.unreadCount': '查询未读通知数',
+    'notification.markRead': '标记通知已读',
+    'notification.markAllRead': '全部通知已读',
     'cloud.predict': '运行云图预测'
   }
   return local[toolName] || displayName || toolName
@@ -924,7 +938,7 @@ async function submitComposer() {
   const { command, args } = commandParts(text)
   const knownSlash = slashCommands.find((item) => item.command === command)
   if (command.startsWith('/') && !knownSlash) {
-    addMessage({ role: 'assistant', kind: 'error', content: `未知命令：${command}。可用命令：/station /weather /predict /report /model /api /news /wallet /profile /cloud` })
+    addMessage({ role: 'assistant', kind: 'error', content: `未知命令：${command}。可用命令：/station /weather /predict /report /model /api /news /wallet /profile /cloud /dashboard /pv /notify` })
     composerText.value = ''
     return
   }

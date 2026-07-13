@@ -13,11 +13,17 @@ class SlashCommandParserTest {
     @Test
     void shouldRouteProjectManagerRequestsBeyondStation() {
         assertTool("查看我的个人信息", "user.profile");
-        assertTool("查看新闻通知", "news.list");
+        assertTool("查看新闻公告", "news.list");
         assertTool("查看钱包余额", "wallet.balance");
         assertTool("查看市场套餐", "marketplace.list");
         assertTool("查看模型列表", "model.list");
         assertTool("查看 API 调用日志", "api.usage");
+        assertTool("查看仪表盘概览", "dashboard.overview");
+        assertTool("查询 1 号电站实时功率", "pv.realtime");
+        assertTool("查询 1 号电站历史功率", "pv.history");
+        assertTool("查询 1 号电站天气预报", "weather.forecast");
+        assertTool("查看未读通知", "notification.unreadCount");
+        assertTool("查看通知列表", "notification.list");
     }
 
     @Test
@@ -29,6 +35,16 @@ class SlashCommandParserTest {
         AgentToolIntent modelRun = parser.parse("运行预测模型", Map.of(), null, Map.of());
         assertEquals("model.run", modelRun.toolName());
         assertTrue(modelRun.question().contains("30 帧 numericValues"));
+    }
+
+    @Test
+    void shouldRouteControlledWriteCommands() {
+        AgentToolIntent profile = parser.parse("把昵称改为 张三", Map.of(), null, Map.of());
+        assertEquals("user.profile.update", profile.toolName());
+        assertEquals("张三", profile.arguments().get("nickname"));
+
+        AgentToolIntent readAll = parser.parse("全部通知已读", Map.of(), null, Map.of());
+        assertEquals("notification.markAllRead", readAll.toolName());
     }
 
     private void assertTool(String message, String expectedTool) {

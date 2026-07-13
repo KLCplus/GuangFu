@@ -275,8 +275,9 @@ class PhotovoltaicAgentRuntime:
     def _capability_summary(self) -> str:
         return (
             "我可以作为光伏平台项目管家协助你：查询电站和公开电站信息、分析天气影响、查看预测任务和预测详情、"
-            "查询模型列表和模型详情、说明模型运行所需输入、处理云图预测输入要求、查看报告和生成需确认的报告、"
-            "查询 API Key 与调用用量、查看新闻通知、钱包余额、市场套餐和当前用户资料。"
+            "查询实时/历史功率、天气预报、仪表盘概览、模型列表和模型详情、说明模型运行所需输入、处理云图预测输入要求、"
+            "查看报告和生成需确认的报告、查询 API Key 与调用用量、查看新闻/通知/未读数、钱包余额、市场套餐和当前用户资料，"
+            "也可以在确认后修改个人资料、标记通知已读等。"
             "涉及真实数据时我会调用受控工具；一般解释、操作指引、能力说明和排障建议会直接回答。"
         )
 
@@ -339,17 +340,40 @@ class PhotovoltaicAgentRuntime:
         def add(step_id: str, title: str, tool_name: str, arguments: dict[str, Any] | None = None):
             steps.append(PlanStep(step_id, "Collect", title, self._tool_title(tool_name), tool_name, arguments or {}))
 
-        if any(word in task for word in ("个人信息", "个人资料", "我的资料", "用户信息", "我的账号", "账户信息")) or "profile" in text:
+        if any(word in task for word in ("修改个人", "更新个人", "改昵称", "改邮箱", "改手机号", "修改昵称", "修改邮箱", "修改手机号")):
+            args = {}
+            for key in ("nickname", "email", "phone", "avatarUrl", "gender"):
+                if key in context:
+                    args[key] = context[key]
+            add("user-profile-update", "修改个人资料", "user.profile.update", args)
+        elif any(word in task for word in ("个人信息", "个人资料", "我的资料", "用户信息", "我的账号", "账户信息")) or "profile" in text:
             add("user-profile", "查询个人信息", "user.profile")
+
+        if "仪表盘" in task or "dashboard" in text or "概览" in task:
+            add("dashboard-overview", "查询仪表盘概览", "dashboard.overview", {"stationId": explicit_station_id} if explicit_station_id else {})
 
         if "电站列表" in task or "所有电站" in task or "我的电站" in task:
             add("station-list", "查询电站列表", "station.list")
         elif any(word in task for word in ("电站", "站点")) and not any(word in task for word in ("运行", "分析", "天气", "预测")):
             add("station-detail", "查询电站", "station.detail", {"stationId": station_id})
 
-        if "城市天气" in task or "当地天气" in task or "天气" in task and "电站" not in task and not self._extract_station_id(task):
+        if ("天气预报" in task or "forecast" in text) and ("电站" in task or explicit_station_id):
+            add("weather-forecast", "查询天气预报", "weather.forecast", {"stationId": station_id})
+        elif ("天气预报" in task or "forecast" in text) and ("电站" not in task and not explicit_station_id):
+            location = context.get("location") or self._extract_location(task)
+            add("weather-location-forecast", "查询地点天气预报", "weather.locationForecast", {"location": location} if location else {})
+        elif "城市天气" in task or "当地天气" in task or "天气" in task and "电站" not in task and not self._extract_station_id(task):
             location = context.get("location") or self._extract_location(task)
             add("weather-location", "查询地点天气", "weather.location", {"location": location} if location else {})
+
+        if any(word in task for word in ("实时功率", "实时数据", "当前功率", "最新功率")):
+            add("pv-realtime", "查询实时功率", "pv.realtime", {"stationId": station_id})
+        elif any(word in task for word in ("历史功率", "历史数据", "功率曲线", "发电历史")):
+            args = {"stationId": station_id}
+            for key in ("startTime", "endTime", "interval"):
+                if key in context:
+                    args[key] = context[key]
+            add("pv-history", "查询历史功率", "pv.history", args)
 
         if "预测详情" in task and task_id:
             add("prediction-detail", "查询预测详情", "prediction.detail", {"taskId": task_id})
@@ -396,7 +420,19 @@ class PhotovoltaicAgentRuntime:
             else:
                 add("marketplace-list", "查询套餐", "marketplace.list")
 
-        if "新闻" in task or "通知" in task or "公告" in task:
+        if any(word in task for word in ("全部已读", "全部通知已读", "通知全部已读")):
+            add("notification-mark-all-read", "全部通知已读", "notification.markAllRead")
+        elif any(word in task for word in ("标记通知", "通知已读", "设为已读")):
+            notification_id = self._extract_notification_id(task)
+            add("notification-mark-read", "标记通知已读", "notification.markRead", {"notificationId": notification_id} if notification_id else {})
+        elif "未读通知" in task or "未读消息" in task:
+            add("notification-unread", "查询未读通知数", "notification.unreadCount")
+        elif "通知" in task:
+            add("notification-list", "查询通知列表", "notification.list")
+        elif "新闻详情" in task or "公告详情" in task:
+            news_id = self._extract_news_id(task)
+            add("news-detail", "查询新闻详情", "news.detail", {"newsId": news_id} if news_id else {})
+        elif "新闻" in task or "公告" in task:
             add("news-list", "查询新闻通知", "news.list")
 
         if "管理员" in task or "admin" in text:
@@ -421,6 +457,16 @@ class PhotovoltaicAgentRuntime:
 
     def _extract_report_id(self, task: str) -> int | None:
         if "报告" not in task and "report" not in task.lower():
+            return None
+        return self._extract_station_id(task)
+
+    def _extract_news_id(self, task: str) -> int | None:
+        if "新闻" not in task and "公告" not in task and "news" not in task.lower():
+            return None
+        return self._extract_station_id(task)
+
+    def _extract_notification_id(self, task: str) -> int | None:
+        if "通知" not in task and "notification" not in task.lower():
             return None
         return self._extract_station_id(task)
 
