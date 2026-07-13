@@ -38,7 +38,7 @@ public class ModelRunTool extends AbstractAgentTool {
                 images.add(new ModelPredictRequest.ImageFrame(String.valueOf(row.get("time")), String.valueOf(row.get("image"))));
             }
             if (numericValues.size() != 30 || images.size() != 30) throw new BusinessException(400, "numericValues 和 inputImages 都必须包含 30 帧");
-            var result = predictionService.create(new PredictionRequest(stationId, modelId, "MANUAL_MULTIMODAL", null, null, numericValues, images));
+            var result = predictionService.create(new PredictionRequest(stationId, modelId, null, "MANUAL_MULTIMODAL", null, null, numericValues, images));
             return ToolExecutionResult.success(result, "预测任务已创建并执行，taskId=" + result.taskId());
         });
     }

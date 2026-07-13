@@ -187,6 +187,19 @@ file-storage:
   avatar-dir: ${AVATAR_STORAGE_DIR:./data/avatars}
   avatar-max-size: ${AVATAR_MAX_SIZE:2097152}
 
+oss:
+  enabled: ${OSS_ENABLED:false}
+  credential-mode: ${OSS_CREDENTIAL_MODE:ACCESS_KEY}
+  endpoint: ${OSS_ENDPOINT:${ALIYUN_OSS_ENDPOINT:}}
+  region: ${OSS_REGION:${ALIYUN_OSS_REGION:cn-shanghai}}
+  bucket-name: ${OSS_BUCKET_NAME:${ALIYUN_OSS_BUCKET:}}
+  access-key-id: ${ALIBABA_CLOUD_ACCESS_KEY_ID:${ALIYUN_ACCESS_KEY_ID:}}
+  access-key-secret: ${ALIBABA_CLOUD_ACCESS_KEY_SECRET:${ALIYUN_ACCESS_KEY_SECRET:}}
+  ram-role-name: ${OSS_RAM_ROLE_NAME:}
+  url-expire-seconds: ${OSS_URL_EXPIRE_SECONDS:600}
+  avatar-max-size-mb: ${OSS_AVATAR_MAX_SIZE_MB:2}
+  news-image-max-size-mb: ${OSS_NEWS_IMAGE_MAX_SIZE_MB:10}
+
 springdoc:
   swagger-ui:
     path: /swagger-ui.html
@@ -201,3 +214,5 @@ database:
     open-wallet:
       # Creates missing wallet account, recharge order and wallet record tables.
       enabled: ${OPEN_WALLET_SCHEMA_MIGRATION_ENABLED:true}
+    oss-news:
+      enabled: ${OSS_NEWS_SCHEMA_MIGRATION_ENABLED:true}

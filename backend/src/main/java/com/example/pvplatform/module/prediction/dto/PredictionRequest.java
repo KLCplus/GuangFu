@@ -7,7 +7,7 @@ import jakarta.validation.constraints.Size;
 import java.util.List;
 
 public record PredictionRequest(
-    @NotNull Long stationId, @NotNull Long modelId, String inputMode,
+    @NotNull Long stationId, @NotNull Long modelId, Long apiKeyId, String inputMode,
     String inputStartTime, String inputEndTime,
     @Size(min = 30, max = 30) List<NumericValue> numericValues,
     @Size(min = 30, max = 30) List<ModelPredictRequest.ImageFrame> inputImages

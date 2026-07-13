@@ -47,17 +47,11 @@ import type {
 import type { FaceStatus } from './auth'
 import type { PageResult } from './types'
 import {
-  mockApiEntitlements,
   mockApiKeys,
   mockCallLogs,
   mockApiUsageSeries,
   mockApiUsageSummary,
   mockMarketplaceModels,
-  mockNews,
-  mockNotifications,
-  mockUserProfile,
-  mockWallet,
-  mockWalletRecords,
   modelCategoryOptions
 } from '../data/mock'
 import type {
@@ -313,20 +307,6 @@ function buildUsageStats(logs: NormalizedApiCallLog[], totalCalls?: number): Api
   }
 }
 
-function mockNewsToRemoteShape(item: (typeof mockNews)[number]): News {
-  return {
-    newsId: item.newsId,
-    title: item.title,
-    summary: item.content,
-    content: item.content,
-    newsType: item.type,
-    targetRole: 'ALL',
-    status: 'PUBLISHED',
-    publishedAt: item.publishTime,
-    createdAt: item.publishTime
-  }
-}
-
 export function getMarketplaceModelCategories() {
   return modelCategoryOptions
 }
@@ -454,81 +434,43 @@ export async function resetApiKey(apiKeyId: number): Promise<DataResult<ApiKey>>
   }
 }
 export async function loadNewsPage(query?: NewsQuery): Promise<DataResult<PageResult<News>>> {
-  try {
-    return remoteResult(await getNewsList(query))
-  } catch (error) {
-    return mockResult(pageResult(mockNews.map(mockNewsToRemoteShape), query?.pageNum, query?.pageSize), error)
-  }
+  return remoteResult(await getNewsList(query))
 }
 
 export async function loadNewsDetail(newsId: number): Promise<DataResult<News>> {
-  try {
-    return remoteResult(await getNews(newsId))
-  } catch (error) {
-    const fallback = mockNews.find((item) => item.newsId === newsId) ?? mockNews[0]
-    return mockResult(mockNewsToRemoteShape(fallback), error)
-  }
+  return remoteResult(await getNews(newsId))
 }
 
 export async function loadNotifications(query?: NotificationQuery): Promise<DataResult<PageResult<Notification>>> {
-  try {
-    return remoteResult(await getNotifications(query))
-  } catch (error) {
-    const records = mockNotifications.filter((item) => query?.readStatus === undefined || item.readStatus === query.readStatus)
-    return mockResult(pageResult(records, query?.pageNum, query?.pageSize), error)
-  }
+  return remoteResult(await getNotifications(query))
 }
 
 export async function loadUnreadNotificationCount(): Promise<DataResult<number>> {
-  try {
-    const result = await getUnreadCount()
-    return remoteResult(result.count ?? result.unreadCount ?? 0)
-  } catch (error) {
-    return mockResult(mockNotifications.filter((item) => item.readStatus === 0).length, error)
-  }
+  const result = await getUnreadCount()
+  return remoteResult(result.count ?? result.unreadCount ?? 0)
 }
 
 export async function markNotificationAsRead(notificationId: number): Promise<DataResult<void>> {
-  try {
-    await markNotificationRead(notificationId)
-    return remoteResult(undefined)
-  } catch (error) {
-    return mockResult(undefined, error)
-  }
+  await markNotificationRead(notificationId)
+  return remoteResult(undefined)
 }
 
 export async function markEveryNotificationRead(): Promise<DataResult<void>> {
-  try {
-    await markAllNotificationsRead()
-    return remoteResult(undefined)
-  } catch (error) {
-    return mockResult(undefined, error)
-  }
+  await markAllNotificationsRead()
+  return remoteResult(undefined)
 }
 
 export async function loadUserProfile(): Promise<DataResult<UserProfile>> {
-  try {
-    return remoteResult(await getProfile())
-  } catch (error) {
-    return mockResult(mockUserProfile, error)
-  }
+  return remoteResult(await getProfile())
 }
 
 export async function saveUserProfile(data: UpdateProfilePayload): Promise<DataResult<UserProfile>> {
-  try {
-    return remoteResult(await updateProfile(data))
-  } catch (error) {
-    return mockResult({ ...mockUserProfile, ...data }, error)
-  }
+  return remoteResult(await updateProfile(data))
 }
 
 export async function updateUserPassword(data: ChangePasswordPayload): Promise<DataResult<void>> {
-  try {
-    await changePassword(data)
-    return remoteResult(undefined)
-  } catch (error) {
-    return mockResult(undefined, error)
-  }
+  await changePassword(data)
+  return remoteResult(undefined)
 }
 
 export async function bindUserEmail(email: string): Promise<DataResult<UserProfile>> {
@@ -536,53 +478,31 @@ export async function bindUserEmail(email: string): Promise<DataResult<UserProfi
 }
 
 export async function loadProfileOverview(): Promise<DataResult<ProfileOverview>> {
-  const [profileResult, oauthResult, faceResult, keyResult, openOverviewResult] = await Promise.allSettled([
+  const [profile, oauthAccounts, faceStatus, apiKeys, openOverview] = await Promise.all([
     getProfile(),
     getOAuthAccounts(),
     getFaceStatus(),
     getApiKeys(),
     getOpenOverview()
   ])
-
-  const hasRejected = [profileResult, oauthResult, faceResult, keyResult, openOverviewResult].some((item) => item.status === "rejected")
-  const openOverview = openOverviewResult.status === "fulfilled" ? openOverviewResult.value : undefined
-  const data: ProfileOverview = {
-    profile: profileResult.status === "fulfilled" ? profileResult.value : mockUserProfile,
-    wallet: openOverview?.wallet ?? mockWallet,
-    walletRecords: openOverview?.wallet.records ?? mockWalletRecords,
-    apiEntitlements: openOverview?.apiEntitlements ?? mockApiEntitlements,
-    oauthAccounts: oauthResult.status === "fulfilled" ? oauthResult.value : [],
-    faceStatus: faceResult.status === "fulfilled" ? faceResult.value : undefined,
-    apiKeys: keyResult.status === "fulfilled" ? keyResult.value.map(normalizeApiKey) : mockApiKeys.map(normalizeApiKey)
-  }
-
-  return hasRejected ? mixedResult(data) : remoteResult(data)
+  return remoteResult({
+    profile,
+    wallet: openOverview.wallet,
+    walletRecords: openOverview.wallet.records ?? [],
+    apiEntitlements: openOverview.apiEntitlements,
+    oauthAccounts,
+    faceStatus,
+    apiKeys: apiKeys.map(normalizeApiKey)
+  })
 }
 export async function bindOAuthProvider(
   provider: string,
   data: BindOAuthAccountPayload
 ): Promise<DataResult<OAuthAccount>> {
-  try {
-    return remoteResult(await bindOAuthAccount(provider, data))
-  } catch (error) {
-    return mockResult(
-      {
-        oauthId: Date.now(),
-        provider,
-        providerUserId: `mock-${provider}-user`,
-        nickname: `${provider} 用户`,
-        bindTime: '2026-07-09 00:00:00'
-      },
-      error
-    )
-  }
+  return remoteResult(await bindOAuthAccount(provider, data))
 }
 
 export async function unbindOAuthProvider(oauthId: number): Promise<DataResult<void>> {
-  try {
-    await unbindOAuthAccount(oauthId)
-    return remoteResult(undefined)
-  } catch (error) {
-    return mockResult(undefined, error)
-  }
+  await unbindOAuthAccount(oauthId)
+  return remoteResult(undefined)
 }

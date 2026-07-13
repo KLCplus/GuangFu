@@ -144,8 +144,8 @@ ENV
   sed -i 's/\r$//' "$env_file"
 
   default_env_value MYSQL_URL "jdbc:mysql://127.0.0.1:3306/pv_platform?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false"
-  default_env_value MYSQL_USERNAME "debian-sys-maint"
-  default_env_value MYSQL_PASSWORD "rI7mEoN3K246uYNS"
+  default_env_value MYSQL_USERNAME "root"
+  default_env_value MYSQL_PASSWORD ""
   default_env_value MYSQL_ROOT_PASSWORD ""
   upsert_env_value SERVER_PORT "8080"
   upsert_env_value BACKEND_HOST "127.0.0.1"

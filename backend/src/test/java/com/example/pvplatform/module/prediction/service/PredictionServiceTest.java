@@ -142,7 +142,7 @@ class PredictionServiceTest {
                 start.plusMinutes(i).format(FORMATTER),
                 "data:image/png;base64,aGVsbG8="))
             .toList();
-        return new PredictionRequest(testStationId, testModelId, "MANUAL_MULTIMODAL",
+        return new PredictionRequest(testStationId, testModelId, null, "MANUAL_MULTIMODAL",
             null, null, values, images);
     }
 

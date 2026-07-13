@@ -19,6 +19,7 @@ public class SysUserDO {
     private String email;
     private String phone;
     private String avatarUrl;
+    private Long avatarFileId;
     private Integer gender;
     private Integer status;
     private LocalDateTime lastLoginTime;

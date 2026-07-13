@@ -6,6 +6,7 @@ CREATE TABLE IF NOT EXISTS sys_user (
     email VARCHAR(128),
     phone VARCHAR(32),
     avatar_url VARCHAR(512),
+    avatar_file_id BIGINT,
     gender INT DEFAULT 0,
     status INT DEFAULT 1,
     last_login_time TIMESTAMP,
@@ -343,7 +344,12 @@ CREATE TABLE IF NOT EXISTS file_resource (
     business_type VARCHAR(64),
     file_size BIGINT,
     checksum VARCHAR(128),
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    object_key VARCHAR(500),
+    content_type VARCHAR(100),
+    file_status VARCHAR(20) DEFAULT 'BOUND',
+    biz_id BIGINT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE IF NOT EXISTS news (
@@ -352,6 +358,7 @@ CREATE TABLE IF NOT EXISTS news (
     summary VARCHAR(500),
     content TEXT,
     cover_url VARCHAR(512),
+    cover_file_id BIGINT,
     news_type VARCHAR(32) DEFAULT 'NEWS',
     target_role VARCHAR(64) DEFAULT 'ALL',
     status VARCHAR(32) DEFAULT 'DRAFT',

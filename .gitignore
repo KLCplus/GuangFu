@@ -37,6 +37,7 @@ logs/
 # Local secrets and environment
 .env
 .env.*
+!.env.example
 backend/.env
 backend/.env.*
 backend/secrets/*.pem

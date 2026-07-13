@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import * as echarts from 'echarts'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { getModels } from '../api/model'
@@ -44,8 +45,10 @@ interface DistributionItem {
 
 // ---- state ----
 
+const route = useRoute()
+const activePage = computed(() => route.path.split('/').pop() || 'overview')
+
 const keysLoading = ref(false)
-const activeApiView = ref<'keys' | 'usage'>('keys')
 const statsLoading = ref(false)
 const logsLoading = ref(false)
 const exporting = ref(false)
@@ -120,6 +123,11 @@ const timeOptions = [
 
 const modelNameMap = computed(() => new Map(models.value.map((model) => [model.modelId, model.modelName])))
 const keyNameMap = computed(() => new Map(apiKeys.value.map((key) => [key.apiKeyId, key.keyName])))
+const modelSearch = ref('')
+const filteredModels = computed(() => {
+  const query = modelSearch.value.trim().toLowerCase()
+  return models.value.filter((model) => !query || `${model.modelName} ${model.modelCode}`.toLowerCase().includes(query)).slice(0, 6)
+})
 
 const modelOptions = computed(() => {
   if (modelApiData.value.length) {
@@ -229,25 +237,28 @@ const keyDistribution = computed<DistributionItem[]>(() => {
   }))
 })
 
+const statsCoverageText = computed(() => {
+  if (statsLoading.value) return '正在从后端加载统计数据…'
+  if (statsError.value) return '统计数据加载失败，请重试。'
+  const total = summaryData.value?.totalCalls ?? 0
+  return `统计数据由后端聚合，当前筛选范围内共 ${formatNumber(total)} 条调用记录。`
+})
+
 const walletAmount = computed(() => wallet.value?.balance ?? null)
 const walletMonthlyCost = computed(() => wallet.value?.monthlyCost ?? null)
 const walletRecords = computed(() => wallet.value?.records ?? [])
+const overviewSummary = computed(() => [
+  { label: 'API Key 数量', value: formatNumber(apiKeys.value.length), note: '当前账户凭证' },
+  { label: '可调用模型', value: formatNumber(models.value.filter((model) => model.status === 'ONLINE').length), note: '在线模型' },
+  { label: '可用余额', value: formatMoney(walletAmount.value), note: '钱包账户余额' },
+  { label: '本月调用次数', value: formatNumber(summaryData.value?.totalCalls ?? 0), note: '后端聚合统计' }
+])
 const hasTrendData = computed(() => trendApiData.value.length > 0)
 const hasModelStats = computed(() => modelApiData.value.length > 0)
 const hasKeyStats = computed(() => keyApiData.value.length > 0)
 const hasAnyChartData = computed(() => hasTrendData.value || hasModelStats.value || hasKeyStats.value)
 
 // ---- lifecycle ----
-
-function switchApiView(view: 'keys' | 'usage') {
-  activeApiView.value = view
-  if (view === 'usage') {
-    void nextTick(() => {
-      renderCharts()
-      resizeCharts()
-    })
-  }
-}
 
 onMounted(() => {
   window.addEventListener('resize', resizeCharts)
@@ -265,13 +276,18 @@ watch(
   () => [filters.days, filters.apiKeyId, filters.modelId, filters.status],
   () => {
     logPage.pageNum = 1
-    void loadStats()
-    void loadCallLogs()
+    if (activePage.value === 'overview' || activePage.value === 'usage') void loadStats()
+    if (activePage.value === 'billing') void loadCallLogs()
   }
 )
 
 watch(logPage, () => {
-  void loadCallLogs()
+  if (activePage.value === 'billing') void loadCallLogs()
+})
+
+watch(activePage, () => {
+  logPage.pageNum = 1
+  void loadPage()
 })
 
 watch([trendApiData, modelApiData, keyApiData], () => {
@@ -282,8 +298,10 @@ watch([trendApiData, modelApiData, keyApiData], () => {
 
 async function loadPage() {
   refreshing.value = true
-  await Promise.all([loadKeys(), loadModels(), loadWallet()])
-  await Promise.all([loadStats(), loadCallLogs()])
+  const pageLoads = [loadKeys(), loadModels(), loadWallet()]
+  if (activePage.value === 'overview' || activePage.value === 'usage') pageLoads.push(loadStats())
+  if (activePage.value === 'billing') pageLoads.push(loadCallLogs())
+  await Promise.all(pageLoads)
   refreshing.value = false
   void nextTick(renderCharts)
 }
@@ -797,36 +815,48 @@ async function copyText(value: string) {
 
 <template>
   <section class="api-page">
-    <nav class="function-tabs" role="tablist" aria-label="API 功能">
-      <button
-        type="button"
-        role="tab"
-        :aria-selected="activeApiView === 'keys'"
-        :class="{ active: activeApiView === 'keys' }"
-        @click="switchApiView('keys')"
-      >
-        API Keys
-      </button>
-      <button
-        type="button"
-        role="tab"
-        :aria-selected="activeApiView === 'usage'"
-        :class="{ active: activeApiView === 'usage' }"
-        @click="switchApiView('usage')"
-      >
-        使用统计
-      </button>
-    </nav>
-
-    <section v-show="activeApiView === 'keys'" class="key-section" role="tabpanel">
+    <section v-if="activePage === 'overview'" class="overview-section">
+      <div class="section-heading">
+        <div>
+          <h1>API 开放平台</h1>
+        </div>
+        <el-button :loading="refreshing" @click="loadPage">刷新数据</el-button>
+      </div>
+      <div class="overview-summary">
+        <article v-for="item in overviewSummary" :key="item.label">
+          <span>{{ item.label }}</span><strong>{{ item.value }}</strong>
+        </article>
+      </div>
+      <section class="model-panel">
+        <div class="panel-heading">
+          <div><h2>可调用模型</h2></div>
+          <div class="model-tools"><el-input v-model="modelSearch" clearable placeholder="搜索名称或模型 ID" /><el-button text type="primary" @click="$router.push('/marketplace')">查看全部模型</el-button></div>
+        </div>
+        <el-alert v-if="models.length === 0" title="暂无可调用模型或模型目录加载失败" type="info" :closable="false" />
+        <div v-else class="model-grid">
+          <article v-for="model in filteredModels" :key="model.modelId" class="model-card">
+            <div class="model-card-head"><span class="model-glyph">◌</span><div><h3>{{ model.modelName }}</h3><p>{{ model.provider || model.modelFamily || '平台模型' }}</p></div><el-tag size="small" :type="model.status === 'ONLINE' ? 'success' : 'info'" effect="light">{{ model.status === 'ONLINE' ? '可用' : model.status }}</el-tag></div>
+            <p class="model-description">{{ model.shortDescription || model.description || '暂无模型简介' }}</p>
+            <div class="model-meta"><code>{{ model.modelCode }}</code><span>{{ model.modelType }}</span></div>
+            <div v-if="model.tags?.length" class="model-tags"><el-tag v-for="tag in model.tags.slice(0, 3)" :key="tag" size="small" effect="plain">{{ tag }}</el-tag></div>
+          </article>
+        </div>
+        <el-empty v-if="models.length > 0 && filteredModels.length === 0" description="没有匹配的模型" :image-size="64" />
+      </section>
+      <section class="service-note"><div><h2>API 服务</h2></div><div class="service-links"><el-button text @click="$router.push('/api/keys')">管理 API Keys</el-button><el-button text @click="$router.push('/api/usage')">查看使用统计</el-button><el-button text @click="$router.push('/api/billing')">查看流水消费</el-button></div></section>
+    </section>
+    <section v-if="activePage === 'keys'" class="key-section">
       <div class="section-heading key-heading">
-        <h1>API Keys</h1>
+        <div>
+          <h1>API Keys</h1>
+        </div>
         <el-button type="primary" size="large" @click="createDialogVisible = true">创建 API Key</el-button>
       </div>
 
       <el-alert
+        class="key-security-alert"
         title="完整 API Key 仅在创建或重新生成时展示一次，请妥善保存。"
-        type="info"
+        type="warning"
         show-icon
         :closable="false"
       />
@@ -892,20 +922,10 @@ async function copyText(value: string) {
       </div>
     </section>
 
-    <section v-show="activeApiView === 'usage'" class="usage-pane" role="tabpanel">
-      <div class="section-heading usage-heading">
-        <h1>使用统计</h1>
-        <div class="heading-actions">
-          <el-button :loading="exporting" @click="handleExport">导出 CSV</el-button>
-          <el-button :loading="refreshing" @click="loadPage">刷新数据</el-button>
-        </div>
-      </div>
-
-      <section v-loading="walletLoading" class="wallet-section">
+    <section v-if="activePage === 'billing'" v-loading="walletLoading" class="wallet-section">
       <div class="wallet-heading">
         <div>
-          <h2>余额与消费</h2>
-          <p>当前为开放平台账户视图，仅展示人民币。充值成功后实时入账，开放 API 调用成功后自动扣费。</p>
+          <h1>余额与流水</h1>
         </div>
         <el-button type="primary" @click="rechargeDialogVisible = true">去充值</el-button>
       </div>
@@ -928,7 +948,7 @@ async function copyText(value: string) {
       </div>
       <div class="wallet-records">
         <div class="wallet-records-heading">
-          <h3>最近流水</h3>
+          <h2>资金流水</h2>
           <span>{{ walletRecords.length }} 条</span>
         </div>
         <el-table :data="walletRecords" size="small" empty-text="暂无钱包流水">
@@ -950,14 +970,25 @@ async function copyText(value: string) {
           <el-table-column prop="orderNo" label="订单号" min-width="180" show-overflow-tooltip />
         </el-table>
       </div>
-      <p class="wallet-disclaimer">当前充值接口为本地联调模拟支付：后端会创建充值订单、写入充值流水并更新钱包余额；后续接入真实支付渠道时复用订单和流水表。</p>
-      </section>
+      <p class="wallet-disclaimer">充值为本地联调模拟支付。</p>
+    </section>
 
-      <section class="usage-section">
-        <div class="filter-bar">
-        <el-select v-model="filters.days" class="filter-control" aria-label="时间范围">
-          <el-option v-for="option in timeOptions" :key="option.value" :label="option.label" :value="option.value" />
-        </el-select>
+    <section v-if="activePage === 'usage' || activePage === 'billing'" class="usage-section">
+      <div class="section-heading usage-heading">
+        <div>
+          <h2>{{ activePage === 'billing' ? '调用记录' : 'Dashboard' }}</h2>
+        </div>
+        <div v-if="activePage === 'usage'" class="heading-actions">
+          <el-button :loading="exporting" @click="handleExport">导出 CSV</el-button>
+          <el-button :loading="refreshing" @click="loadPage">刷新数据</el-button>
+        </div>
+      </div>
+
+      <template v-if="activePage === 'usage'">
+      <div class="filter-bar reference-toolbar">
+        <div class="range-tabs" role="tablist" aria-label="时间范围">
+          <button v-for="option in timeOptions" :key="option.value" :class="{ active: filters.days === option.value }" type="button" @click="filters.days = option.value">{{ option.value === 0 ? '全部' : option.value === 7 ? '7D' : option.value === 30 ? '1M' : '3M' }}</button>
+        </div>
         <el-select v-model="filters.apiKeyId" class="filter-control" clearable placeholder="全部 API Key">
           <el-option v-for="key in apiKeys" :key="key.apiKeyId" :label="key.keyName" :value="key.apiKeyId" />
         </el-select>
@@ -976,11 +1007,10 @@ async function copyText(value: string) {
         </template>
       </el-alert>
 
-      <div v-loading="statsLoading" class="summary-grid">
+      <div v-loading="statsLoading" class="summary-grid reference-summary">
         <article v-for="card in summaryCards" :key="card.label" class="summary-card" :class="`tone-${card.tone}`">
           <span>{{ card.label }}</span>
           <strong>{{ card.value }}</strong>
-          <small>{{ card.note }}</small>
         </article>
         <article class="summary-card token-card" :class="tokenSummary.hasData ? 'tone-blue' : 'unavailable-card'">
           <span>Token 使用量</span>
@@ -989,9 +1019,6 @@ async function copyText(value: string) {
             <div class="token-row"><em>输出</em><strong>{{ tokenSummary.output }}</strong></div>
             <div class="token-row"><em>总计</em><strong>{{ tokenSummary.total }}</strong></div>
           </div>
-          <small v-if="tokenSummary.hasData">后端聚合统计</small>
-          <small v-else>当前模型调用链暂未写入 Token 数据</small>
-          <el-tag v-if="!tokenSummary.hasData" size="small" type="info" effect="plain">暂未接通</el-tag>
         </article>
       </div>
 
@@ -999,12 +1026,12 @@ async function copyText(value: string) {
         <el-empty description="当前筛选条件下暂无调用数据" :image-size="86" />
       </div>
 
-      <div class="chart-layout">
+      <div class="chart-layout reference-dashboard">
         <section class="chart-card trend-card">
           <div class="chart-heading">
             <div>
               <h3>调用趋势</h3>
-              <p>按调用日期聚合成功与失败次数</p>
+            <span class="chart-total">{{ formatNumber(summaryData?.totalCalls ?? 0) }}</span>
             </div>
           </div>
           <el-alert v-if="trendError" :title="trendError" type="error" :closable="false" show-icon />
@@ -1016,7 +1043,7 @@ async function copyText(value: string) {
           <div class="chart-heading">
             <div>
               <h3>模型调用占比</h3>
-              <p>根据调用日志中的 modelId 聚合</p>
+            <span class="chart-total error-total">{{ formatNumber(summaryData?.failedCalls ?? 0) }}</span>
             </div>
           </div>
           <el-alert v-if="modelStatsError" :title="modelStatsError" type="error" :closable="false" show-icon />
@@ -1028,7 +1055,7 @@ async function copyText(value: string) {
           <div class="chart-heading">
             <div>
               <h3>API Key 调用情况</h3>
-              <p>最多展示当前筛选结果中的前 8 个 Key</p>
+            <span class="chart-total">Top models</span>
             </div>
           </div>
           <el-alert v-if="keyStatsError" :title="keyStatsError" type="error" :closable="false" show-icon />
@@ -1037,11 +1064,11 @@ async function copyText(value: string) {
         </section>
       </div>
 
-      <section class="log-card">
+      </template>
+      <section v-if="activePage === 'billing'" class="log-card">
         <div class="chart-heading log-heading">
           <div>
             <h3>调用记录</h3>
-            <p>数据来自后端 GET /api/open/call-logs，支持时间、Key、模型多条件服务端筛选和分页。</p>
           </div>
           <span>{{ formatNumber(callLogTotal) }} 条</span>
         </div>
@@ -1100,7 +1127,6 @@ async function copyText(value: string) {
           />
         </div>
       </section>
-    </section>
     </section>
 
     <el-dialog v-model="rechargeDialogVisible" title="钱包充值" width="440px">
@@ -1205,58 +1231,18 @@ async function copyText(value: string) {
 <style scoped>
 .api-page {
   display: grid;
-  gap: 20px;
-}
-
-.function-tabs {
-  display: flex;
-  gap: 6px;
-  padding: 5px;
-  width: fit-content;
-  border: 1px solid var(--color-border);
-  border-radius: 10px;
-  background: #ffffff;
-  box-shadow: 0 6px 18px rgba(20, 65, 120, 0.05);
-}
-
-.function-tabs button {
-  min-width: 132px;
-  padding: 10px 18px;
-  border: 0;
-  border-radius: 7px;
-  color: var(--color-muted);
-  background: transparent;
-  font: inherit;
-  font-size: 15px;
-  font-weight: 700;
-  cursor: pointer;
-}
-
-.function-tabs button:hover {
-  color: var(--color-primary);
-  background: #f3f7fc;
-}
-
-.function-tabs button.active {
-  color: #ffffff;
-  background: var(--color-primary);
-  box-shadow: 0 4px 12px rgba(29, 111, 220, 0.2);
-}
-
-.function-tabs button:focus-visible {
-  outline: 3px solid rgba(29, 111, 220, 0.22);
-  outline-offset: 2px;
+  gap: 28px;
 }
 
 .key-section,
-.usage-section,
-.usage-pane {
+.usage-section {
   display: grid;
   gap: 18px;
 }
 
-.usage-pane {
-  gap: 24px;
+.usage-section {
+  padding-top: 28px;
+  border-top: 1px solid var(--color-border);
 }
 
 .section-heading,
@@ -1659,6 +1645,89 @@ async function copyText(value: string) {
   }
 }
 
+.overview-section { display: grid; gap: 20px; }
+.key-heading { align-items: center; }
+.wallet-heading h1 { margin: 0; color: #111827; font-size: 28px; font-weight: 650; letter-spacing: -0.02em; }
+.wallet-heading { align-items: center; }
+.wallet-grid article { min-height: 128px; padding: 22px 24px; border-radius: 8px; }
+.wallet-grid strong { margin: 14px 0 8px; font-size: 32px; font-weight: 650; letter-spacing: -0.02em; }
+.wallet-records-heading h2 { margin: 0; color: #111827; font-size: 18px; font-weight: 600; }
+.usage-section:has(.log-card) { padding-top: 20px; border-top: 0; }
+.log-card { border-radius: 8px; }
+.key-heading h1 { color: #111827; font-size: 28px; font-weight: 650; letter-spacing: -0.02em; }
+.page-description { margin: 8px 0 0 !important; color: #6b7280 !important; font-size: 14px; line-height: 1.5 !important; }
+.key-security-alert { border: 1px solid #f0dfb1; border-radius: 6px; background: #fffbeb; }
+.key-security-alert :deep(.el-alert__title) { color: #765b18; font-size: 13px; font-weight: 500; }
+.key-table-shell { border-radius: 6px; }
+.key-table :deep(.el-table__header th) { height: 46px; color: #6b7280; background: #fafafa; font-size: 12px; font-weight: 500; text-transform: uppercase; }
+.key-table :deep(.el-table__row td) { height: 58px; }
+.key-table :deep(.el-table__row:hover > td) { background: #fafafa !important; }
+.key-actions :deep(.el-button) { font-size: 13px; }
+.overview-section .section-heading { align-items: center; }
+.overview-summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.overview-summary article { min-height: 104px; padding: 16px 18px; border: 1px solid #e5e7eb; border-radius: 9px; background: #fff; }
+.overview-summary span, .overview-summary small { display: block; color: #6b7280; font-size: 12px; }
+.overview-summary strong { display: block; margin: 11px 0 6px; color: #172033; font-size: 26px; line-height: 1; }
+.model-panel, .service-note { padding: 20px; border: 1px solid #e5e7eb; border-radius: 9px; background: #fff; }
+.panel-heading, .service-note { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.panel-heading h2, .service-note h2 { margin: 0; color: #172033; font-size: 18px; }
+.panel-heading p, .service-note p { margin: 6px 0 0; color: #6b7280; font-size: 13px; }
+.model-tools { display: flex; align-items: center; gap: 10px; }
+.model-tools .el-input { width: 220px; }
+.model-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 18px; }
+.model-card { min-width: 0; padding: 16px; border: 1px solid #e5e7eb; border-radius: 8px; }
+.model-card-head { display: flex; align-items: flex-start; gap: 10px; }
+.model-card-head > div { min-width: 0; flex: 1; }
+.model-glyph { display: grid; width: 32px; height: 32px; place-items: center; border-radius: 8px; color: #2563a6; background: #edf4fb; font-size: 20px; }
+.model-card h3 { margin: 0; overflow: hidden; color: #172033; font-size: 15px; text-overflow: ellipsis; white-space: nowrap; }
+.model-card-head p { margin: 3px 0 0; color: #7b8492; font-size: 12px; }
+.model-description { display: -webkit-box; min-height: 36px; margin: 14px 0 12px; overflow: hidden; color: #4b5563; font-size: 13px; line-height: 1.45; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+.model-meta { display: flex; align-items: center; justify-content: space-between; color: #8a93a1; font-size: 12px; }
+.model-meta code { max-width: 72%; overflow: hidden; color: #536174; font-family: Consolas, monospace; text-overflow: ellipsis; white-space: nowrap; }
+.model-tags { display: flex; gap: 6px; margin-top: 12px; }
+.service-note { align-items: flex-start; background: #f8fafc; }
+.service-links { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 4px; }
+.key-section, .usage-section { gap: 16px; }
+.key-table-shell, .chart-card, .log-card, .wallet-section { border-color: #e5e7eb; border-radius: 9px; box-shadow: none; }
+.wallet-section { padding: 20px; background: #fff; }
+.summary-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); min-height: 116px; }
+.summary-card { min-height: 116px; border-color: #e5e7eb; border-radius: 9px; }
+.chart-canvas { height: 280px; }
+.compact-chart { height: 270px; }
+
+@media (max-width: 1024px) {
+  .overview-summary, .summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .model-grid { grid-template-columns: 1fr; }
+  .chart-layout { grid-template-columns: 1fr; }
+  .trend-card { grid-column: auto; }
+}
+@media (max-width: 640px) {
+  .overview-summary, .summary-grid, .wallet-grid { grid-template-columns: 1fr; }
+  .panel-heading, .service-note { align-items: flex-start; flex-direction: column; }
+  .model-tools { width: 100%; flex-wrap: wrap; }
+  .model-tools .el-input { width: 100%; }
+  .service-links { justify-content: flex-start; }
+}
+
+/* Usage dashboard: compact, data-first layout. */
+.usage-section { gap: 14px; }
+.usage-heading h2 { color: #111827; font-size: 26px; font-weight: 650; letter-spacing: -0.02em; }
+.usage-heading > div > p { margin-top: 5px !important; color: #8a93a1 !important; font-size: 12px !important; }
+.filter-bar { align-items: center; padding: 10px; border-color: #e7e9ed; border-radius: 7px; background: #fff; }
+.filter-control { width: 158px; }
+.summary-grid { grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; min-height: 108px; }
+.summary-card { min-height: 108px; padding: 16px; border-color: #e7e9ed; border-radius: 7px; }
+.summary-card::before { height: 2px; }
+.summary-card strong { margin: 10px 0 7px; color: #111827; font-size: 26px; font-weight: 650; }
+.summary-card small { color: #9299a5; }
+.chart-layout { gap: 12px; }
+.chart-card { padding: 16px; border-color: #e7e9ed; border-radius: 7px; }
+.chart-heading h3 { color: #20252d; font-size: 16px; font-weight: 600; }
+.chart-heading p { display: none; }
+.chart-canvas { height: 270px; margin-top: 2px; }
+.compact-chart { height: 250px; }
+.usage-empty { min-height: 220px; border-radius: 7px; }
+
 @media (max-width: 680px) {
   .summary-grid,
   .chart-layout,
@@ -1682,4 +1751,38 @@ async function copyText(value: string) {
     flex-direction: column;
   }
 }
+
+/* Reference dashboard treatment: quiet canvas, compact cards, chart-first hierarchy. */
+.usage-section { gap: 16px; padding: 22px 24px 30px; background: #f5f7f8; border-radius: 18px; }
+.usage-heading { margin-bottom: -2px; }
+.usage-heading h2 { color: #17212b; font-size: 22px; letter-spacing: -.03em; }
+.heading-actions .el-button { border: 1px solid #e4e8eb; border-radius: 8px; background: #fff; }
+.reference-toolbar { padding: 0; border: 0; background: transparent; }
+.range-tabs { display: flex; padding: 3px; border: 1px solid #e3e8eb; border-radius: 9px; background: #fff; }
+.range-tabs button { min-width: 38px; height: 28px; padding: 0 9px; border: 0; border-radius: 6px; color: #75808a; background: transparent; font-size: 11px; cursor: pointer; }
+.range-tabs button.active { color: #1769a8; background: #dff2ff; font-weight: 700; }
+.reference-toolbar .filter-control { width: 150px; }
+.reference-summary { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); min-height: 0; }
+.reference-summary .summary-card { min-height: 98px; padding: 14px 16px; border: 1px solid #e6eaec; border-radius: 10px; box-shadow: 0 1px 2px rgba(25,45,60,.03); }
+.reference-summary .summary-card::before { display: none; }
+.reference-summary .summary-card span { color: #82909b; font-size: 12px; }
+.reference-summary .summary-card strong { margin: 8px 0 0; color: #26313a; font-size: 25px; }
+.reference-summary .summary-card:nth-child(1) { background: #eef8f3; }
+.reference-summary .summary-card:nth-child(2) { background: #f0f7ff; }
+.reference-summary .summary-card:nth-child(3) { background: #fff4f2; }
+.reference-summary .summary-card:nth-child(4) { background: #f7f2ff; }
+.reference-summary .token-card { background: #fff !important; }
+.reference-dashboard { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.reference-dashboard .trend-card { grid-column: 1 / -1; grid-row: 2; min-height: 330px; }
+.reference-dashboard .chart-card { min-height: 274px; padding: 16px; border: 1px solid #e6eaec; border-radius: 10px; background: #fff; box-shadow: 0 1px 2px rgba(25,45,60,.03); }
+.reference-dashboard .chart-card:nth-child(2), .reference-dashboard .chart-card:nth-child(3) { grid-row: 1; }
+.reference-dashboard .chart-heading { min-height: 42px; }
+.reference-dashboard .chart-heading h3 { color: #34414b; font-size: 14px; font-weight: 650; }
+.reference-dashboard .chart-heading p { display: none; }
+.chart-total { color: #2b3943; font-size: 22px; font-weight: 700; }
+.error-total { color: #34414b; }
+.reference-dashboard .chart-canvas { height: 205px; margin-top: 8px; }
+.reference-dashboard .compact-chart { height: 205px; }
+
+@media (max-width: 680px) { .usage-section { padding: 16px; } .reference-summary, .reference-dashboard { grid-template-columns: 1fr; } .reference-dashboard .trend-card { grid-column: auto; grid-row: 3; } .reference-dashboard .chart-card:nth-child(2), .reference-dashboard .chart-card:nth-child(3) { grid-row: auto; } .reference-toolbar .filter-control { width: 100%; } }
 </style>

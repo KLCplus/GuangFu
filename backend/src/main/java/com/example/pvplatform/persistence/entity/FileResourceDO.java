@@ -21,5 +21,10 @@ public class FileResourceDO {
     private String businessType;
     private Long fileSize;
     private String checksum;
+    private String objectKey;
+    private String contentType;
+    private String fileStatus;
+    private Long bizId;
     private LocalDateTime createdAt;
+    private LocalDateTime updatedAt;
 }

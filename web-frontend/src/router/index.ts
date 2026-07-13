@@ -35,9 +35,20 @@ const routes: RouteRecordRaw[] = [
       { path: 'models/use', name: 'ModelUse', component: () => import('../views/ModelPrediction.vue'), meta: { title: '模型' } },
       { path: 'cloud-forecast', name: 'CloudForecast', component: () => import('../views/CloudForecast.vue'), meta: { title: '云图' } },
       { path: 'weather', name: 'Weather', component: () => import('../views/Weather.vue'), meta: { title: '天气' } },
-      { path: 'pvoutput', name: 'PublicPvOutput', component: () => import('../views/PublicPvOutput.vue'), meta: { title: '公开电站' } },
+      { path: 'pvoutput', name: 'PublicPvOutput', redirect: '/dashboard', meta: { title: '公开电站' } },
       { path: 'marketplace', name: 'Marketplace', component: () => import('../views/Marketplace.vue'), meta: { title: '广场' } },
-      { path: 'api', name: 'ApiManage', component: () => import('../views/ApiPlatform.vue'), meta: { title: 'API' } },
+      {
+        path: 'api',
+        component: () => import('../layouts/ApiLayout.vue'),
+        meta: { title: 'API' },
+        children: [
+          { path: '', redirect: '/api/overview' },
+          { path: 'overview', name: 'ApiOverview', component: () => import('../views/ApiPlatform.vue'), meta: { title: 'API 概览' } },
+          { path: 'keys', name: 'ApiKeys', component: () => import('../views/ApiPlatform.vue'), meta: { title: 'API Keys' } },
+          { path: 'billing', name: 'ApiBilling', component: () => import('../views/ApiPlatform.vue'), meta: { title: '余额与流水' } },
+          { path: 'usage', name: 'ApiUsage', component: () => import('../views/ApiPlatform.vue'), meta: { title: '使用统计' } },
+        ]
+      },
       { path: 'reports', name: 'Reports', component: () => import('../views/AnalysisReport.vue'), meta: { title: '报告' } },
       { path: 'news', name: 'NewsList', component: () => import('../views/NewsList.vue'), meta: { title: '新闻' } },
       { path: 'news/:newsId', name: 'NewsDetail', component: () => import('../views/NewsDetail.vue'), meta: { title: '新闻详情' } },

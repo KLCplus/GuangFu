@@ -1,1004 +1,116 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import {
-  loadProfileOverview,
-  saveUserProfile,
-  unbindOAuthProvider,
-  updateUserPassword
-} from '../api/userPages'
-import type { DataSource, ProfileOverview } from '../api/userPages'
-import { deleteFace, enrollFace, getFaceStatus, type ChangePasswordPayload, type UpdateProfilePayload, type UserProfile } from '../api/user'
+import { Connection, Key, Link, Lock, User, Wallet } from '@element-plus/icons-vue'
+import { loadProfileOverview, saveUserProfile, unbindOAuthProvider, updateUserPassword } from '../api/userPages'
+import type { ProfileOverview } from '../api/userPages'
+import { deleteAvatar, deleteFace, enrollFace, getFaceStatus, uploadAvatar } from '../api/user'
+import type { ChangePasswordPayload, UpdateProfilePayload, UserProfile } from '../api/user'
 import { useUserStore } from '../store/user'
 
-interface ProfileForm {
-  nickname: string
-  email: string
-  phone: string
-  gender: number
-}
+type Section = 'basic' | 'security' | 'connections' | 'wallet' | 'entitlements'
+interface ProfileForm { nickname: string; email: string; phone: string; gender: number }
+interface PasswordForm { oldPassword: string; newPassword: string; confirmPassword: string }
 
-interface PasswordForm {
-  oldPassword: string
-  newPassword: string
-  confirmPassword: string
-}
-
+const route = useRoute()
+const router = useRouter()
 const userStore = useUserStore()
-
-const loading = ref(false)
-const saving = ref(false)
-const passwordSaving = ref(false)
+const loading = ref(false), saving = ref(false), passwordSaving = ref(false), faceSaving = ref(false), faceRevoking = ref(false), avatarSaving = ref(false)
 const actionLoadingId = ref<number | null>(null)
-const faceSaving = ref(false)
-const faceRevoking = ref(false)
-const faceFile = ref<File>()
-const facePreview = ref('')
-const videoRef = ref<HTMLVideoElement>()
-const cameraActive = ref(false)
-let cameraStream: MediaStream | undefined
-const loadError = ref('')
 const overview = ref<ProfileOverview | null>(null)
-const dataSource = ref<DataSource>('remote')
-
-const profileForm = reactive<ProfileForm>({
-  nickname: '',
-  email: '',
-  phone: '',
-  gender: 0
-})
-
-const passwordForm = reactive<PasswordForm>({
-  oldPassword: '',
-  newPassword: '',
-  confirmPassword: ''
-})
-
-const profile = computed(() => overview.value?.profile ?? null)
-const wallet = computed(() => overview.value?.wallet ?? null)
-const apiKeys = computed(() => overview.value?.apiKeys ?? [])
-const entitlements = computed(() => overview.value?.apiEntitlements ?? [])
-const walletRecords = computed(() => overview.value?.walletRecords ?? [])
-const oauthAccounts = computed(() => overview.value?.oauthAccounts ?? [])
+const loadError = ref('')
+const editing = ref(false), passwordDialogVisible = ref(false)
+const faceFile = ref<File>(), facePreview = ref(''), videoRef = ref<HTMLVideoElement>(), cameraActive = ref(false)
+let cameraStream: MediaStream | undefined
+const profileForm = reactive<ProfileForm>({ nickname: '', email: '', phone: '', gender: 0 })
+const passwordForm = reactive<PasswordForm>({ oldPassword: '', newPassword: '', confirmPassword: '' })
+const sections: Array<{ key: Section; label: string; icon: typeof User }> = [
+  { key: 'basic', label: '个人资料', icon: User }, { key: 'security', label: '安全与登录', icon: Lock },
+  { key: 'connections', label: '第三方账户', icon: Link }, { key: 'wallet', label: '钱包与消费', icon: Wallet },
+  { key: 'entitlements', label: 'API 权益', icon: Key }
+]
+const activeSection = computed<Section>(() => sections.some(item => item.key === route.query.section) ? route.query.section as Section : 'basic')
+const profile = computed(() => overview.value?.profile), wallet = computed(() => overview.value?.wallet)
+const records = computed(() => overview.value?.walletRecords ?? []), entitlements = computed(() => overview.value?.apiEntitlements ?? [])
+const apiKeys = computed(() => overview.value?.apiKeys ?? []), oauthAccounts = computed(() => overview.value?.oauthAccounts ?? [])
 const faceStatus = computed(() => overview.value?.faceStatus)
+const enabledKeys = computed(() => apiKeys.value.filter(item => item.status === 'ACTIVE').length)
 
-const profileStats = computed(() => [
-  {
-    label: 'API Key',
-    value: String(apiKeys.value.length),
-    note: `${apiKeys.value.filter((item) => item.status === 'ACTIVE').length} 个启用`
-  },
-  {
-    label: 'API 权益',
-    value: String(entitlements.value.length),
-    note: '来自开放平台权益接口'
-  },
-  {
-    label: '钱包余额',
-    value: wallet.value ? `￥${wallet.value.balance.toFixed(2)}` : '暂无数据',
-    note: '来自开放平台钱包接口'
-  },
-  {
-    label: '第三方绑定',
-    value: String(oauthAccounts.value.length),
-    note: faceStatus.value?.enrolled ? '已录入人脸' : '人脸未录入或未返回'
-  }
-])
+onMounted(() => { void fetchOverview(); window.addEventListener('pv:user-profile-updated', fetchOverview) })
+onBeforeUnmount(() => { window.removeEventListener('pv:user-profile-updated', fetchOverview); stopFaceCamera(); clearFaceSelection() })
 
-onMounted(() => {
-  void fetchOverview()
-  window.addEventListener('pv:user-profile-updated', handleExternalProfileUpdate)
-})
-
-onBeforeUnmount(() => {
-  window.removeEventListener('pv:user-profile-updated', handleExternalProfileUpdate)
-  stopFaceCamera()
-  clearFaceSelection()
-})
-
-function handleExternalProfileUpdate() {
-  void fetchOverview()
-}
-
+function selectSection(section: Section) { editing.value = false; void router.push({ path: '/profile', query: section === 'basic' ? {} : { section } }) }
 async function fetchOverview() {
-  loading.value = true
-  loadError.value = ''
-  try {
-    const result = await loadProfileOverview()
-    overview.value = result.data
-    dataSource.value = result.source
-    fillProfileForm(result.data.profile)
-    if (result.source !== 'remote') {
-      ElMessage.info('部分资料使用模拟数据兜底')
-    }
-  } catch (error) {
-    loadError.value = error instanceof Error ? error.message : '个人资料加载失败'
-  } finally {
-    loading.value = false
-  }
+  loading.value = true; loadError.value = ''
+  try { const result = await loadProfileOverview(); overview.value = result.data; fillProfileForm(result.data.profile) }
+  catch (error) { console.error('账户设置加载失败', error); overview.value = null; loadError.value = '账户设置加载失败，请检查服务状态后重试。' }
+  finally { loading.value = false }
 }
-
+function fillProfileForm(value: UserProfile) { profileForm.nickname=value.nickname ?? ''; profileForm.email=value.email ?? ''; profileForm.phone=value.phone ?? ''; profileForm.gender=value.gender ?? 0 }
+async function changeAvatar(upload: { file: File }) { const file=upload.file; if(!['image/jpeg','image/png','image/webp'].includes(file.type)||file.size>2*1024*1024) return ElMessage.warning('请选择 JPG、PNG 或 WebP 图片，且不超过 2MB'); avatarSaving.value=true; try { const result=await uploadAvatar(file); if(overview.value) overview.value.profile.avatarUrl=result.avatarUrl; userStore.setUserInfo({avatarUrl:result.avatarUrl}); ElMessage.success('头像已更新') } catch(error) { ElMessage.error(error instanceof Error?error.message:'头像上传失败') } finally { avatarSaving.value=false } }
+async function removeAvatar() { try { await ElMessageBox.confirm('确认删除当前头像吗？','删除头像',{type:'warning'}) } catch { return }; avatarSaving.value=true; try { await deleteAvatar(); if(overview.value) overview.value.profile.avatarUrl=undefined; userStore.setUserInfo({avatarUrl:undefined}); ElMessage.success('头像已删除') } catch(error) { ElMessage.error(error instanceof Error?error.message:'头像删除失败') } finally { avatarSaving.value=false } }
+function cancelEdit() { if (profile.value) fillProfileForm(profile.value); editing.value=false }
 async function saveProfile() {
-  if (!profileForm.nickname.trim()) {
-    ElMessage.warning('请输入昵称')
-    return
-  }
-
-  saving.value = true
+  if (!profileForm.nickname.trim()) return ElMessage.warning('请输入昵称')
+  saving.value=true
   try {
-    const payload: UpdateProfilePayload = {
-      nickname: profileForm.nickname.trim(),
-      email: profileForm.email.trim(),
-      phone: profileForm.phone.trim(),
-      gender: profileForm.gender
-    }
-    const result = await saveUserProfile(payload)
-    if (overview.value) {
-      overview.value.profile = result.data
-    }
-    fillProfileForm(result.data)
-    userStore.setUserInfo({
-      userId: result.data.userId,
-      username: result.data.username,
-      nickname: result.data.nickname,
-      email: result.data.email,
-      roles: result.data.roles,
-      status: result.data.status
-    })
-    ElMessage.success(result.source === 'mock' ? '当前为模拟保存' : '资料已保存')
-  } catch (error) {
-    ElMessage.error(error instanceof Error ? error.message : '资料保存失败')
-  } finally {
-    saving.value = false
-  }
+    const result = await saveUserProfile({ nickname: profileForm.nickname.trim(), email: profileForm.email.trim(), phone: profileForm.phone.trim(), gender: profileForm.gender } as UpdateProfilePayload)
+    if (overview.value) overview.value.profile=result.data
+    fillProfileForm(result.data); userStore.setUserInfo({ userId:result.data.userId, username:result.data.username, nickname:result.data.nickname, email:result.data.email, roles:result.data.roles, status:result.data.status })
+    editing.value=false; ElMessage.success('资料已保存')
+  } catch (error) { ElMessage.error(error instanceof Error ? error.message : '资料保存失败') } finally { saving.value=false }
 }
-
+function resetPasswordForm() { passwordForm.oldPassword=''; passwordForm.newPassword=''; passwordForm.confirmPassword='' }
 async function changePassword() {
-  if (!passwordForm.oldPassword || !passwordForm.newPassword) {
-    ElMessage.warning('请输入旧密码和新密码')
-    return
-  }
-  if (passwordForm.newPassword !== passwordForm.confirmPassword) {
-    ElMessage.warning('两次输入的新密码不一致')
-    return
-  }
-
-  passwordSaving.value = true
-  try {
-    const payload: ChangePasswordPayload = {
-      oldPassword: passwordForm.oldPassword,
-      newPassword: passwordForm.newPassword
-    }
-    const result = await updateUserPassword(payload)
-    resetPasswordForm()
-    ElMessage.success(result.source === 'mock' ? '当前为模拟修改密码' : '密码已修改')
-  } catch (error) {
-    ElMessage.error(error instanceof Error ? error.message : '密码修改失败')
-  } finally {
-    passwordSaving.value = false
-  }
+  if (!passwordForm.oldPassword || !passwordForm.newPassword) return ElMessage.warning('请输入旧密码和新密码')
+  if (passwordForm.newPassword !== passwordForm.confirmPassword) return ElMessage.warning('两次输入的新密码不一致')
+  passwordSaving.value=true
+  try { await updateUserPassword({ oldPassword: passwordForm.oldPassword, newPassword: passwordForm.newPassword } as ChangePasswordPayload); resetPasswordForm(); passwordDialogVisible.value=false; ElMessage.success('密码已修改') }
+  catch (error) { ElMessage.error(error instanceof Error ? error.message : '密码修改失败') } finally { passwordSaving.value=false }
 }
-
-async function unbindOAuth(oauthId: number, provider: string) {
-  try {
-    await ElMessageBox.confirm(`确认解绑 ${provider} 账号吗？`, '解绑第三方账号', {
-      type: 'warning',
-      confirmButtonText: '解绑',
-      cancelButtonText: '取消'
-    })
-  } catch {
-    return
-  }
-
-  actionLoadingId.value = oauthId
-  try {
-    const result = await unbindOAuthProvider(oauthId)
-    if (overview.value) {
-      overview.value.oauthAccounts = overview.value.oauthAccounts.filter((item) => item.oauthId !== oauthId)
-    }
-    ElMessage.success(result.source === 'mock' ? '当前为模拟解绑' : '第三方账号已解绑')
-  } catch (error) {
-    ElMessage.error(error instanceof Error ? error.message : '解绑失败')
-  } finally {
-    actionLoadingId.value = null
-  }
+async function unbindOAuth(id:number, provider:string) {
+  try { await ElMessageBox.confirm(`确认解绑 ${provider} 账号吗？`, '解绑第三方账号', { type:'warning', confirmButtonText:'解绑', cancelButtonText:'取消' }) } catch { return }
+  actionLoadingId.value=id
+  try { await unbindOAuthProvider(id); if (overview.value) overview.value.oauthAccounts=overview.value.oauthAccounts.filter(item=>item.oauthId!==id); ElMessage.success('第三方账号已解绑') }
+  catch (error) { ElMessage.error(error instanceof Error ? error.message : '解绑失败') } finally { actionLoadingId.value=null }
 }
-
-function clearFaceSelection() {
-  if (facePreview.value) URL.revokeObjectURL(facePreview.value)
-  facePreview.value = ''
-  faceFile.value = undefined
-}
-
-function selectFaceFile(event: Event) {
-  const input = event.target as HTMLInputElement
-  const file = input.files?.[0]
-  if (!file) return
-  if (!file.type.startsWith('image/')) {
-    ElMessage.warning('请选择图片文件')
-    input.value = ''
-    return
-  }
-  if (file.size > 5 * 1024 * 1024) {
-    ElMessage.warning('图片大小不超过 5MB')
-    input.value = ''
-    return
-  }
-  clearFaceSelection()
-  faceFile.value = file
-  facePreview.value = URL.createObjectURL(file)
-}
-
-async function openFaceCamera() {
-  if (!navigator.mediaDevices?.getUserMedia) {
-    ElMessage.error('当前浏览器不支持摄像头调用')
-    return
-  }
-
-  try {
-    cameraStream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: 'user' },
-      audio: false
-    })
-    cameraActive.value = true
-    await nextTick()
-    if (videoRef.value) {
-      videoRef.value.srcObject = cameraStream
-      await videoRef.value.play()
-    }
-  } catch {
-    ElMessage.error('无法打开摄像头，请检查浏览器权限')
-  }
-}
-
-function stopFaceCamera() {
-  cameraStream?.getTracks().forEach((track) => track.stop())
-  cameraStream = undefined
-  cameraActive.value = false
-  if (videoRef.value) {
-    videoRef.value.srcObject = null
-  }
-}
-
-async function captureFacePhoto() {
-  const video = videoRef.value
-  if (!video || !video.videoWidth || !video.videoHeight) {
-    ElMessage.warning('摄像头画面尚未准备好')
-    return
-  }
-
-  const canvas = document.createElement('canvas')
-  canvas.width = video.videoWidth
-  canvas.height = video.videoHeight
-  const context = canvas.getContext('2d')
-  if (!context) {
-    ElMessage.error('无法生成拍照图片')
-    return
-  }
-
-  context.drawImage(video, 0, 0, canvas.width, canvas.height)
-  const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.92))
-  if (!blob) {
-    ElMessage.error('拍照失败，请重试')
-    return
-  }
-
-  clearFaceSelection()
-  faceFile.value = new File([blob], 'face-' + Date.now() + '.jpg', { type: 'image/jpeg' })
-  facePreview.value = URL.createObjectURL(faceFile.value)
-  stopFaceCamera()
-  ElMessage.success('已完成拍照')
-}
-
-async function refreshFaceStatus() {
-  if (!overview.value) return
-  overview.value.faceStatus = await getFaceStatus()
-}
-
-async function enrollSelectedFace() {
-  if (!faceFile.value) {
-    ElMessage.warning('请先选择人脸图片')
-    return
-  }
-
-  faceSaving.value = true
-  try {
-    await enrollFace(faceFile.value)
-    await refreshFaceStatus()
-    clearFaceSelection()
-    ElMessage.success('人脸已录入，可用于人脸登录')
-  } catch (error) {
-    ElMessage.error(error instanceof Error ? error.message : '人脸录入失败')
-  } finally {
-    faceSaving.value = false
-  }
-}
-
-async function revokeFaceAuth() {
-  try {
-    await ElMessageBox.confirm('确认撤销当前账号的人脸信息吗？', '撤销人脸认证', {
-      type: 'warning',
-      confirmButtonText: '撤销',
-      cancelButtonText: '取消'
-    })
-  } catch {
-    return
-  }
-
-  faceRevoking.value = true
-  try {
-    await deleteFace()
-    await refreshFaceStatus()
-    clearFaceSelection()
-    ElMessage.success('人脸信息已撤销')
-  } catch (error) {
-    ElMessage.error(error instanceof Error ? error.message : '撤销人脸失败')
-  } finally {
-    faceRevoking.value = false
-  }
-}
-
-function fillProfileForm(value: UserProfile) {
-  profileForm.nickname = value.nickname ?? ''
-  profileForm.email = value.email ?? ''
-  profileForm.phone = value.phone ?? ''
-  profileForm.gender = value.gender ?? 0
-}
-
-function resetPasswordForm() {
-  passwordForm.oldPassword = ''
-  passwordForm.newPassword = ''
-  passwordForm.confirmPassword = ''
-}
-
-function sourceLabel(source: DataSource) {
-  if (source === 'remote') return '真实接口'
-  if (source === 'mixed') return '混合数据'
-  return '模拟数据'
-}
-
-function sourceType(source: DataSource) {
-  if (source === 'remote') return 'success'
-  if (source === 'mixed') return 'warning'
-  return 'info'
-}
-
-function genderLabel(gender?: number) {
-  if (gender === 1) return '男'
-  if (gender === 2) return '女'
-  return '未设置'
-}
-
-function roleText(roles?: string[]) {
-  return roles?.length ? roles.join(' / ') : 'USER'
-}
-
-function apiKeyStatusType(status?: string) {
-  if (status === 'ACTIVE') return 'success'
-  if (status === 'EXPIRED') return 'warning'
-  return 'info'
-}
-
-function apiKeyStatusLabel(status?: string) {
-  if (status === 'ACTIVE') return '启用'
-  if (status === 'EXPIRED') return '过期'
-  return '停用'
-}
-
-function recordTypeLabel(type: string) {
-  const labels: Record<string, string> = {
-    RECHARGE: '充值',
-    CONSUME: '消费',
-    REFUND: '退款'
-  }
-  return labels[type] ?? type
-}
+function clearFaceSelection() { if(facePreview.value) URL.revokeObjectURL(facePreview.value); facePreview.value=''; faceFile.value=undefined }
+function selectFaceFile(event:Event) { const input=event.target as HTMLInputElement; const file=input.files?.[0]; if(!file) return; if(!file.type.startsWith('image/') || file.size>5*1024*1024) { ElMessage.warning('请选择不超过 5MB 的图片文件'); input.value=''; return }; clearFaceSelection(); faceFile.value=file; facePreview.value=URL.createObjectURL(file) }
+async function openFaceCamera() { if(!navigator.mediaDevices?.getUserMedia) return ElMessage.error('当前浏览器不支持摄像头调用'); try { cameraStream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'user'},audio:false}); cameraActive.value=true; await nextTick(); if(videoRef.value) { videoRef.value.srcObject=cameraStream; await videoRef.value.play() } } catch { ElMessage.error('无法打开摄像头，请检查浏览器权限') } }
+function stopFaceCamera() { cameraStream?.getTracks().forEach(track=>track.stop()); cameraStream=undefined; cameraActive.value=false; if(videoRef.value) videoRef.value.srcObject=null }
+async function captureFacePhoto() { const video=videoRef.value; if(!video?.videoWidth || !video.videoHeight) return ElMessage.warning('摄像头画面尚未准备好'); const canvas=document.createElement('canvas'); canvas.width=video.videoWidth; canvas.height=video.videoHeight; canvas.getContext('2d')?.drawImage(video,0,0,canvas.width,canvas.height); const blob=await new Promise<Blob|null>(resolve=>canvas.toBlob(resolve,'image/jpeg',.92)); if(!blob) return ElMessage.error('拍照失败，请重试'); clearFaceSelection(); faceFile.value=new File([blob],`face-${Date.now()}.jpg`,{type:'image/jpeg'}); facePreview.value=URL.createObjectURL(faceFile.value); stopFaceCamera() }
+async function refreshFaceStatus() { if(overview.value) overview.value.faceStatus=await getFaceStatus() }
+async function enrollSelectedFace() { if(!faceFile.value) return ElMessage.warning('请先选择人脸图片'); faceSaving.value=true; try { await enrollFace(faceFile.value); await refreshFaceStatus(); clearFaceSelection(); ElMessage.success('人脸信息已更新') } catch(error) { ElMessage.error(error instanceof Error?error.message:'人脸录入失败') } finally { faceSaving.value=false } }
+async function revokeFaceAuth() { try { await ElMessageBox.confirm('确认撤销当前账号的人脸信息吗？','撤销人脸认证',{type:'warning',confirmButtonText:'撤销',cancelButtonText:'取消'}) } catch { return }; faceRevoking.value=true; try { await deleteFace(); await refreshFaceStatus(); clearFaceSelection(); ElMessage.success('人脸信息已撤销') } catch(error) { ElMessage.error(error instanceof Error?error.message:'撤销人脸失败') } finally { faceRevoking.value=false } }
+function roleText(roles?:string[]) { return roles?.length ? roles.join(' / ') : '-' }
+function genderLabel(value?:number) { return value===1?'男':value===2?'女':'未设置' }
+function maskPhone(value?:string) { return value && value.length>7 ? `${value.slice(0,3)}****${value.slice(-4)}` : value || '未绑定' }
+function money(value?:number) { return value == null ? '—' : `¥${value.toFixed(2)}` }
+function apiStatus(status?:string) { return status==='ACTIVE'?'启用':status==='EXPIRED'?'过期':'停用' }
+function apiTag(status?:string) { return status==='ACTIVE'?'success':status==='EXPIRED'?'warning':'info' }
+function recordLabel(type:string) { return ({RECHARGE:'账户充值',CONSUME:'消费',REFUND:'退款'} as Record<string,string>)[type] ?? type }
 </script>
 
 <template>
-  <section class="profile-page">
-    <div class="page-heading">
-      <div>
-        <h1>我的</h1>
-      </div>
-      <div class="heading-actions">
-        <el-tag :type="sourceType(dataSource)" effect="light">{{ sourceLabel(dataSource) }}</el-tag>
-        <el-button :loading="loading" @click="fetchOverview">刷新</el-button>
-      </div>
-    </div>
-
-    <el-alert
-      v-if="dataSource !== 'remote'"
-      title="部分信息当前使用 mock 兜底；真实接口恢复后会自动展示后端数据。"
-      type="info"
-      show-icon
-      :closable="false"
-    />
-
-    <el-alert v-if="loadError" :title="loadError" type="error" show-icon :closable="false">
-      <template #default>
-        <el-button size="small" type="primary" @click="fetchOverview">重试</el-button>
-      </template>
-    </el-alert>
-
-    <div v-loading="loading" class="profile-content">
-      <template v-if="profile">
-        <section class="hero-panel">
-          <div class="avatar-block">
-            <el-avatar :size="72" :src="profile.avatarUrl">
-              {{ (profile.nickname || profile.username || 'U').slice(0, 1).toUpperCase() }}
-            </el-avatar>
-            <div>
-              <h2>{{ profile.nickname || profile.username }}</h2>
-              <p>{{ profile.username }} · {{ roleText(profile.roles) }}</p>
-            </div>
-          </div>
-          <div class="hero-meta">
-            <div>
-              <span>邮箱</span>
-              <strong>{{ profile.email || '未绑定' }}</strong>
-            </div>
-            <div>
-              <span>手机号</span>
-              <strong>{{ profile.phone || '未绑定' }}</strong>
-            </div>
-            <div>
-              <span>性别</span>
-              <strong>{{ genderLabel(profile.gender) }}</strong>
-            </div>
-            <div>
-              <span>注册时间</span>
-              <strong>{{ profile.createdAt || '-' }}</strong>
-            </div>
-          </div>
-        </section>
-
-        <div class="overview-grid">
-          <div v-for="item in profileStats" :key="item.label" class="overview-card">
-            <span>{{ item.label }}</span>
-            <strong>{{ item.value }}</strong>
-            <small>{{ item.note }}</small>
-          </div>
-        </div>
-
-        <div class="profile-layout">
-          <section class="panel form-panel">
-            <div class="panel-head">
-              <div>
-                <h2>基本资料</h2>
-                <p>来源：GET /api/user/profile，保存：PUT /api/user/profile。</p>
-              </div>
-            </div>
-            <el-form label-position="top" @submit.prevent>
-              <el-form-item label="用户名">
-                <el-input :model-value="profile.username" disabled />
-              </el-form-item>
-              <el-form-item label="昵称" required>
-                <el-input v-model="profileForm.nickname" maxlength="32" show-word-limit />
-              </el-form-item>
-              <el-form-item label="邮箱">
-                <el-input v-model="profileForm.email" maxlength="80" />
-              </el-form-item>
-              <el-form-item label="手机号">
-                <el-input v-model="profileForm.phone" maxlength="20" />
-              </el-form-item>
-              <el-form-item label="性别">
-                <el-radio-group v-model="profileForm.gender">
-                  <el-radio-button :label="0">未设置</el-radio-button>
-                  <el-radio-button :label="1">男</el-radio-button>
-                  <el-radio-button :label="2">女</el-radio-button>
-                </el-radio-group>
-              </el-form-item>
-              <div class="form-actions">
-                <el-button @click="fillProfileForm(profile)">重置</el-button>
-                <el-button type="primary" :loading="saving" @click="saveProfile">保存资料</el-button>
-              </div>
-            </el-form>
-          </section>
-
-          <section class="panel security-panel">
-            <div class="panel-head">
-              <div>
-                <h2>安全设置</h2>
-                <p>密码修改接入 PUT /api/user/password。</p>
-              </div>
-            </div>
-            <el-form label-position="top" @submit.prevent>
-              <el-form-item label="旧密码">
-                <el-input v-model="passwordForm.oldPassword" type="password" show-password autocomplete="current-password" />
-              </el-form-item>
-              <el-form-item label="新密码">
-                <el-input v-model="passwordForm.newPassword" type="password" show-password autocomplete="new-password" />
-              </el-form-item>
-              <el-form-item label="确认新密码">
-                <el-input v-model="passwordForm.confirmPassword" type="password" show-password autocomplete="new-password" />
-              </el-form-item>
-              <div class="form-actions">
-                <el-button @click="resetPasswordForm">清空</el-button>
-                <el-button type="primary" :loading="passwordSaving" @click="changePassword">修改密码</el-button>
-              </div>
-            </el-form>
-
-            <div class="security-list">
-              <div>
-                <span>邮箱绑定</span>
-                <strong>{{ profile.email ? '已绑定' : '未绑定' }}</strong>
-                <small>邮箱修改复用资料保存接口，验证码绑定流程待确认。</small>
-              </div>
-              <div class="face-auth-card">
-                <div class="face-auth-top">
-                  <div>
-                    <span>人脸认证</span>
-                    <strong>{{ faceStatus?.enrolled ? '已录入' : '未录入' }}</strong>
-                    <small>{{ faceStatus?.enrolledAt ? '录入时间：' + faceStatus.enrolledAt : '选择清晰正脸图片后可录入或更新' }}</small>
-                  </div>
-                  <el-tag :type="faceStatus?.enrolled ? 'success' : 'info'" effect="light">
-                    {{ faceStatus?.enrolled ? '可用' : '未启用' }}
-                  </el-tag>
-                </div>
-
-                <div v-if="cameraActive" class="face-camera-panel">
-                  <video ref="videoRef" autoplay muted playsinline />
-                  <div class="face-camera-actions">
-                    <el-button type="primary" @click="captureFacePhoto">拍照</el-button>
-                    <el-button @click="stopFaceCamera">关闭摄像头</el-button>
-                  </div>
-                </div>
-
-                <div v-if="facePreview" class="face-preview">
-                  <img :src="facePreview" alt="人脸预览" />
-                  <el-button text type="danger" @click="clearFaceSelection">移除</el-button>
-                </div>
-
-                <div class="face-actions">
-                  <label class="face-file-button">
-                    <input type="file" accept="image/*" @change="selectFaceFile" />
-                    选择图片
-                  </label>
-                  <el-button plain @click="openFaceCamera">打开摄像头</el-button>
-                  <el-button type="primary" :loading="faceSaving" :disabled="!faceFile" @click="enrollSelectedFace">
-                    {{ faceStatus?.enrolled ? '更新人脸' : '录入人脸' }}
-                  </el-button>
-                  <el-button
-                    type="danger"
-                    plain
-                    :loading="faceRevoking"
-                    :disabled="!faceStatus?.enrolled"
-                    @click="revokeFaceAuth"
-                  >
-                    撤销
-                  </el-button>
-                </div>
-              </div>
-            </div>
-          </section>
-        </div>
-
-        <div class="profile-layout">
-          <section class="panel">
-            <div class="panel-head">
-              <div>
-                <h2>API 权益</h2>
-                <p>API Key、已购买模型和权益额度来自开放平台接口。</p>
-              </div>
-            </div>
-            <el-empty v-if="entitlements.length === 0" description="暂无 API 权益" />
-            <div v-else class="entitlement-list">
-              <div v-for="item in entitlements" :key="item.entitlementId" class="entitlement-card">
-                <div>
-                  <h3>{{ item.modelName }}</h3>
-                  <p>{{ item.apiKeyName }}</p>
-                </div>
-                <el-progress
-                  :percentage="Math.min(100, Math.round((item.quotaUsed / item.quotaTotal) * 100))"
-                  :stroke-width="8"
-                />
-                <div class="entitlement-meta">
-                  <span>{{ item.quotaUsed }} / {{ item.quotaTotal }} 次</span>
-                  <span>到期：{{ item.expireTime }}</span>
-                </div>
-              </div>
-            </div>
-          </section>
-
-          <section class="panel">
-            <div class="panel-head">
-              <div>
-                <h2>API Key</h2>
-                <p>来源：GET /api/open/keys。</p>
-              </div>
-            </div>
-            <el-empty v-if="apiKeys.length === 0" description="暂无 API Key" />
-            <div v-else class="key-list">
-              <div v-for="item in apiKeys" :key="item.apiKeyId" class="key-item">
-                <div>
-                  <strong>{{ item.keyName }}</strong>
-                  <small>{{ item.apiKeyPrefix || item.apiKey || '未返回前缀' }}</small>
-                </div>
-                <el-tag :type="apiKeyStatusType(item.status)" effect="light">{{ apiKeyStatusLabel(item.status) }}</el-tag>
-              </div>
-            </div>
-          </section>
-        </div>
-
-        <div class="profile-layout">
-          <section class="panel">
-            <div class="panel-head">
-              <div>
-                <h2>钱包</h2>
-                <p>钱包余额和消费流水来自开放平台钱包接口。</p>
-              </div>
-              <el-tag type="success" effect="light">已接入</el-tag>
-            </div>
-            <div v-if="wallet" class="wallet-grid">
-              <div>
-                <span>可用余额</span>
-                <strong>￥{{ wallet.balance.toFixed(2) }}</strong>
-              </div>
-              <div>
-                <span>冻结余额</span>
-                <strong>￥{{ wallet.frozenBalance.toFixed(2) }}</strong>
-              </div>
-              <div>
-                <span>本月消费</span>
-                <strong>￥{{ wallet.monthlyCost.toFixed(2) }}</strong>
-              </div>
-            </div>
-            <div class="record-list">
-              <div v-for="item in walletRecords" :key="item.recordId" class="record-item">
-                <div>
-                  <strong>{{ item.title }}</strong>
-                  <small>{{ recordTypeLabel(item.type) }} · {{ item.createdAt }}</small>
-                </div>
-                <span :class="{ income: item.amount > 0 }">{{ item.amount > 0 ? '+' : '' }}￥{{ item.amount }}</span>
-              </div>
-            </div>
-          </section>
-
-          <section class="panel">
-            <div class="panel-head">
-              <div>
-                <h2>第三方绑定</h2>
-                <p>来源：GET /api/user/oauth-accounts，解绑使用 DELETE /api/user/oauth-accounts/{oauthId}。</p>
-              </div>
-            </div>
-            <el-empty v-if="oauthAccounts.length === 0" description="暂无第三方绑定" />
-            <div v-else class="oauth-list">
-              <div v-for="item in oauthAccounts" :key="item.oauthId" class="oauth-item">
-                <div>
-                  <strong>{{ item.provider }}</strong>
-                  <small>{{ item.nickname || item.providerUserId }} · {{ item.bindTime || '-' }}</small>
-                </div>
-                <el-button
-                  size="small"
-                  text
-                  type="danger"
-                  :loading="actionLoadingId === item.oauthId"
-                  @click="unbindOAuth(item.oauthId, item.provider)"
-                >
-                  解绑
-                </el-button>
-              </div>
-            </div>
-            <el-alert
-              class="placeholder-alert"
-              title="第三方发起绑定需要 OAuth 授权跳转，本页只展示绑定状态和解绑操作。"
-              type="info"
-              show-icon
-              :closable="false"
-            />
-          </section>
-        </div>
-      </template>
-
-      <el-empty v-else-if="!loading && !loadError" description="暂无个人资料" />
-    </div>
+  <section class="account-page">
+    <header class="account-header"><div><h1>账户设置</h1></div><el-button :loading="loading" @click="fetchOverview">刷新</el-button></header>
+    <el-alert v-if="loadError" :title="loadError" type="error" show-icon :closable="false"><template #default><el-button size="small" type="primary" @click="fetchOverview">重新加载</el-button></template></el-alert>
+    <template v-if="profile">
+      <section class="account-summary"><el-avatar :size="58" :src="profile.avatarUrl">{{ (profile.nickname || profile.username).slice(0,1).toUpperCase() }}</el-avatar><div class="summary-identity"><strong>{{ profile.nickname || profile.username }}</strong><span>{{ roleText(profile.roles) }} · 注册于 {{ profile.createdAt }}</span><small>{{ profile.email || '未绑定邮箱' }} · {{ maskPhone(profile.phone) }}</small></div><div class="summary-status"><el-tag :type="profile.status === 1 ? 'success' : 'info'">{{ profile.status === 1 ? '账户正常' : '账户受限' }}</el-tag><el-tag :type="profile.email ? 'success' : 'info'">{{ profile.email ? '邮箱已绑定' : '邮箱未绑定' }}</el-tag><el-tag :type="faceStatus?.enrolled ? 'success' : 'info'">{{ faceStatus?.enrolled ? '人脸已录入' : '人脸未录入' }}</el-tag></div><div class="summary-metrics"><span>可用余额 <b>{{ money(wallet?.balance) }}</b></span><span>API Key <b>{{ apiKeys.length }}</b></span><span>API 权益 <b>{{ entitlements.length }}</b></span></div></section>
+      <div class="settings-layout"><nav class="settings-nav"><button v-for="item in sections" :key="item.key" :class="{active:activeSection===item.key}" @click="selectSection(item.key)"><el-icon><component :is="item.icon" /></el-icon>{{ item.label }}</button></nav>
+        <main class="settings-content">
+          <section v-if="activeSection==='basic'" class="settings-panel"><header><div><h2>个人资料</h2><p>管理个人基本信息和联系方式。</p></div><el-button v-if="!editing" @click="editing=true">编辑资料</el-button></header><template v-if="!editing"><dl class="detail-list"><dt>头像</dt><dd><el-avatar :size="44" :src="profile.avatarUrl">{{ (profile.nickname || profile.username).slice(0,1) }}</el-avatar><el-upload :show-file-list="false" accept="image/jpeg,image/png,image/webp" :http-request="changeAvatar"><el-button size="small" :loading="avatarSaving">更换头像</el-button></el-upload><el-button v-if="profile.avatarUrl" size="small" text type="danger" :loading="avatarSaving" @click="removeAvatar">删除</el-button><small>JPG、PNG、WebP，最大 2MB</small></dd><dt>用户名</dt><dd>{{ profile.username }}</dd><dt>昵称</dt><dd>{{ profile.nickname || '未设置' }}</dd><dt>邮箱</dt><dd>{{ profile.email || '未绑定' }} <el-tag v-if="profile.email" size="small" type="success">已绑定</el-tag></dd><dt>手机号</dt><dd>{{ maskPhone(profile.phone) }} <el-tag v-if="profile.phone" size="small" type="success">已绑定</el-tag></dd><dt>性别</dt><dd>{{ genderLabel(profile.gender) }}</dd><dt>角色</dt><dd>{{ roleText(profile.roles) }}</dd><dt>注册时间</dt><dd>{{ profile.createdAt }}</dd></dl></template><el-form v-else class="profile-form" label-position="top"><el-form-item label="昵称" required><el-input v-model="profileForm.nickname" maxlength="32" show-word-limit /></el-form-item><el-form-item label="邮箱"><el-input v-model="profileForm.email" maxlength="80" /></el-form-item><el-form-item label="手机号"><el-input v-model="profileForm.phone" maxlength="20" /></el-form-item><el-form-item label="性别"><el-radio-group v-model="profileForm.gender"><el-radio :value="0">未设置</el-radio><el-radio :value="1">男</el-radio><el-radio :value="2">女</el-radio></el-radio-group></el-form-item><footer><el-button @click="cancelEdit">取消</el-button><el-button type="primary" :loading="saving" @click="saveProfile">保存资料</el-button></footer></el-form></section>
+          <section v-else-if="activeSection==='security'" class="settings-panel"><header><div><h2>安全与登录</h2><p>管理密码、邮箱验证和人脸认证。</p></div></header><div class="setting-row"><div><h3>密码</h3><p>用于保护账户登录安全。</p></div><el-button @click="passwordDialogVisible=true">修改密码</el-button></div><div class="setting-row"><div><h3>邮箱</h3><p>{{ profile.email || '未绑定' }}</p></div><el-tag :type="profile.email?'success':'info'">{{ profile.email?'已绑定':'未绑定' }}</el-tag></div><div class="setting-row"><div><h3>手机号</h3><p>{{ maskPhone(profile.phone) }}</p></div><el-tag :type="profile.phone?'success':'info'">{{ profile.phone?'已绑定':'未绑定' }}</el-tag></div><div class="face-setting"><div class="setting-row"><div><h3>人脸认证</h3><p>状态：{{ faceStatus?.enrolled?'已录入':'未录入' }}<template v-if="faceStatus?.enrolledAt"> · 录入时间：{{ faceStatus.enrolledAt }}</template></p></div><el-tag :type="faceStatus?.enrolled?'success':'info'">{{ faceStatus?.enrolled?'可用':'未启用' }}</el-tag></div><div v-if="cameraActive" class="camera"><video ref="videoRef" autoplay muted playsinline /><div><el-button type="primary" @click="captureFacePhoto">拍照</el-button><el-button @click="stopFaceCamera">关闭摄像头</el-button></div></div><div v-if="facePreview" class="preview"><img :src="facePreview" alt="人脸预览" /><el-button text type="danger" @click="clearFaceSelection">移除</el-button></div><div class="face-actions"><label class="file-button"><input type="file" accept="image/*" @change="selectFaceFile" />选择图片</label><el-button @click="openFaceCamera">打开摄像头</el-button><el-button type="primary" :loading="faceSaving" :disabled="!faceFile" @click="enrollSelectedFace">{{ faceStatus?.enrolled?'更新人脸':'录入人脸' }}</el-button><el-button text type="danger" :loading="faceRevoking" :disabled="!faceStatus?.enrolled" @click="revokeFaceAuth">撤销</el-button></div></div></section>
+          <section v-else-if="activeSection==='connections'" class="settings-panel"><header><div><h2>第三方账户</h2><p>管理可用于登录平台的外部账户。</p></div></header><div v-if="oauthAccounts.length" class="connection-list"><div v-for="item in oauthAccounts" :key="item.oauthId" class="setting-row"><div><h3><el-icon><Connection /></el-icon>{{ item.provider }}</h3><p>已绑定：{{ item.nickname || item.providerUserId }}<template v-if="item.bindTime"> · {{ item.bindTime }}</template></p></div><el-button text type="danger" :loading="actionLoadingId===item.oauthId" @click="unbindOAuth(item.oauthId,item.provider)">解除绑定</el-button></div></div><div v-else class="compact-empty">暂无已绑定的第三方账户</div><p class="section-note">第三方账户用于快捷登录，解除绑定不会删除平台账户。</p></section>
+          <section v-else-if="activeSection==='wallet'" class="settings-panel"><header><div><h2>钱包与消费</h2><p>查看账户余额和最近资金变动。</p></div><el-button type="primary" @click="router.push('/api/billing')">去充值</el-button></header><div class="wallet-summary"><div><span>可用余额</span><strong>{{ money(wallet?.balance) }}</strong></div><div v-if="wallet?.frozenBalance != null"><span>冻结余额</span><strong>{{ money(wallet.frozenBalance) }}</strong></div><div v-if="wallet?.monthlyCost != null"><span>本月消费</span><strong>{{ money(wallet.monthlyCost) }}</strong></div></div><div class="list-heading"><h3>最近资金变动</h3><el-button text @click="router.push('/api/billing')">查看完整账单</el-button></div><div v-if="records.length" class="record-list"><div v-for="item in records.slice(0,3)" :key="item.recordId" class="setting-row"><div><h3>{{ item.title || recordLabel(item.type) }}</h3><p>{{ item.createdAt }}</p></div><strong :class="{income:item.amount>0}">{{ item.amount>0?'+':'' }}{{ money(item.amount) }}</strong></div></div><div v-else class="compact-empty">暂无资金变动</div></section>
+          <section v-else class="settings-panel"><header><div><h2>API 权益</h2><p>查看当前 API Key、模型访问权限和调用额度。</p></div></header><div class="entitlement-stats"><span>API Key <b>{{ apiKeys.length }}</b></span><span>已启用 Key <b>{{ enabledKeys }}</b></span><span>模型权益 <b>{{ entitlements.length }}</b></span></div><div class="table-shell"><table><thead><tr><th>权益名称</th><th>关联 Key</th><th>已使用 / 总额度</th><th>有效期</th></tr></thead><tbody><tr v-for="item in entitlements" :key="item.entitlementId"><td>{{ item.modelName }}</td><td>{{ item.apiKeyName }}</td><td><el-progress :percentage="item.quotaTotal ? Math.min(100,Math.round(item.quotaUsed/item.quotaTotal*100)) : 0" :stroke-width="6" /><small>{{ item.quotaUsed }} / {{ item.quotaTotal }}</small></td><td>{{ item.expireTime || '—' }}</td></tr></tbody></table><div v-if="!entitlements.length" class="compact-empty">暂无 API 权益</div></div><div class="list-heading"><h3>API Key</h3><el-button @click="router.push('/api/keys')">管理 API Keys</el-button></div><div v-if="apiKeys.length" class="key-summary"><div v-for="item in apiKeys" :key="item.apiKeyId"><strong>{{ item.keyName }}</strong><small>{{ item.apiKeyPrefix || '未返回前缀' }}</small><el-tag :type="apiTag(item.status)" size="small">{{ apiStatus(item.status) }}</el-tag></div></div><div v-else class="compact-empty">暂无 API Key</div></section>
+        </main></div>
+    </template><el-skeleton v-else-if="loading" :rows="8" animated /><el-empty v-else-if="!loadError" description="暂无个人资料" />
+    <el-dialog v-model="passwordDialogVisible" title="修改密码" width="440px" @closed="resetPasswordForm"><el-form label-position="top"><el-form-item label="旧密码"><el-input v-model="passwordForm.oldPassword" type="password" show-password autocomplete="current-password" /></el-form-item><el-form-item label="新密码"><el-input v-model="passwordForm.newPassword" type="password" show-password autocomplete="new-password" /></el-form-item><el-form-item label="确认新密码"><el-input v-model="passwordForm.confirmPassword" type="password" show-password autocomplete="new-password" /></el-form-item></el-form><template #footer><el-button @click="passwordDialogVisible=false">取消</el-button><el-button type="primary" :loading="passwordSaving" @click="changePassword">确认修改</el-button></template></el-dialog>
   </section>
 </template>
 
 <style scoped>
-.profile-page,
-.profile-content,
-.entitlement-list,
-.key-list,
-.record-list,
-.oauth-list,
-.security-list {
-  display: grid;
-  gap: 18px;
-}
-
-.page-heading,
-.heading-actions,
-.hero-panel,
-.hero-meta,
-.panel-head,
-.form-actions,
-.key-item,
-.record-item,
-.oauth-item,
-.entitlement-meta {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-}
-
-.page-heading,
-.hero-panel,
-.panel-head,
-.key-item,
-.record-item,
-.oauth-item,
-.entitlement-meta {
-  justify-content: space-between;
-}
-
-.page-heading h1,
-.hero-panel h2,
-.panel-head h2,
-.entitlement-card h3 {
-  margin: 0;
-  color: #10274c;
-}
-
-.page-heading h1 {
-  font-size: 28px;
-}
-
-.hero-panel h2 {
-  font-size: 24px;
-}
-
-.panel-head h2 {
-  font-size: 18px;
-}
-
-.page-heading p,
-.hero-panel p,
-.panel-head p,
-.entitlement-card p,
-.security-list small,
-.key-item small,
-.record-item small,
-.oauth-item small,
-.entitlement-meta {
-  margin: 6px 0 0;
-  color: var(--color-muted);
-  line-height: 1.6;
-}
-
-.hero-panel,
-.overview-card,
-.panel {
-  border: 1px solid var(--color-border);
-  border-radius: 8px;
-  background: #ffffff;
-  box-shadow: var(--shadow-panel);
-}
-
-.hero-panel {
-  padding: 20px;
-}
-
-.avatar-block {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-}
-
-.hero-meta {
-  flex-wrap: wrap;
-}
-
-.hero-meta div,
-.wallet-grid div,
-.security-list div {
-  min-width: 150px;
-  padding: 12px;
-  border-radius: 8px;
-  background: #f8fbff;
-}
-
-.hero-meta span,
-.overview-card span,
-.wallet-grid span,
-.security-list span {
-  color: var(--color-muted);
-  font-size: 13px;
-}
-
-.hero-meta strong,
-.wallet-grid strong,
-.security-list strong {
-  display: block;
-  margin-top: 6px;
-  color: #10274c;
-}
-
-.overview-grid {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 14px;
-}
-
-.overview-card {
-  min-height: 112px;
-  padding: 18px;
-}
-
-.overview-card strong {
-  display: block;
-  margin: 10px 0 6px;
-  color: #10274c;
-  font-size: 28px;
-  line-height: 1;
-}
-
-.overview-card small {
-  color: var(--color-muted);
-}
-
-.profile-layout {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 16px;
-  align-items: start;
-}
-
-.panel {
-  min-width: 0;
-  padding: 18px;
-}
-
-.form-actions {
-  justify-content: flex-end;
-}
-
-.security-list {
-  margin-top: 18px;
-}
-
-.face-auth-card {
-  display: grid;
-  gap: 12px;
-}
-
-.face-auth-top,
-.face-actions {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-}
-
-.face-camera-panel {
-  display: grid;
-  gap: 10px;
-}
-
-.face-camera-panel video {
-  width: 100%;
-  height: 220px;
-  border: 1px solid var(--color-border);
-  border-radius: 8px;
-  background: #f7fbff;
-  object-fit: cover;
-}
-
-.face-camera-actions {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
-}
-
-.face-preview {
-  display: grid;
-  grid-template-columns: 96px auto;
-  align-items: center;
-  gap: 12px;
-}
-
-.face-preview img {
-  width: 96px;
-  height: 96px;
-  border: 1px solid var(--color-border);
-  border-radius: 8px;
-  object-fit: cover;
-}
-
-.face-file-button {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 32px;
-  padding: 0 15px;
-  border: 1px solid var(--color-border);
-  border-radius: 4px;
-  color: #10274c;
-  background: #ffffff;
-  font-size: 14px;
-  cursor: pointer;
-}
-
-.face-file-button input {
-  display: none;
-}
-
-.entitlement-card,
-.key-item,
-.record-item,
-.oauth-item {
-  padding: 12px;
-  border: 1px solid var(--color-border);
-  border-radius: 8px;
-  background: #f8fbff;
-}
-
-.entitlement-card {
-  display: grid;
-  gap: 12px;
-}
-
-.key-item strong,
-.record-item strong,
-.oauth-item strong {
-  display: block;
-  color: #10274c;
-}
-
-.wallet-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
-  margin-bottom: 16px;
-}
-
-.record-item span {
-  color: var(--color-danger);
-  font-weight: 700;
-}
-
-.record-item span.income {
-  color: var(--color-success);
-}
-
-.placeholder-alert {
-  margin-top: 14px;
-}
-
-@media (max-width: 1180px) {
-  .overview-grid,
-  .profile-layout,
-  .wallet-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .hero-panel {
-    align-items: flex-start;
-    flex-direction: column;
-  }
-}
-
-@media (max-width: 760px) {
-  .page-heading,
-  .heading-actions,
-  .panel-head,
-  .overview-grid,
-  .profile-layout,
-  .wallet-grid {
-    align-items: flex-start;
-    grid-template-columns: 1fr;
-  }
-
-  .page-heading,
-  .heading-actions,
-  .panel-head,
-  .key-item,
-  .record-item,
-  .oauth-item,
-  .face-auth-top,
-  .face-actions {
-    flex-direction: column;
-  }
-}
+.account-page{display:grid;gap:20px}.account-header,.account-summary,.settings-panel>header,.setting-row,.list-heading{display:flex;align-items:center;justify-content:space-between;gap:16px}.account-header h1,.settings-panel h2,.settings-panel h3{margin:0;color:#172033}.account-header h1{font-size:28px}.account-header p,.settings-panel header p,.setting-row p,.section-note{margin:6px 0 0;color:#6b7280;font-size:14px;line-height:1.55}.account-summary,.settings-layout,.settings-panel{border:1px solid #e5e7eb;border-radius:9px;background:#fff}.account-summary{display:grid;grid-template-columns:auto minmax(240px,1fr) auto;align-items:center;padding:18px 20px}.summary-identity{display:grid;gap:4px}.summary-identity strong{font-size:17px}.summary-identity span,.summary-identity small{color:#6b7280;font-size:13px}.summary-status,.summary-metrics{display:flex;flex-wrap:wrap;gap:7px}.summary-metrics{grid-column:2/-1;margin-top:12px;padding-top:12px;border-top:1px solid #edf0f3;gap:24px;color:#6b7280;font-size:13px}.summary-metrics b{margin-left:5px;color:#172033}.settings-layout{display:grid;grid-template-columns:210px minmax(0,1fr);align-items:start;overflow:hidden}.settings-nav{display:grid;gap:4px;padding:14px;border-right:1px solid #e5e7eb;background:#fafafa}.settings-nav button{display:flex;align-items:center;gap:9px;min-height:40px;padding:0 10px;border:0;border-radius:6px;background:transparent;color:#6b7280;font:inherit;text-align:left;cursor:pointer}.settings-nav button:hover{background:#f1f5f9;color:#2c5f91}.settings-nav button.active{background:#eaf3fb;color:#21629e;font-weight:600}.settings-content{min-width:0;padding:24px}.settings-panel{max-width:1060px;padding:22px;box-shadow:none}.settings-panel>header{padding-bottom:18px;border-bottom:1px solid #e5e7eb}.detail-list{display:grid;grid-template-columns:145px minmax(0,1fr);gap:0;margin:0}.detail-list dt,.detail-list dd{min-height:52px;padding:14px 0;border-bottom:1px solid #edf0f3}.detail-list dt{color:#6b7280}.detail-list dd{display:flex;align-items:center;gap:8px;margin:0;color:#1f2937}.profile-form{max-width:680px;padding-top:18px}.profile-form footer{display:flex;justify-content:flex-end;gap:10px}.setting-row{min-height:84px;padding:16px 0;border-bottom:1px solid #edf0f3}.setting-row h3{display:flex;align-items:center;gap:7px;font-size:15px}.face-setting{padding-top:2px}.face-setting>.setting-row{border:0}.face-actions,.camera>div,.preview{display:flex;align-items:center;flex-wrap:wrap;gap:9px}.file-button{display:inline-flex;align-items:center;height:32px;padding:0 14px;border:1px solid #d6dce4;border-radius:7px;color:#334155;font-size:14px;cursor:pointer}.file-button input{display:none}.camera{display:grid;gap:10px;margin:8px 0}.camera video{width:100%;height:240px;border:1px solid #e5e7eb;border-radius:8px;background:#111827;object-fit:cover}.preview{margin-bottom:10px}.preview img{width:82px;height:82px;border:1px solid #e5e7eb;border-radius:8px;object-fit:cover}.compact-empty{padding:24px 0;color:#6b7280;text-align:center}.section-note{padding-top:12px}.wallet-summary,.entitlement-stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;padding:20px 0}.wallet-summary div,.entitlement-stats span{display:grid;gap:7px;padding:14px;border:1px solid #edf0f3;border-radius:8px;color:#6b7280;font-size:13px}.wallet-summary strong,.entitlement-stats b{color:#172033;font-size:21px}.record-list strong{color:#b45309}.record-list strong.income{color:#15803d}.table-shell{overflow:auto;border:1px solid #e5e7eb;border-radius:8px}.table-shell table{width:100%;min-width:680px;border-collapse:collapse;text-align:left}.table-shell th,.table-shell td{padding:13px;border-bottom:1px solid #edf0f3;font-size:13px}.table-shell th{color:#6b7280;font-weight:600;background:#fafafa}.table-shell td small{display:block;margin-top:5px;color:#6b7280}.key-summary{display:grid;border:1px solid #e5e7eb;border-radius:8px}.key-summary>div{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) auto;gap:10px;align-items:center;padding:12px 14px;border-bottom:1px solid #edf0f3}.key-summary>div:last-child{border:0}.key-summary small{overflow:hidden;color:#6b7280;text-overflow:ellipsis;white-space:nowrap}@media(max-width:1024px){.settings-layout{grid-template-columns:1fr}.settings-nav{display:flex;overflow:auto;border-right:0;border-bottom:1px solid #e5e7eb}.settings-nav button{flex:0 0 auto}.settings-content{padding:16px}.account-summary{grid-template-columns:auto 1fr}.summary-status{grid-column:1/-1}.summary-metrics{grid-column:1/-1}}@media(max-width:700px){.account-header,.account-summary,.settings-panel>header,.setting-row{align-items:flex-start;flex-direction:column}.account-summary{gap:12px}.summary-metrics,.wallet-summary,.entitlement-stats{grid-template-columns:1fr}.detail-list{grid-template-columns:1fr}.detail-list dt{padding-bottom:3px;border:0}.detail-list dd{min-height:38px;padding-top:0}.settings-content{padding:10px}.settings-panel{padding:16px}.key-summary>div{grid-template-columns:1fr}.account-header{gap:10px}}
 </style>

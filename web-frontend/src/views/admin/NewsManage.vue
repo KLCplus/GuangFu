@@ -8,6 +8,8 @@ import {
   offlineNews,
   publishNews,
   updateNews,
+  uploadNewsCover,
+  uploadNewsImage,
   type AdminNewsQuery,
   type News,
   type NewsPayload,
@@ -28,6 +30,12 @@ interface NewsRow {
   status: NewsStatus
   publishedAt: string
   createdAt: string
+}
+
+interface StatsItem {
+  label: string
+  value: string | number
+  color: string
 }
 
 type Mode = 'create' | 'edit'
@@ -87,6 +95,16 @@ const pagedRows = computed(() => {
 
 const totalFiltered = computed(() => filteredRows.value.length)
 
+const stats = computed<StatsItem[]>(() => {
+  const all = rows.value
+  return [
+    { label: '全部', value: all.length, color: '#1d6fdc' },
+    { label: '已发布', value: all.filter((r) => r.status === 'PUBLISHED').length, color: '#52c41a' },
+    { label: '草稿', value: all.filter((r) => r.status === 'DRAFT').length, color: '#faad14' },
+    { label: '已下线', value: all.filter((r) => r.status === 'OFFLINE').length, color: '#999' }
+  ]
+})
+
 // ---- API 操作 ----
 function toPayload(f: NewsRow): NewsPayload {
   return {
@@ -102,7 +120,7 @@ function toPayload(f: NewsRow): NewsPayload {
 async function fetchList() {
   loading.value = true
   try {
-    const params: AdminNewsQuery = { pageNum: 1, pageSize: 100 }
+    const params: AdminNewsQuery = { pageNum: 1, pageSize: 200 }
     if (filters.status) params.status = filters.status
     if (filters.type) params.type = filters.type
     const pageResult = await getAdminNewsList(params)
@@ -110,7 +128,6 @@ async function fetchList() {
     page.total = pageResult.total
   } catch (error) {
     rows.value = []
-    page.total = 0
     ElMessage.error(error instanceof Error ? error.message : '新闻列表加载失败')
   } finally {
     loading.value = false
@@ -144,8 +161,8 @@ async function submitForm() {
     saving.value = true
     try {
       if (mode.value === 'create') {
-      const created = await createNews(toPayload(form))
-      rows.value.unshift({ ...created, status: 'DRAFT', publishedAt: '', createdAt: new Date().toISOString() } as NewsRow)
+      await createNews(toPayload(form))
+      await fetchList()
       ElMessage.success('新闻创建成功')
     } else {
       await updateNews(editingId.value!, toPayload(form))
@@ -154,11 +171,22 @@ async function submitForm() {
       ElMessage.success('新闻更新成功')
     }
     dialogVisible.value = false
-  } catch (error) {
-    ElMessage.error(error instanceof Error ? error.message : mode.value === 'create' ? '创建失败' : '更新失败')
+  } catch {
+    ElMessage.error(mode.value === 'create' ? '创建失败' : '更新失败')
   } finally {
     saving.value = false
   }
+}
+
+async function uploadCoverFile(upload: { file: File }) {
+  if (!editingId.value) return ElMessage.warning('请先创建新闻草稿，再上传封面')
+  try { const result = await uploadNewsCover(editingId.value, upload.file); form.coverUrl = result.url; ElMessage.success('封面已上传') }
+  catch (error) { ElMessage.error(error instanceof Error ? error.message : '封面上传失败') }
+}
+async function uploadContentFile(upload: { file: File }) {
+  if (!editingId.value) return ElMessage.warning('请先创建新闻草稿，再上传正文图片')
+  try { const result = await uploadNewsImage(editingId.value, upload.file); form.content += `${form.content ? '\n' : ''}<img src="${result.url}" alt="新闻图片">`; ElMessage.success('正文图片已插入') }
+  catch (error) { ElMessage.error(error instanceof Error ? error.message : '正文图片上传失败') }
 }
 
 async function handlePublish(row: NewsRow) {
@@ -167,8 +195,7 @@ async function handlePublish(row: NewsRow) {
     row.status = 'PUBLISHED'
     row.publishedAt = new Date().toISOString().replace('T', ' ').slice(0, 19)
     ElMessage.success('已发布')
-  } catch (error) {
-    ElMessage.error(error instanceof Error ? error.message : '发布失败')
+  } catch (error) { ElMessage.error(error instanceof Error ? error.message : '发布失败')
   }
 }
 
@@ -177,8 +204,7 @@ async function handleOffline(row: NewsRow) {
     await offlineNews(row.newsId)
     row.status = 'OFFLINE'
     ElMessage.success('已下线')
-  } catch (error) {
-    ElMessage.error(error instanceof Error ? error.message : '下线失败')
+  } catch (error) { ElMessage.error(error instanceof Error ? error.message : '下线失败')
   }
 }
 
@@ -197,8 +223,7 @@ async function handleDelete(row: NewsRow) {
     await deleteNews(row.newsId)
     rows.value = rows.value.filter((r) => r.newsId !== row.newsId)
     ElMessage.success('已删除')
-  } catch (error) {
-    ElMessage.error(error instanceof Error ? error.message : '删除失败')
+  } catch (error) { ElMessage.error(error instanceof Error ? error.message : '删除失败')
   }
 }
 
@@ -242,9 +267,11 @@ onMounted(() => {
 
 <template>
   <div class="page-shell">
-    <div class="page-title">
-      <div>
-        <h2>新闻管理</h2>
+    <!-- 统计卡片 -->
+    <div class="stat-row">
+      <div v-for="s in stats" :key="s.label" class="stat-card">
+        <span class="stat-label">{{ s.label }}</span>
+        <span class="stat-value" :style="{ color: s.color }">{{ s.value }}</span>
       </div>
     </div>
 
@@ -279,14 +306,7 @@ onMounted(() => {
 
     <!-- 数据表格 -->
     <div class="page-section" style="padding:0">
-      <el-table
-        v-loading="loading"
-        :data="pagedRows"
-        empty-text="暂无新闻"
-        max-height="calc(100vh - 238px)"
-        stripe
-        style="width:100%"
-      >
+      <el-table v-loading="loading" :data="pagedRows" stripe size="default" style="width:100%">
         <el-table-column prop="newsId" label="ID" width="60" />
         <el-table-column prop="title" label="标题" min-width="180" show-overflow-tooltip />
         <el-table-column label="类型" width="100">
@@ -349,7 +369,6 @@ onMounted(() => {
       v-model="dialogVisible"
       :title="mode === 'create' ? '新建新闻' : '编辑新闻'"
       width="680px"
-      class="news-dialog"
       :close-on-click-modal="false"
       destroy-on-close
     >
@@ -361,7 +380,7 @@ onMounted(() => {
           <el-input
             v-model="form.summary"
             type="textarea"
-            :rows="1"
+            :rows="2"
             placeholder="简要摘要，将展示在列表卡片中"
             maxlength="256"
             show-word-limit
@@ -371,11 +390,14 @@ onMounted(() => {
           <el-input
             v-model="form.content"
             type="textarea"
-            :rows="3"
+            :rows="5"
             placeholder="新闻正文内容（支持纯文本）"
             maxlength="4096"
             show-word-limit
           />
+          <el-upload class="inline-upload" :show-file-list="false" accept="image/jpeg,image/png,image/webp" :http-request="uploadContentFile">
+            <el-button size="small">上传并插入正文图片</el-button>
+          </el-upload>
         </el-form-item>
         <el-row :gutter="16">
           <el-col :span="12">
@@ -398,8 +420,11 @@ onMounted(() => {
             </el-form-item>
           </el-col>
         </el-row>
-        <el-form-item label="封面图片 URL">
-          <el-input v-model="form.coverUrl" placeholder="可选，封面图片链接" />
+        <el-form-item label="封面图片">
+          <el-upload :show-file-list="false" accept="image/jpeg,image/png,image/webp" :http-request="uploadCoverFile">
+            <el-button :disabled="!editingId">上传 OSS 封面</el-button>
+          </el-upload>
+          <el-image v-if="form.coverUrl" :src="form.coverUrl" fit="cover" style="width:120px;height:64px;margin-top:8px" />
         </el-form-item>
       </el-form>
       <template #footer>
@@ -413,6 +438,34 @@ onMounted(() => {
 </template>
 
 <style scoped>
+.stat-row {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.stat-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 18px;
+  border: 1px solid var(--admin-line);
+  border-radius: 8px;
+  background: var(--admin-surface);
+  box-shadow: var(--admin-shadow);
+}
+
+.stat-label {
+  color: var(--admin-muted);
+  font-size: 13px;
+}
+
+.stat-value {
+  font-size: 28px;
+  font-weight: 700;
+  line-height: 1;
+}
+
 .toolbar-left {
   display: flex;
   align-items: center;
@@ -429,17 +482,14 @@ onMounted(() => {
 .pagination-row {
   display: flex;
   justify-content: flex-end;
-  margin-top: 4px;
-}
-
-:deep(.news-dialog .el-dialog__body) {
-  max-height: calc(86vh - 120px);
-  overflow-y: auto;
-  padding-top: 12px;
-  padding-bottom: 8px;
+  margin-top: 14px;
 }
 
 @media (max-width: 760px) {
+  .stat-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .toolbar {
     flex-direction: column;
   }

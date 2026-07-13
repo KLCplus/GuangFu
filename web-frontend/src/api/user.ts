@@ -33,6 +33,7 @@ export interface CancelAccountPayload {
 }
 
 export interface AvatarUploadResult {
+  fileId: number
   avatarUrl: string
 }
 
@@ -58,8 +59,9 @@ export const cancelAccount = (data: CancelAccountPayload) => request.post<void>(
 export const uploadAvatar = (file: File) => {
   const form = new FormData()
   form.append('file', file)
-  return request.post<AvatarUploadResult>('/user/avatar', form)
+  return request.post<AvatarUploadResult>('/users/me/avatar', form)
 }
+export const deleteAvatar = () => request.delete<void>('/users/me/avatar')
 export const getOAuthAccounts = () => request.get<OAuthAccount[]>('/user/oauth-accounts')
 export const bindOAuthAccount = (provider: string, data: BindOAuthAccountPayload) =>
   request.post<OAuthAccount>(`/user/oauth-accounts/${provider}/bind`, data)

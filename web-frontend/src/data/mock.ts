@@ -1,7 +1,6 @@
 export type StationStatus = 'RUNNING' | 'STOPPED' | 'MAINTENANCE'
 export type ModelStatus = 'ONLINE' | 'OFFLINE' | 'TESTING'
 export type PredictionStatus = 'PENDING' | 'RUNNING' | 'SUCCESS' | 'FAILED'
-export type NewsType = 'MODEL_UPDATE' | 'SYSTEM_NOTICE' | 'OPERATION'
 export type ModelCategory = 'TIME_SERIES' | 'VISION_FUSION' | 'VIDEO_RECURSIVE'
 export type ApiKeyStatus = 'ACTIVE' | 'DISABLED'
 
@@ -131,18 +130,6 @@ export interface MockApiUsagePoint {
   avgLatency: number
 }
 
-export interface MockNotificationItem {
-  notificationId: number
-  title: string
-  content: string
-  notificationType: string
-  relatedType?: string
-  relatedId?: number
-  readStatus: 0 | 1
-  readTime?: string
-  createdAt: string
-}
-
 export interface MockUserProfile {
   userId: number
   username: string
@@ -197,14 +184,6 @@ export interface PredictionTask {
   costTime: number
   createTime: string
   predictions?: PredictionResult[]
-}
-
-export interface NewsItem {
-  newsId: number
-  title: string
-  type: NewsType
-  content: string
-  publishTime: string
 }
 
 export interface ApiCallLog {
@@ -620,30 +599,6 @@ export const mockPredictions: PredictionTask[] = [
   }
 ]
 
-export const mockNews: NewsItem[] = [
-  {
-    newsId: 1,
-    title: '模型更新通知',
-    type: 'MODEL_UPDATE',
-    publishTime: '2026-07-06 09:20:00',
-    content: '平台新增 Transformer 短时预测模型，当前处于测试中，可在模型管理中查看运行状态。'
-  },
-  {
-    newsId: 2,
-    title: '平台维护公告',
-    type: 'SYSTEM_NOTICE',
-    publishTime: '2026-07-05 18:00:00',
-    content: '系统将于本周三凌晨进行例行维护，维护期间预测任务可能短暂延迟。'
-  },
-  {
-    newsId: 3,
-    title: '天气接口升级说明',
-    type: 'SYSTEM_NOTICE',
-    publishTime: '2026-07-05 10:30:00',
-    content: '天气数据接口已完成字段对齐，电站详情和综合报告中的天气分析将使用统一数据源。'
-  }
-]
-
 export const mockCallLogs: ApiCallLog[] = [
   {
     id: 1,
@@ -726,40 +681,6 @@ export const mockApiUsageSeries: MockApiUsagePoint[] = [
   { date: '07-07', calls: 259, errors: 8, avgLatency: 121 },
   { date: '07-08', calls: 231, errors: 3, avgLatency: 119 },
   { date: '07-09', calls: 238, errors: 4, avgLatency: 126 }
-]
-
-export const mockNotifications: MockNotificationItem[] = [
-  {
-    notificationId: 1,
-    title: 'API Key 即将到期',
-    content: '云图融合模型试用 Key 将在 30 天内到期，请及时续期或重新申请。',
-    notificationType: 'API_QUOTA',
-    relatedType: 'API_KEY',
-    relatedId: 2,
-    readStatus: 0,
-    createdAt: '2026-07-09 09:30:00'
-  },
-  {
-    notificationId: 2,
-    title: '模型服务升级完成',
-    content: 'iTransformer 和 TimeMixer 已完成推理服务升级，平均响应时延预计下降 10%。',
-    notificationType: 'MODEL_UPDATE',
-    relatedType: 'MODEL',
-    relatedId: 3,
-    readStatus: 0,
-    createdAt: '2026-07-08 18:00:00'
-  },
-  {
-    notificationId: 3,
-    title: '调用额度提醒',
-    content: '本月 API 调用额度使用超过 70%，可在 API 管理页查看详情。',
-    notificationType: 'QUOTA_ALERT',
-    relatedType: 'API_KEY',
-    relatedId: 1,
-    readStatus: 1,
-    readTime: '2026-07-08 10:12:00',
-    createdAt: '2026-07-07 20:15:00'
-  }
 ]
 
 export const mockUserProfile: MockUserProfile = {

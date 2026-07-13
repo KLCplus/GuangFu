@@ -7,6 +7,10 @@ import com.example.pvplatform.client.vo.ModelPredictResponse;
 import com.example.pvplatform.common.PageResult;
 import com.example.pvplatform.common.exception.BusinessException;
 import com.example.pvplatform.module.model.service.ModelService;
+import com.example.pvplatform.module.openapi.service.ApiCallLogService;
+import com.example.pvplatform.module.openapi.service.ApiKeyService;
+import com.example.pvplatform.module.openapi.service.ApiQuotaService;
+import com.example.pvplatform.module.openapi.service.OpenAccountService;
 import com.example.pvplatform.module.prediction.dto.ModelInputFrame;
 import com.example.pvplatform.module.prediction.dto.PredictionRequest;
 import com.example.pvplatform.module.prediction.vo.PredictionCreateVO;
@@ -16,6 +20,7 @@ import com.example.pvplatform.module.prediction.vo.PredictionTaskVO;
 import com.example.pvplatform.module.station.entity.PowerStation;
 import com.example.pvplatform.module.station.service.StationService;
 import com.example.pvplatform.persistence.entity.ModelInfoDO;
+import com.example.pvplatform.persistence.entity.ApiKeyDO;
 import com.example.pvplatform.persistence.entity.PredictionResultDO;
 import com.example.pvplatform.persistence.entity.PredictionTaskDO;
 import com.example.pvplatform.persistence.mapper.PredictionTaskMapper;
@@ -43,24 +48,44 @@ public class PredictionService {
     private final PredictionPersistenceService persistenceService;
     private final PredictionExecutionService executionService;
     private final PredictionTaskMapper taskMapper;
+    private final ApiKeyService apiKeyService;
+    private final ApiQuotaService apiQuotaService;
+    private final OpenAccountService openAccountService;
+    private final ApiCallLogService apiCallLogService;
 
     public PredictionService(ModelService modelService,
                               StationService stationService,
                               PredictionInputService inputService,
                               PredictionPersistenceService persistenceService,
                               PredictionExecutionService executionService,
-                              PredictionTaskMapper taskMapper) {
+                              PredictionTaskMapper taskMapper,
+                              ApiKeyService apiKeyService,
+                              ApiQuotaService apiQuotaService,
+                              OpenAccountService openAccountService,
+                              ApiCallLogService apiCallLogService) {
         this.modelService = modelService;
         this.stationService = stationService;
         this.inputService = inputService;
         this.persistenceService = persistenceService;
         this.executionService = executionService;
         this.taskMapper = taskMapper;
+        this.apiKeyService = apiKeyService;
+        this.apiQuotaService = apiQuotaService;
+        this.openAccountService = openAccountService;
+        this.apiCallLogService = apiCallLogService;
     }
 
     // ── 创建预测任务 ──────────────────────────────────────────
 
     public PredictionCreateVO create(PredictionRequest request) {
+        LocalDateTime apiStartedAt = LocalDateTime.now();
+        Long currentUserId = SecurityUtils.requireCurrentUserId();
+        ApiKeyDO selectedKey = null;
+        if (request.apiKeyId() != null) {
+            selectedKey = apiKeyService.requireOwnActive(request.apiKeyId());
+            apiQuotaService.checkAndConsume(selectedKey);
+            openAccountService.requireApiCallBalance(currentUserId);
+        }
         // 1. 校验电站存在和权限
         PowerStation station = stationService.detail(request.stationId());
         validateStationAccess(station);
@@ -100,6 +125,16 @@ public class PredictionService {
 
             // 8. 保存结果 + 更新 SUCCESS（短事务）
             persistenceService.saveResultsAndMarkSuccess(taskId, responseData, lastInputTime);
+
+            if (selectedKey != null) {
+                openAccountService.chargeApiCall(currentUserId, selectedKey.getApiKeyId(), model.getModelId());
+                long inputUnits = frames.size();
+                long outputUnits = responseData.predictions() == null ? 0L : responseData.predictions().size();
+                apiCallLogService.save(currentUserId, selectedKey.getApiKeyId(), model.getModelId(),
+                    "/api/predictions", "POST", "CONSOLE", apiStartedAt, 200, null,
+                    "{\"source\":\"MODEL_CONSOLE\",\"inputFrames\":" + inputUnits + "}",
+                    "{\"taskId\":" + taskId + "}", inputUnits, outputUnits, inputUnits + outputUnits);
+            }
 
             log.info("预测任务成功: taskId={}, costTimeMs={}", taskId, responseData.costTime());
 

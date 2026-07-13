@@ -7,6 +7,7 @@ import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.Map;
+import org.springframework.web.multipart.MultipartFile;
 
 @RestController
 public class NewsController {
@@ -19,8 +20,9 @@ public class NewsController {
     @GetMapping("/api/news")
     public Result<?> list(@RequestParam(defaultValue = "1") int pageNum,
                           @RequestParam(defaultValue = "10") int pageSize,
-                          @RequestParam(required = false) String type) {
-        return Result.success(newsService.list(pageNum, pageSize, type));
+                          @RequestParam(required = false) String type,
+                          @RequestParam(required = false) String keyword) {
+        return Result.success(newsService.list(pageNum, pageSize, type, keyword));
     }
 
     @GetMapping("/api/news/{newsId}")
@@ -41,6 +43,19 @@ public class NewsController {
         return Result.success(Map.of("newsId", newsService.create(request), "title", request.title()));
     }
 
+    @GetMapping("/api/admin/news/{newsId}")
+    public Result<?> adminDetail(@PathVariable Long newsId) { return Result.success(newsService.adminDetail(newsId)); }
+
+    @PostMapping("/api/admin/news/{newsId}/cover")
+    public Result<?> uploadCover(@PathVariable Long newsId, @RequestParam("file") MultipartFile file) {
+        return Result.success(newsService.uploadImage(newsId, file, true));
+    }
+
+    @PostMapping("/api/admin/news/{newsId}/images")
+    public Result<?> uploadContentImage(@PathVariable Long newsId, @RequestParam("file") MultipartFile file) {
+        return Result.success(newsService.uploadImage(newsId, file, false));
+    }
+
     @PutMapping("/api/admin/news/{newsId}")
     public Result<?> update(@PathVariable Long newsId, @Valid @RequestBody NewsRequest request) {
         newsService.update(newsId, request);
@@ -52,12 +67,16 @@ public class NewsController {
         newsService.publish(newsId);
         return Result.success();
     }
+    @PostMapping("/api/admin/news/{newsId}/publish")
+    public Result<?> publishPost(@PathVariable Long newsId) { newsService.publish(newsId); return Result.success(); }
 
     @PutMapping("/api/admin/news/{newsId}/offline")
     public Result<?> offline(@PathVariable Long newsId) {
         newsService.offline(newsId);
         return Result.success();
     }
+    @PostMapping("/api/admin/news/{newsId}/offline")
+    public Result<?> offlinePost(@PathVariable Long newsId) { newsService.offline(newsId); return Result.success(); }
 
     @DeleteMapping("/api/admin/news/{newsId}")
     public Result<?> delete(@PathVariable Long newsId) {

@@ -4,8 +4,10 @@ import { ElMessage } from 'element-plus'
 import { getModels } from '../api/model'
 import { createPrediction, getPredictionResults } from '../api/prediction'
 import { getStations } from '../api/station'
+import { getApiKeys } from '../api/open'
 import type { Model } from '../api/model'
 import type { PredictionResult } from '../api/prediction'
+import type { ApiKey } from '../api/open'
 import { mockStations } from '../data/mock'
 
 type ModelCategory = 'power-sequence' | 'cloud-sequence' | 'multimodal'
@@ -52,8 +54,10 @@ const loading = ref(false)
 const running = ref(false)
 const selectedCategory = ref<ModelCategory>('power-sequence')
 const selectedModelId = ref<number>()
+const selectedApiKeyId = ref<number>()
 const models = ref<UsableModel[]>(fallbackModels)
 const stations = ref<StationOption[]>([])
+const apiKeys = ref<ApiKey[]>([])
 const dataFile = ref<File>()
 const cloudFiles = ref<File[]>([])
 const folderInput = ref<HTMLInputElement>()
@@ -97,8 +101,9 @@ const chartPoints = computed(() => {
 
 onMounted(async () => {
   loading.value = true
-  await Promise.all([loadModels(), loadStations()])
+  await Promise.all([loadModels(), loadStations(), loadApiKeys()])
   selectedModelId.value = filteredModels.value[0]?.modelId
+  selectedApiKeyId.value = apiKeys.value[0]?.apiKeyId
   loading.value = false
 })
 
@@ -132,6 +137,14 @@ async function loadStations() {
       stationId: item.stationId,
       stationName: item.stationName
     }))
+  }
+}
+
+async function loadApiKeys() {
+  try {
+    apiKeys.value = (await getApiKeys()).filter((key) => key.status === "ACTIVE")
+  } catch {
+    apiKeys.value = []
   }
 }
 
@@ -193,6 +206,10 @@ async function runPrediction() {
     ElMessage.warning('请选择模型')
     return
   }
+  if (!selectedApiKeyId.value) {
+    ElMessage.warning("请先选择 API Key；没有可用 Key 时请前往 API 平台创建并充值")
+    return
+  }
   if (!dataFile.value) {
     ElMessage.warning('请上传 Excel 或 CSV 数据文件')
     return
@@ -207,6 +224,7 @@ async function runPrediction() {
     const task = await createPrediction({
       stationId: selectedStationId.value,
       modelId: selectedModel.value.modelId,
+      apiKeyId: selectedApiKeyId.value,
       inputMode: 'MANUAL_MULTIMODAL',
       numericValues: buildPredictionValues(),
       inputImages: buildPredictionImages()
@@ -304,6 +322,13 @@ function formatDateTime(date: Date) {
                   :value="model.modelId"
                 />
               </el-select>
+            </el-form-item>
+
+            <el-form-item label="计费 API Key">
+              <el-select v-model="selectedApiKeyId" class="full-control" placeholder="选择本次调用使用的 Key">
+                <el-option v-for="key in apiKeys" :key="key.apiKeyId" :label="key.keyName + String.fromCharCode(32,183,32) + (key.apiKeyPrefix || String.fromCharCode(75,101,121,32,35) + key.apiKeyId)" :value="key.apiKeyId" />
+              </el-select>
+              <p class="key-billing-hint">成功预测后按账户额度扣费，并写入所选 Key 的使用统计。</p>
             </el-form-item>
           </div>
         </div>
@@ -455,6 +480,13 @@ function formatDateTime(date: Date) {
 
 .panel-head h3 {
   margin: 4px 0 0;
+}
+
+.key-billing-hint {
+  margin: 6px 0 0;
+  color: var(--color-muted);
+  font-size: 12px;
+  line-height: 1.5;
 }
 
 .full-control {

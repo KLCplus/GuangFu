@@ -11,8 +11,6 @@ import com.example.pvplatform.module.user.service.AvatarService;
 import com.example.pvplatform.module.user.service.UserService;
 import com.example.pvplatform.security.SecurityUtils;
 import jakarta.validation.Valid;
-import org.springframework.http.MediaType;
-import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 import java.util.Map;
@@ -32,7 +30,7 @@ public class UserController {
         this.faceAuthService = faceAuthService;
     }
 
-    @GetMapping("/api/user/profile")
+    @GetMapping({"/api/user/profile", "/api/users/me"})
     public Result<?> profile() {
         return Result.success(userService.profile());
     }
@@ -54,32 +52,17 @@ public class UserController {
         return Result.success();
     }
 
-    @PostMapping("/api/user/avatar")
+    @PostMapping({"/api/user/avatar", "/api/users/me/avatar"})
     public Result<?> uploadAvatar(@RequestParam("file") MultipartFile file) {
         Long userId = SecurityUtils.requireCurrentUserId();
-        String url = avatarService.upload(file, userId);
-
-        // Update user's avatar_url
-        userService.updateAvatarUrl(url);
-
-        return Result.success(Map.of("avatarUrl", url));
+        AvatarService.AvatarResult uploaded = avatarService.upload(file, userId);
+        return Result.success(Map.of("fileId", uploaded.fileId(), "avatarUrl", uploaded.avatarUrl()));
     }
 
-    @GetMapping("/api/avatars/{storageName}")
-    public ResponseEntity<byte[]> serveAvatar(@PathVariable String storageName) {
-        byte[] data = avatarService.serve(storageName);
-        String contentType = guessContentType(storageName);
-        return ResponseEntity.ok()
-            .contentType(MediaType.parseMediaType(contentType))
-            .body(data);
-    }
-
-    private String guessContentType(String name) {
-        String lower = name.toLowerCase();
-        if (lower.endsWith(".png")) return "image/png";
-        if (lower.endsWith(".gif")) return "image/gif";
-        if (lower.endsWith(".webp")) return "image/webp";
-        return "image/jpeg";
+    @DeleteMapping({"/api/user/avatar", "/api/users/me/avatar"})
+    public Result<?> deleteAvatar() {
+        avatarService.delete(SecurityUtils.requireCurrentUserId());
+        return Result.success();
     }
 
     // ---- OAuth account management ----
