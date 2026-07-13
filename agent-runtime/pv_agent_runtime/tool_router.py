@@ -61,6 +61,7 @@ DEFAULT_CAPABILITIES = [
     ToolCapability("api.create", "api", "Create API key", requires_approval=True),
     ToolCapability("api.reset", "api", "Reset API key", requires_approval=True),
     ToolCapability("api.delete", "api", "Delete API key", requires_approval=True),
+    ToolCapability("user.profile", "user", "Show current user profile"),
     ToolCapability("wallet.balance", "wallet", "Show wallet balance"),
     ToolCapability("marketplace.list", "marketplace", "List marketplace plans"),
     ToolCapability("marketplace.purchase", "marketplace", "Purchase marketplace plan", requires_approval=True),
@@ -69,4 +70,3 @@ DEFAULT_CAPABILITIES = [
     ToolCapability("admin.station.manage", "admin", "Disabled broad station admin tool", requires_approval=True),
     ToolCapability("admin.model.manage", "admin", "Disabled broad model admin tool", requires_approval=True),
 ]
-

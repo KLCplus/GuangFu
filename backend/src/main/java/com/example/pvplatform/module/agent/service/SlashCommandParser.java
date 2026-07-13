@@ -84,8 +84,12 @@ public class SlashCommandParser {
                 if (modelId != null) args.put("modelId", modelId);
             }
             case "/api" -> toolName = "api.usage";
+            case "/news" -> toolName = "news.list";
+            case "/wallet" -> toolName = "wallet.balance";
+            case "/profile" -> toolName = "user.profile";
+            case "/cloud" -> toolName = "cloud.predict";
             default -> {
-                return new AgentToolIntent(false, null, Map.of(), text, "未知命令：" + command + "。可用命令：/station /weather /predict /report /model /api", "未知 slash command", "slash", false);
+                return new AgentToolIntent(false, null, Map.of(), text, "未知命令：" + command + "。可用命令：/station /weather /predict /report /model /api /news /wallet /profile /cloud", "未知 slash command", "slash", false);
             }
         }
         enrichDefaults(toolName, args, context);
@@ -96,12 +100,23 @@ public class SlashCommandParser {
 
     public AgentToolIntent natural(String text, Map<String, Object> context) {
         String lower = text == null ? "" : text.toLowerCase(Locale.ROOT);
-        boolean business = lower.matches(".*(电站|station|天气|weather|预测|prediction|任务|task|报告|report|api|模型|model|云图|钱包|新闻).*");
+        boolean business = lower.matches(".*(电站|station|天气|weather|预测|prediction|任务|task|报告|report|api|模型|model|云图|cloud|钱包|余额|市场|套餐|新闻|通知|公告|个人|资料|用户|profile|账号|账户).*");
         if (!business) return AgentToolIntent.none(false);
 
         Map<String, Object> args = new LinkedHashMap<>();
         String toolName = null;
-        if (lower.contains("天气") || lower.contains("weather")) {
+        if (lower.contains("个人") || lower.contains("资料") || lower.contains("用户信息")
+            || lower.contains("账号") || lower.contains("账户信息") || lower.contains("profile")) {
+            toolName = "user.profile";
+        } else if (lower.contains("新闻") || lower.contains("通知") || lower.contains("公告")) {
+            toolName = "news.list";
+        } else if (lower.contains("钱包") || lower.contains("余额") || lower.contains("账单")) {
+            toolName = "wallet.balance";
+        } else if (lower.contains("市场") || lower.contains("套餐")) {
+            toolName = "marketplace.list";
+        } else if (lower.contains("云图") || lower.contains("cloud")) {
+            toolName = "cloud.predict";
+        } else if (lower.contains("天气") || lower.contains("weather")) {
             Long stationId = extractStationId(text);
             String location = extractLocation(text);
             if (stationId != null || mentionsStation(lower)) {
@@ -113,6 +128,8 @@ public class SlashCommandParser {
             } else {
                 toolName = "weather.location";
             }
+        } else if ((lower.contains("模型") || lower.contains("model")) && hasAny(lower, "运行", "调用", "执行")) {
+            toolName = "model.run";
         } else if (lower.contains("报告") || lower.contains("report")) {
             Long stationId = extractStationId(text);
             if (stationId == null && (!mentionsStation(lower) || wantsConversationReport(lower))) {
@@ -126,7 +143,8 @@ public class SlashCommandParser {
                 args.put("includePrediction", bool(context, "includePrediction", true));
                 if (args.get("stationId") != null) args.put("title", args.get("stationId") + "号电站综合分析报告");
             }
-        } else if (lower.contains("预测") || lower.contains("prediction") || lower.contains("任务") || lower.contains("task")) {
+        } else if ((lower.contains("预测") || lower.contains("prediction") || lower.contains("任务") || lower.contains("task"))
+            && !lower.contains("模型") && !lower.contains("model")) {
             Long taskId = extractTaskId(text);
             toolName = taskId == null ? "prediction.list" : "prediction.detail";
             if (taskId != null) args.put("taskId", taskId);
@@ -167,6 +185,12 @@ public class SlashCommandParser {
         if ("prediction.detail".equals(toolName) && args.get("taskId") == null) {
             return "请提供预测任务 ID，例如 /predict 8 或“解释任务 8 的预测结果”。";
         }
+        if ("cloud.predict".equals(toolName)) {
+            return "云图预测需要 modelName 和 10 张 inputImages，请在云图预测页面选择图片后发起，或提供完整参数。";
+        }
+        if ("model.run".equals(toolName)) {
+            return "运行模型需要 stationId、modelId、30 帧 numericValues 和 30 张 inputImages，请在预测页面准备输入后发起。";
+        }
         return "";
     }
 
@@ -183,6 +207,13 @@ public class SlashCommandParser {
             case "report.generate" -> "生成 " + stationId + " 号电站综合分析报告";
             case "report.conversation" -> "生成当前会话工作报告";
             case "api.usage" -> "查询 API 使用情况";
+            case "api.list" -> "查询 API Key 列表";
+            case "news.list" -> "查询新闻通知";
+            case "wallet.balance" -> "查询钱包余额";
+            case "marketplace.list" -> "查询市场套餐";
+            case "user.profile" -> "查询个人信息";
+            case "cloud.predict" -> "运行云图预测";
+            case "model.run" -> "运行预测模型";
             case "model.detail" -> "查询模型 " + args.get("modelId") + " 详情";
             case "model.list" -> "查询模型列表";
             default -> toolName;
@@ -198,6 +229,14 @@ public class SlashCommandParser {
 
     private boolean mentionsStation(String lower) {
         return lower != null && (lower.contains("电站") || lower.contains("station"));
+    }
+
+    private boolean hasAny(String lower, String... words) {
+        if (lower == null) return false;
+        for (String word : words) {
+            if (lower.contains(word.toLowerCase(Locale.ROOT))) return true;
+        }
+        return false;
     }
 
     private String extractLocation(String text) {

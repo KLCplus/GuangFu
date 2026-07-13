@@ -187,6 +187,8 @@ class RuntimeFoundationTest(unittest.TestCase):
             ("查看 API 调用日志", "api.usage"),
             ("查看钱包余额", "wallet.balance"),
             ("查看模型列表", "model.list"),
+            ("查看我的个人信息", "user.profile"),
+            ("运行云图预测", "cloud.predict"),
             ("查看新闻通知", "news.list"),
             ("查看套餐列表", "marketplace.list"),
             ("查看历史报告", "report.list"),
@@ -213,6 +215,11 @@ class RuntimeFoundationTest(unittest.TestCase):
         runtime = PhotovoltaicAgentRuntime(ReportApprovalGateway(), ROOT / "skills")
         state = runtime.plan("创建 API Key", {"sessionId": 1, "userId": 7})
         self.assertIn("api.create", [step.tool_name for step in state.plan])
+
+    def test_non_station_question_does_not_default_to_station_chain(self):
+        runtime = PhotovoltaicAgentRuntime(FakeGateway(), ROOT / "skills")
+        state = runtime.plan("你能做什么", {"sessionId": 1, "userId": 7})
+        self.assertEqual([step.tool_name for step in state.plan if step.tool_name], [])
 
     def test_memory_filters_sensitive_values(self):
         self.assertEqual(extract_memory_candidates("我的 api_key 是 secret，默认 1 号电站"), [])

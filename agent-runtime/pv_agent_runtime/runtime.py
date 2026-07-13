@@ -48,6 +48,13 @@ class PhotovoltaicAgentRuntime:
             state.plan.append(PlanStep("synthesize", "Synthesize", "生成结论", "基于工具结果回答用户"))
             return state
 
+        if not self._is_station_analysis_task(task):
+            state.plan = [
+                PlanStep("understand", "Understand", "理解任务", "识别为普通对话或暂未接入的项目功能"),
+                PlanStep("synthesize", "Synthesize", "生成结论", "说明可用能力或提示需要补充的信息"),
+            ]
+            return state
+
         state.plan = [
             PlanStep("understand", "Understand", "理解任务", "识别电站运行分析目标"),
             PlanStep("station", "Collect", "查询电站", "确认电站基础信息", "station.detail", {"stationId": station_id}),
@@ -282,9 +289,13 @@ class PhotovoltaicAgentRuntime:
         task_id = self._extract_task_id(task)
         report_id = self._extract_report_id(task)
         model_id = self._extract_model_id(task)
+        explicit_station_id = self._extract_station_id(task)
 
         def add(step_id: str, title: str, tool_name: str, arguments: dict[str, Any] | None = None):
             steps.append(PlanStep(step_id, "Collect", title, self._tool_title(tool_name), tool_name, arguments or {}))
+
+        if any(word in task for word in ("个人信息", "个人资料", "我的资料", "用户信息", "我的账号", "账户信息")) or "profile" in text:
+            add("user-profile", "查询个人信息", "user.profile")
 
         if "电站列表" in task or "所有电站" in task or "我的电站" in task:
             add("station-list", "查询电站列表", "station.list")
@@ -298,7 +309,7 @@ class PhotovoltaicAgentRuntime:
         if "预测详情" in task and task_id:
             add("prediction-detail", "查询预测详情", "prediction.detail", {"taskId": task_id})
         elif "预测" in task and not any(word in task for word in ("运行", "综合分析")):
-            add("prediction-list", "查询预测列表", "prediction.list", {"stationId": station_id})
+            add("prediction-list", "查询预测列表", "prediction.list", {"stationId": explicit_station_id} if explicit_station_id else {})
 
         if "报告详情" in task and report_id:
             add("report-detail", "查询报告详情", "report.detail", {"reportId": report_id})
@@ -307,7 +318,14 @@ class PhotovoltaicAgentRuntime:
         elif "会话报告" in task or "工作报告" in task:
             add("conversation-report", "生成会话报告", "report.conversation")
 
-        if "模型详情" in task and model_id:
+        if "云图" in task or "cloud" in text:
+            cloud_args = context.get("cloudArguments") if isinstance(context.get("cloudArguments"), dict) else {}
+            add("cloud-predict", "运行云图预测", "cloud.predict", cloud_args)
+
+        if ("模型" in task or "model" in text) and any(word in task for word in ("运行", "调用", "执行", "创建预测")):
+            model_args = context.get("modelRunArguments") if isinstance(context.get("modelRunArguments"), dict) else {}
+            add("model-run", "运行预测模型", "model.run", model_args)
+        elif "模型详情" in task and model_id:
             add("model-detail", "查询模型详情", "model.detail", {"modelId": model_id})
         elif "模型" in task and "运行" not in task and "预测" not in task:
             add("model-list", "查询模型列表", "model.list")
@@ -341,6 +359,12 @@ class PhotovoltaicAgentRuntime:
                 add("admin-user-api-list", "管理员查询用户 API", "admin.userApi.list")
 
         return steps
+
+    def _is_station_analysis_task(self, task: str) -> bool:
+        lower = task.lower()
+        mentions_station = "电站" in task or "站点" in task or "station" in lower or self._extract_station_id(task) is not None
+        analysis_words = ("运行", "分析", "功率", "运维", "异常", "故障", "风险", "综合", "发电", "预测结果")
+        return mentions_station and any(word in task for word in analysis_words)
 
     def _tool_title(self, tool_name: str) -> str:
         return self.router.capabilities.get(tool_name).description if tool_name in self.router.capabilities else tool_name

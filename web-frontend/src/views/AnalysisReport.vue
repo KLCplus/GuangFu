@@ -126,7 +126,11 @@ const slashCommands: SlashCommand[] = [
   { command: '/predict', label: '查看预测', hint: '解读预测任务结果', template: '解释预测任务 ' },
   { command: '/report', label: '生成报告', hint: '创建综合分析报告', template: '生成综合分析报告 ' },
   { command: '/model', label: '查看模型', hint: '查询模型能力', template: '查询模型信息 ' },
-  { command: '/api', label: 'API 使用', hint: '查看 API 调用情况', template: '查看 API 使用情况' }
+  { command: '/api', label: 'API 使用', hint: '查看 API 调用情况', template: '查看 API 使用情况' },
+  { command: '/news', label: '新闻通知', hint: '查看平台新闻和公告', template: '查看新闻通知' },
+  { command: '/wallet', label: '钱包余额', hint: '查看开放平台钱包', template: '查看钱包余额' },
+  { command: '/profile', label: '个人信息', hint: '查看当前账号资料', template: '查看我的个人信息' },
+  { command: '/cloud', label: '云图预测', hint: '说明云图预测输入要求', template: '运行云图预测' }
 ]
 
 const username = computed(() => userStore.userInfo.nickname || userStore.userInfo.username || 'User')
@@ -523,7 +527,13 @@ function toolTitle(toolName: string, displayName?: string) {
     'model.list': '查询模型',
     'model.detail': '读取模型详情',
     'api.usage': '查看 API 使用情况',
-    'api.list': '查询 API 服务'
+    'api.list': '查询 API 服务',
+    'user.profile': '查询个人信息',
+    'wallet.balance': '查询钱包余额',
+    'marketplace.list': '查询市场套餐',
+    'marketplace.purchase': '购买市场套餐',
+    'news.list': '查询新闻通知',
+    'cloud.predict': '运行云图预测'
   }
   return local[toolName] || displayName || toolName
 }
@@ -914,7 +924,7 @@ async function submitComposer() {
   const { command, args } = commandParts(text)
   const knownSlash = slashCommands.find((item) => item.command === command)
   if (command.startsWith('/') && !knownSlash) {
-    addMessage({ role: 'assistant', kind: 'error', content: `未知命令：${command}。可用命令：/station /weather /predict /report /model /api` })
+    addMessage({ role: 'assistant', kind: 'error', content: `未知命令：${command}。可用命令：/station /weather /predict /report /model /api /news /wallet /profile /cloud` })
     composerText.value = ''
     return
   }
