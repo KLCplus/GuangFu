@@ -281,15 +281,11 @@ function message(error: unknown, fallback: string) {
           <h2>最新状态与历史功率</h2>
         </div>
       </div>
-      <el-descriptions v-if="latestStatus" :column="4" border>
+      <el-descriptions v-if="latestStatus" :column="2" border>
         <el-descriptions-item label="采样时间">{{ latestStatus.sampleTime }}</el-descriptions-item>
         <el-descriptions-item label="发电量Wh">{{ latestStatus.energyGenerationWh ?? '-' }}</el-descriptions-item>
         <el-descriptions-item label="发电功率W">{{ latestStatus.powerGenerationW ?? '-' }}</el-descriptions-item>
-        <el-descriptions-item label="用电量Wh">{{ latestStatus.energyConsumptionWh ?? '-' }}</el-descriptions-item>
-        <el-descriptions-item label="用电功率W">{{ latestStatus.powerConsumptionW ?? '-' }}</el-descriptions-item>
         <el-descriptions-item label="归一化输出">{{ latestStatus.normalisedOutput ?? '-' }}</el-descriptions-item>
-        <el-descriptions-item label="温度C">{{ latestStatus.temperatureC ?? '-' }}</el-descriptions-item>
-        <el-descriptions-item label="电压V">{{ latestStatus.voltageV ?? '-' }}</el-descriptions-item>
       </el-descriptions>
       <el-empty v-else description="选择电站后查看最新状态" />
       <div ref="chartRef" class="history-chart" />

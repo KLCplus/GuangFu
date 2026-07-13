@@ -28,11 +28,7 @@ export interface PvOutputStatus {
   sampleTime: string
   energyGenerationWh?: number
   powerGenerationW?: number
-  energyConsumptionWh?: number
-  powerConsumptionW?: number
   normalisedOutput?: number
-  temperatureC?: number
-  voltageV?: number
   fetchedAt?: string
 }
 

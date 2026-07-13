@@ -16,6 +16,9 @@ const loadError = ref('')
 const selectedStation = computed(() =>
   stations.value.find((item) => item.stationId === selectedStationId.value)
 )
+const selectedStationHasCoordinates = computed(() =>
+  selectedStation.value?.longitude != null && selectedStation.value?.latitude != null
+)
 
 const weatherTone = computed(() => {
   const text = current.value?.weather ?? ''
@@ -52,6 +55,12 @@ async function loadStationOptions() {
 
 async function refreshWeather() {
   if (!selectedStationId.value) return
+  if (!selectedStationHasCoordinates.value) {
+    current.value = undefined
+    forecasts.value = []
+    loadError.value = '该电站未配置经纬度，无法获取真实天气。请先在电站管理中补充经纬度。'
+    return
+  }
   weatherLoading.value = true
   loadError.value = ''
   try {
@@ -97,7 +106,7 @@ function formatNumber(value?: number, suffix = '') {
           <el-option
             v-for="station in stations"
             :key="station.stationId"
-            :label="station.stationName"
+            :label="station.longitude != null && station.latitude != null ? station.stationName : `${station.stationName}（缺经纬度）`"
             :value="station.stationId"
           />
         </el-select>
