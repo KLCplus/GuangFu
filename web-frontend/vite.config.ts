@@ -8,7 +8,7 @@ const webRoot = fileURLToPath(new URL('.', import.meta.url))
 const projectRoot = path.resolve(webRoot, '..')
 
 const readBackendEnv = () => {
-  const envPath = path.join(projectRoot, 'backend', '.env.local')
+  const envPath = path.join(projectRoot, '.env')
   if (!fs.existsSync(envPath)) return {} as Record<string, string>
 
   return fs.readFileSync(envPath, 'utf8')

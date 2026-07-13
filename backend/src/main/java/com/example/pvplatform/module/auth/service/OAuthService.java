@@ -70,6 +70,9 @@ public class OAuthService {
     @org.springframework.beans.factory.annotation.Value("${oauth.callback-base-url:http://localhost:5173}")
     private String callbackBaseUrl;
 
+    @org.springframework.beans.factory.annotation.Value("${oauth.backend-callback-base-url:}")
+    private String backendCallbackBaseUrl;
+
     /**
      * Build the authorize URL. GitHub redirects back to backend callback, which then
      * redirects to the frontend URL (stored in signed state).
@@ -83,8 +86,7 @@ public class OAuthService {
                 state);
         }
         String state = stateSigner.sign(providerCode, redirectUri);
-        String backendCallback = "http://localhost:" + serverPort + "/api/auth/oauth/"
-            + providerCode + "/callback";
+        String backendCallback = backendCallbackUrl(providerCode);
         String url = provider.authorizeUrl()
             + "?client_id=" + urlEncode(provider.clientId())
             + "&redirect_uri=" + urlEncode(backendCallback)
@@ -103,8 +105,7 @@ public class OAuthService {
             OAuthStateSigner.ParsedState parsed = stateSigner.verify(state, providerCode);
             String frontendUrl = parsed.redirectUri();
 
-            String backendCallbackUrl = "http://localhost:" + serverPort
-                + "/api/auth/oauth/" + providerCode + "/callback";
+            String backendCallbackUrl = backendCallbackUrl(providerCode);
 
             LoginVO login;
             if (provider.isMock()) {
@@ -362,6 +363,30 @@ public class OAuthService {
         if (value == null) return "";
         try { return java.net.URLEncoder.encode(value, java.nio.charset.StandardCharsets.UTF_8); }
         catch (Exception e) { return value; }
+    }
+
+    /** Resolves the public callback address for local development and deployments. */
+    private String backendCallbackUrl(String providerCode) {
+        String base = backendCallbackBaseUrl;
+        if (base == null || base.isBlank()) {
+            String forwardedHost = firstForwardedValue(request.getHeader("X-Forwarded-Host"));
+            if (forwardedHost != null && !forwardedHost.isBlank()) {
+                String scheme = firstForwardedValue(request.getHeader("X-Forwarded-Proto"));
+                if (scheme == null || scheme.isBlank()) scheme = request.getScheme();
+                String prefix = firstForwardedValue(request.getHeader("X-Forwarded-Prefix"));
+                base = scheme + "://" + forwardedHost + (prefix == null ? "" : prefix);
+            } else {
+                base = "http://localhost:" + serverPort;
+            }
+        }
+        while (base.endsWith("/")) base = base.substring(0, base.length() - 1);
+        return base + "/api/auth/oauth/" + providerCode + "/callback";
+    }
+
+    private String firstForwardedValue(String value) {
+        if (value == null) return null;
+        int comma = value.indexOf(',');
+        return (comma >= 0 ? value.substring(0, comma) : value).trim();
     }
 
     private String getClientIp() {

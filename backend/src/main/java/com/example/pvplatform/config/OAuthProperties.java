@@ -5,6 +5,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 @ConfigurationProperties(prefix = "oauth")
 public record OAuthProperties(
     String callbackBaseUrl,
+    String backendCallbackBaseUrl,
     Providers providers
 ) {
     public record Providers(Github github) {}

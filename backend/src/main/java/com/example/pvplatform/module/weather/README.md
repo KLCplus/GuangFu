@@ -23,7 +23,7 @@
 本地配置统一放在：
 
 ```text
-backend/.env.local
+.env
 ```
 
 QWeather 关键配置：

@@ -5,7 +5,7 @@
 ## 当前状态
 
 - 后端主要业务接口已经按当前代码整理到 [docs/back_front_api.md](docs/back_front_api.md)。
-- 配置入口已经收敛到 `backend/.env.local` 和根目录 `start-local.sh`。
+- 配置入口已经收敛到根目录 `.env` 和根目录 `start-local.sh`。
 - 天气模块已接入 QWeather JWT 模式，并提供 `weather-debug.html` 调试页。
 - Redis 已作为可选缓存/分布式状态层接入，本地开发可使用内存降级。
 - PC 用户端已接入看板聚合、模型广场、API 管理、云图预测代理、新闻通知、我的页面等接口；模型服务可按需单独启动。
@@ -59,7 +59,7 @@ pv-power-platform/
 
 ### 1. 常用参数
 
-脚本会优先停止上次由本项目脚本启动的后台进程，然后固定使用 `backend/.env.local` 中的端口启动。默认端口为：后端 `8080`、前端 `5173`。
+脚本会优先停止上次由本项目脚本启动的后台进程，然后固定使用根目录 `.env` 中的端口启动。默认端口为：后端 `8080`、前端 `5173`。
 
 ```bash
 # 只启动后端
@@ -72,14 +72,16 @@ pv-power-platform/
 ./start-local.sh --with-redis
 ```
 
-真实 QWeather、GitHub OAuth、阿里云人脸、邮箱发送等第三方能力只需要改 `backend/.env.local`。QWeather 私钥文件放到 `backend/secrets/ed25519-private.pem`。
+真实 QWeather、GitHub OAuth、阿里云人脸、OSS、邮箱发送等第三方能力只需要改根目录 `.env`。QWeather 私钥文件放到 `backend/secrets/ed25519-private.pem`。
+
+GitHub OAuth 需要在 `.env` 同时设置前端地址 `OAUTH_CALLBACK_BASE_URL` 和 GitHub App 已登记的后端公开地址 `OAUTH_BACKEND_CALLBACK_BASE_URL`。本地开发可将后者留空，回调固定为 `http://localhost:8080/api/auth/oauth/github/callback`。
 
 ### 2. MySQL
 
 请使用本机 MySQL 8，确认 `3306` 端口已监听，然后按需初始化数据库：
 
 ```bash
-${EDITOR:-vi} backend/.env.local
+${EDITOR:-vi} .env
 ```
 
 数据库名默认是 `pv_platform`。初始化脚本位于：
@@ -112,7 +114,7 @@ http://localhost:9000/docs
 
 ### 4. 后端
 
-真实本地配置统一放在 `backend/.env.local`。
+真实本地配置统一放在根目录 `.env`。
 
 一键启动：
 
@@ -172,4 +174,4 @@ http://localhost:5173
 - 使用真实用户和管理员账号跑一轮端到端验收。
 - 模型服务、真实天气、DeepSeek、OAuth、人脸等第三方能力按部署环境单独配置和验证。
 - 部署环境启用 Redis，并根据访问量调整 Tomcat、HikariCP 和 Redis 参数。
-- 不要提交 `backend/.env.local`、私钥、JWT、数据库密码或第三方 Key。
+- 不要提交根目录 `.env`、私钥、JWT、数据库密码或第三方 Key。

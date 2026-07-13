@@ -4,7 +4,7 @@ set -euo pipefail
 project_root="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 backend_dir="$project_root/backend"
 frontend_dir="$project_root/web-frontend"
-env_file="$backend_dir/.env.local"
+env_file="$project_root/.env"
 runtime_dir="$project_root/.local/run"
 log_dir="$project_root/.local/logs"
 

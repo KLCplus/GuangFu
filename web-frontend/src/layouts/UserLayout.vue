@@ -12,6 +12,7 @@ const userStore = useUserStore()
 // 两位同学开发页面时，页面根节点优先使用 .page-shell / .page-section / .toolbar，避免各写一套间距和标题风格。
 const menus = [
   { path: '/dashboard', label: '看板', icon: Menu },
+  { path: '/visualization', label: '数据可视化', icon: DataAnalysis },
   { path: '/models/use', label: '模型', icon: Cpu },
   { path: '/cloud-forecast', label: '云图', icon: Cloudy },
   { path: '/marketplace', label: '广场', icon: Tools },
