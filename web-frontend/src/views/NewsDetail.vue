@@ -70,6 +70,12 @@ function goBack() {
 
 function newsTypeLabel(type?: string) {
   const labels: Record<string, string> = {
+    WEATHER_ALERT: '气象预警',
+    DISASTER: '灾害动态',
+    POLICY: '政策标准',
+    INDUSTRY: '行业动态',
+    ENTERPRISE: '企业资讯',
+    PLATFORM: '平台资讯',
     NEWS: '新闻',
     NOTICE: '公告',
     MODEL_UPDATE: '模型更新',
@@ -109,13 +115,16 @@ function publishTime(item?: News | null) {
     <div v-loading="loading" class="detail-layout">
       <article v-if="news" class="panel article-panel">
         <header class="article-head">
-          <el-tag :type="newsTypeTag(news.newsType)" effect="light">{{ newsTypeLabel(news.newsType) }}</el-tag>
+          <el-tag :type="newsTypeTag(news.newsType)" effect="light">{{ newsTypeLabel(news.category || news.newsType) }}</el-tag>
           <h1>{{ news.title }}</h1>
           <p>{{ news.summary }}</p>
           <div class="article-meta">
             <span>发布时间：{{ publishTime(news) }}</span>
-            <span>{{ news.targetRole === 'ALL' ? '全部用户可见' : `${news.targetRole} 可见` }}</span>
+            <span v-if="news.sourceName">来源：{{ news.sourceName }}</span>
+            <span v-if="news.warningRegion">地区：{{ news.warningRegion }}</span>
+            <span v-if="news.warningAgency">发布机构：{{ news.warningAgency }}</span>
           </div>
+          <el-button v-if="news.sourceUrl" tag="a" :href="news.sourceUrl" target="_blank" rel="noopener noreferrer" type="primary" plain>查看原文</el-button>
         </header>
 
         <img v-if="news.coverUrl" class="cover-image" :src="news.coverUrl" alt="新闻封面" />
@@ -136,7 +145,7 @@ function publishTime(item?: News | null) {
           <div v-loading="relatedLoading" class="related-list">
             <el-empty v-if="!relatedLoading && relatedNews.length === 0" description="暂无更多新闻" />
             <button v-for="item in relatedNews" :key="item.newsId" class="related-item" @click="openRelated(item)">
-              <span>{{ newsTypeLabel(item.newsType) }}</span>
+              <span>{{ newsTypeLabel(item.category || item.newsType) }}</span>
               <strong>{{ item.title }}</strong>
               <small>{{ publishTime(item) }}</small>
             </button>
@@ -144,9 +153,9 @@ function publishTime(item?: News | null) {
         </section>
 
         <section class="panel placeholder-panel">
-          <h2>通知联动</h2>
+          <h2>内容说明</h2>
           <p>
-            站内通知已在列表页接入未读数和已读操作。新闻详情页当前只展示正文，不额外伪造外部新闻源或阅读回执接口。
+            外部资讯仅保留清洗后的摘要或正文片段，并标明来源。站内通知与公开内容分别存储和读取。
           </p>
         </section>
       </aside>

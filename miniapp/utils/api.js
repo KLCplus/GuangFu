@@ -1,8 +1,16 @@
-const { get, post, put, remove } = require('./request')
+const { get, post, put, remove, upload } = require('./request')
 
 const authApi = {
   login: (data) => post('/api/auth/login', data),
   profile: () => get('/api/user/profile')
+}
+
+const userApi = {
+  profile: () => get('/api/user/profile'),
+  updateProfile: (data) => put('/api/user/profile', data),
+  changePassword: (data) => put('/api/user/password', data),
+  uploadAvatar: (filePath) => upload('/api/user/avatar', filePath),
+  deleteAvatar: () => remove('/api/user/avatar')
 }
 
 const openApi = {
@@ -12,6 +20,7 @@ const openApi = {
   renameKey: (id, keyName) => put(`/api/open/keys/${id}/name`, { keyName }),
   resetKey: (id) => post(`/api/open/keys/${id}/reset`),
   deleteKey: (id) => remove(`/api/open/keys/${id}`),
+  entitlements: () => get('/api/open/entitlements'),
   wallet: () => get('/api/open/wallet'),
   usageSummary: (params) => get('/api/open/usage/summary', params),
   usageTrend: (params) => get('/api/open/usage/trend', params),
@@ -37,4 +46,4 @@ const newsApi = {
   markAllRead: () => put('/api/notifications/read-all')
 }
 
-module.exports = { authApi, openApi, modelApi, miniappModelApi, newsApi }
+module.exports = { authApi, userApi, openApi, modelApi, miniappModelApi, newsApi }

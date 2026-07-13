@@ -26,6 +26,7 @@ interface NewsRow {
   content: string
   coverUrl: string
   newsType: NewsType
+  category?: string
   targetRole: NewsTargetRole
   status: NewsStatus
   publishedAt: string
@@ -64,7 +65,8 @@ const emptyForm = (): NewsRow => ({
   summary: '',
   content: '',
   coverUrl: '',
-  newsType: 'INDUSTRY_NEWS',
+  newsType: 'NEWS',
+  category: 'PLATFORM',
   targetRole: 'ALL',
   status: 'DRAFT',
   publishedAt: '',
@@ -113,6 +115,7 @@ function toPayload(f: NewsRow): NewsPayload {
     content: f.content,
     coverUrl: f.coverUrl || undefined,
     newsType: f.newsType,
+    category: f.category || 'PLATFORM',
     targetRole: f.targetRole
   }
 }
@@ -239,7 +242,7 @@ function statusTag(status: NewsStatus) {
 }
 
 function typeLabel(type: NewsType) {
-  const map: Record<string, string> = { MODEL_UPDATE: '模型更新', SYSTEM_NOTICE: '系统通知', INDUSTRY_NEWS: '行业资讯' }
+  const map: Record<string, string> = { NEWS: '平台新闻', NOTICE: '公开公告', MODEL_UPDATE: '模型更新通知', ALERT: '异常提醒', SYSTEM_NOTICE: '系统通知', INDUSTRY_NEWS: '旧行业资讯' }
   return map[type] || type
 }
 
@@ -403,9 +406,11 @@ onMounted(() => {
           <el-col :span="12">
             <el-form-item label="新闻类型">
               <el-select v-model="form.newsType" style="width:100%">
-                <el-option label="模型更新" value="MODEL_UPDATE" />
-                <el-option label="系统通知" value="SYSTEM_NOTICE" />
-                <el-option label="行业资讯" value="INDUSTRY_NEWS" />
+                <el-option label="平台新闻（公开）" value="NEWS" />
+                <el-option label="平台公告（公开并通知）" value="NOTICE" />
+                <el-option label="模型更新（仅通知）" value="MODEL_UPDATE" />
+                <el-option label="异常提醒（仅通知）" value="ALERT" />
+                <el-option label="系统通知（仅通知）" value="SYSTEM_NOTICE" />
               </el-select>
             </el-form-item>
           </el-col>

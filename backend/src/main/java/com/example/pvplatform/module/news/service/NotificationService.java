@@ -12,6 +12,7 @@ import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Set;
 
 @Service
 public class NotificationService {
@@ -21,16 +22,26 @@ public class NotificationService {
         this.notificationMapper = notificationMapper;
     }
 
-    public PageResult<NotificationVO> list(int pageNum, int pageSize, Integer readStatus) {
+    private static final Set<String> TYPES = Set.of("NOTICE", "NEWS", "MODEL_UPDATE", "ALERT", "SYSTEM", "SYSTEM_NOTICE", "PREDICTION");
+
+    public PageResult<NotificationVO> list(int pageNum, int pageSize, Integer readStatus, String type) {
         validatePage(pageNum, pageSize);
+        if (readStatus != null && readStatus != 0 && readStatus != 1) throw new BusinessException(400, "通知状态不合法");
+        if (type != null && !type.isBlank() && !TYPES.contains(type)) throw new BusinessException(400, "通知类型不合法");
         Long userId = SecurityUtils.requireCurrentUserId();
         var query = Wrappers.<UserNotificationDO>lambdaQuery()
             .eq(UserNotificationDO::getUserId, userId)
             .eq(readStatus != null, UserNotificationDO::getReadStatus, readStatus)
             .orderByDesc(UserNotificationDO::getCreatedAt);
+        if ("SYSTEM".equals(type)) query.in(UserNotificationDO::getNotificationType, "SYSTEM", "SYSTEM_NOTICE");
+        else if (type != null && !type.isBlank()) query.eq(UserNotificationDO::getNotificationType, type);
         Page<UserNotificationDO> page = notificationMapper.selectPage(new Page<>(pageNum, pageSize), query);
         return new PageResult<>(page.getTotal(), pageNum, pageSize,
             page.getRecords().stream().map(this::toVO).toList());
+    }
+
+    public PageResult<NotificationVO> list(int pageNum, int pageSize, Integer readStatus) {
+        return list(pageNum, pageSize, readStatus, null);
     }
 
     public long unreadCount() {

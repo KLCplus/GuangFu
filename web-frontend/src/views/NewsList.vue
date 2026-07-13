@@ -11,12 +11,14 @@ import type { Notification } from '../api/notification'
 type ActiveTab = 'news' | 'notifications'
 type NewsTypeFilter = 'ALL' | NewsType
 type NotificationFilter = 'ALL' | 'UNREAD'
+type NotificationTypeFilter = 'ALL' | 'NOTICE' | 'MODEL_UPDATE' | 'ALERT' | 'SYSTEM'
 
 const route = useRoute()
 const router = useRouter()
 const activeTab = ref<ActiveTab>('news')
 const newsType = ref<NewsTypeFilter>('ALL')
 const notificationFilter = ref<NotificationFilter>('ALL')
+const notificationType = ref<NotificationTypeFilter>('ALL')
 const keyword = ref('')
 const newsPage = ref(1)
 const notificationPage = ref(1)
@@ -33,20 +35,30 @@ const notificationError = ref('')
 const unreadError = ref('')
 const actionLoadingId = ref<number | null>(null)
 const allReadLoading = ref(false)
+const isLoggedIn = computed(() => Boolean(localStorage.getItem('token')))
 let searchTimer: number | undefined
 
 const categories: Array<{ label: string; value: NewsTypeFilter; icon: typeof Document }> = [
   { label: '全部', value: 'ALL', icon: Document },
-  { label: '新闻', value: 'NEWS', icon: Document },
-  { label: '公告', value: 'NOTICE', icon: Bell },
+  { label: '气象预警', value: 'WEATHER_ALERT', icon: Warning },
+  { label: '灾害动态', value: 'DISASTER', icon: Warning },
+  { label: '政策标准', value: 'POLICY', icon: Document },
+  { label: '行业动态', value: 'INDUSTRY', icon: Document },
+  { label: '企业资讯', value: 'ENTERPRISE', icon: Document },
+  { label: '平台资讯', value: 'PLATFORM', icon: Bell }
+]
+const notificationTypes: Array<{ label: string; value: NotificationTypeFilter; icon: typeof Document }> = [
+  { label: '全部类型', value: 'ALL', icon: Bell },
+  { label: '公告通知', value: 'NOTICE', icon: Bell },
   { label: '模型更新', value: 'MODEL_UPDATE', icon: Cpu },
-  { label: '异常提醒', value: 'ALERT', icon: Warning }
+  { label: '异常提醒', value: 'ALERT', icon: Warning },
+  { label: '系统通知', value: 'SYSTEM', icon: Bell }
 ]
 
 const newsGroups = computed(() => groupByDate(newsItems.value, (item) => item.publishedAt || item.createdAt))
 const notificationGroups = computed(() => groupByDate(notificationItems.value, (item) => item.createdAt))
 const currentTotal = computed(() => activeTab.value === 'news' ? (newsTotal.value ?? 0) : (notificationTotal.value ?? 0))
-const canMarkAllRead = computed(() => (unreadCount.value ?? 0) > 0 && !allReadLoading.value)
+const canMarkAllRead = computed(() => isLoggedIn.value && activeTab.value === 'notifications' && (unreadCount.value ?? 0) > 0 && !allReadLoading.value)
 
 watch(
   () => route.fullPath,
@@ -55,12 +67,14 @@ watch(
     activeTab.value = tab
     newsType.value = categories.some((item) => item.value === route.query.type) ? route.query.type as NewsTypeFilter : 'ALL'
     notificationFilter.value = route.query.unread === '1' ? 'UNREAD' : 'ALL'
+    notificationType.value = notificationTypes.some((item) => item.value === route.query.notificationType) ? route.query.notificationType as NotificationTypeFilter : 'ALL'
     keyword.value = typeof route.query.keyword === 'string' ? route.query.keyword : ''
     newsPage.value = queryPage('newsPage')
     notificationPage.value = queryPage('notificationPage')
     pageSize.value = [10, 20, 30].includes(Number(route.query.size)) ? Number(route.query.size) : 10
     void refreshActive()
-    void fetchUnreadCount()
+    if (isLoggedIn.value) void fetchUnreadCount()
+    else unreadCount.value = null
   },
   { immediate: true }
 )
@@ -83,6 +97,7 @@ function updateRoute(replace = false) {
     if (newsPage.value > 1) query.newsPage = String(newsPage.value)
   } else {
     if (notificationFilter.value === 'UNREAD') query.unread = '1'
+    if (notificationType.value !== 'ALL') query.notificationType = notificationType.value
     if (notificationPage.value > 1) query.notificationPage = String(notificationPage.value)
   }
   void router[replace ? 'replace' : 'push']({ path: '/news', query })
@@ -116,6 +131,13 @@ function selectNotificationFilter(filter: NotificationFilter) {
 function chooseNotificationFilter(filter: NotificationFilter) {
   activeTab.value = 'notifications'
   notificationFilter.value = filter
+  notificationPage.value = 1
+  updateRoute()
+}
+
+function chooseNotificationType(type: NotificationTypeFilter) {
+  activeTab.value = 'notifications'
+  notificationType.value = type
   notificationPage.value = 1
   updateRoute()
 }
@@ -156,13 +178,20 @@ async function fetchNews() {
 }
 
 async function fetchNotifications() {
+  if (!isLoggedIn.value) {
+    notificationItems.value = []
+    notificationTotal.value = null
+    notificationError.value = ''
+    return
+  }
   notificationLoading.value = true
   notificationError.value = ''
   try {
     const result = await getNotifications({
       pageNum: notificationPage.value,
       pageSize: pageSize.value,
-      readStatus: notificationFilter.value === 'UNREAD' ? 0 : undefined
+      readStatus: notificationFilter.value === 'UNREAD' ? 0 : undefined,
+      type: notificationType.value === 'ALL' ? undefined : notificationType.value
     })
     notificationItems.value = result.records
     notificationTotal.value = result.total
@@ -177,6 +206,7 @@ async function fetchNotifications() {
 }
 
 async function fetchUnreadCount() {
+  if (!isLoggedIn.value) { unreadCount.value = null; return }
   unreadError.value = ''
   try {
     const result = await getUnreadCount()
@@ -190,7 +220,7 @@ async function fetchUnreadCount() {
 
 function refresh() {
   void refreshActive()
-  void fetchUnreadCount()
+  if (isLoggedIn.value) void fetchUnreadCount()
 }
 
 function changePage(page: number) {
@@ -253,12 +283,13 @@ function clearNewsFilters() {
 }
 
 function newsTypeLabel(type?: string) {
-  const labels: Record<string, string> = { NEWS: '新闻', NOTICE: '公告', MODEL_UPDATE: '模型更新', ALERT: '异常提醒' }
+  const labels: Record<string, string> = { WEATHER_ALERT: '气象预警', DISASTER: '灾害动态', POLICY: '政策标准', INDUSTRY: '行业动态', ENTERPRISE: '企业资讯', PLATFORM: '平台资讯', NEWS: '平台新闻', NOTICE: '平台公告' }
   return labels[type ?? ''] ?? type ?? '新闻'
 }
 
 function notificationTypeLabel(type?: string) {
-  return newsTypeLabel(type) === type ? (type || '站内通知') : newsTypeLabel(type)
+  const labels: Record<string, string> = { NOTICE: '公告通知', NEWS: '公告通知', MODEL_UPDATE: '模型更新', ALERT: '异常提醒', SYSTEM: '系统通知', SYSTEM_NOTICE: '系统通知' }
+  return labels[type ?? ''] ?? type ?? '站内通知'
 }
 
 function rowIcon(type?: string) {
@@ -327,15 +358,15 @@ function dayLabel(value?: string) {
         <h1>新闻通知</h1>
       </div>
       <div class="header-actions">
-        <span class="compact-stats">新闻 {{ newsTotal ?? '—' }} · 未读通知 {{ unreadCount ?? '—' }}</span>
+        <span class="compact-stats">新闻 {{ newsTotal ?? '—' }}<template v-if="isLoggedIn"> · 未读通知 {{ unreadCount ?? '—' }}</template></span>
         <el-button :loading="newsLoading || notificationLoading" :icon="Refresh" @click="refresh">刷新</el-button>
-        <el-button type="primary" plain :icon="Check" :disabled="!canMarkAllRead" :loading="allReadLoading" @click="readAllNotifications">全部已读</el-button>
+        <el-button v-if="activeTab === 'notifications'" type="primary" plain :icon="Check" :disabled="!canMarkAllRead" :loading="allReadLoading" @click="readAllNotifications">全部已读</el-button>
       </div>
     </header>
 
     <div class="inbox-layout">
       <aside class="filter-sidebar" aria-label="新闻通知筛选">
-        <div class="sidebar-section">
+        <div v-if="activeTab === 'notifications'" class="sidebar-section">
           <p class="sidebar-title">收件箱</p>
           <button class="filter-item" :class="{ active: activeTab === 'notifications' && notificationFilter === 'ALL' }" @click="chooseNotificationFilter('ALL')">
             <el-icon><Bell /></el-icon><span>全部通知</span><b>{{ notificationTotal ?? '—' }}</b>
@@ -344,7 +375,13 @@ function dayLabel(value?: string) {
             <el-icon><Bell /></el-icon><span>未读通知</span><b>{{ unreadCount ?? '—' }}</b>
           </button>
         </div>
-        <div class="sidebar-section">
+        <div v-if="activeTab === 'notifications'" class="sidebar-section">
+          <p class="sidebar-title">通知类型</p>
+          <button v-for="item in notificationTypes" :key="item.value" class="filter-item" :class="{ active: notificationType === item.value }" @click="chooseNotificationType(item.value)">
+            <el-icon><component :is="item.icon" /></el-icon><span>{{ item.label }}</span>
+          </button>
+        </div>
+        <div v-else class="sidebar-section">
           <p class="sidebar-title">新闻分类</p>
           <button v-for="category in categories" :key="category.value" class="filter-item" :class="{ active: activeTab === 'news' && newsType === category.value }" @click="chooseNewsType(category.value)">
             <el-icon><component :is="category.icon" /></el-icon><span>{{ category.label }}</span>
@@ -383,8 +420,8 @@ function dayLabel(value?: string) {
               <h2>{{ group.label }}</h2>
               <article v-for="item in group.items" :key="item.newsId" class="message-row" tabindex="0" @click="openNews(item)" @keydown.enter="openNews(item)">
                 <span class="message-marker news-marker"></span>
-                <el-icon class="message-icon" :class="typeClass(item.newsType)"><component :is="rowIcon(item.newsType)" /></el-icon>
-                <div class="message-body"><div class="message-kicker"><span :class="['type-tag', typeClass(item.newsType)]">{{ newsTypeLabel(item.newsType) }}</span></div><h3>{{ item.title }}</h3><p>{{ item.summary || item.content }}</p></div>
+                <el-icon class="message-icon" :class="typeClass(item.category || item.newsType)"><component :is="rowIcon(item.category || item.newsType)" /></el-icon>
+                <div class="message-body"><div class="message-kicker"><span :class="['type-tag', typeClass(item.category || item.newsType)]">{{ newsTypeLabel(item.category || item.newsType) }}</span><span v-if="item.sourceName" class="source-name">{{ item.sourceName }}</span><span v-if="item.warningLevel" class="warning-level">{{ item.warningLevel }}</span></div><h3>{{ item.title }}</h3><p>{{ item.summary || item.content }}</p><p v-if="item.warningRegion" class="warning-meta">{{ item.warningRegion }}<template v-if="item.warningAgency"> · {{ item.warningAgency }}</template></p></div>
                 <time>{{ formatTime(item.publishedAt || item.createdAt) }}</time><el-icon class="row-arrow"><ArrowRight /></el-icon>
               </article>
             </section>
@@ -392,7 +429,8 @@ function dayLabel(value?: string) {
         </section>
 
         <section v-else class="list-shell">
-          <div v-if="notificationError" class="state-box error-state"><strong>通知数据加载失败</strong><span>请检查服务状态后重试。</span><el-button type="primary" @click="fetchNotifications">重新加载</el-button></div>
+          <div v-if="!isLoggedIn" class="state-box login-state"><strong>登录后查看站内通知</strong><span>站内通知只包含与你账号相关的公告提醒、模型更新和异常消息。</span><el-button type="primary" @click="router.push('/login')">前往登录</el-button></div>
+          <div v-else-if="notificationError" class="state-box error-state"><strong>通知数据加载失败</strong><span>请检查服务状态后重试。</span><el-button type="primary" @click="fetchNotifications">重新加载</el-button></div>
           <template v-else-if="notificationLoading">
             <div v-for="index in 5" :key="index" class="skeleton-row"><el-skeleton animated><template #template><el-skeleton-item variant="circle" /><div><el-skeleton-item variant="h3" style="width: 46%" /><el-skeleton-item variant="text" style="width: 78%; margin-top: 10px" /></div></template></el-skeleton></div>
           </template>
@@ -458,6 +496,9 @@ function dayLabel(value?: string) {
 .message-icon.type-notice, .type-tag.type-notice { color: #5465a6; background: #f0f1fb; }
 .message-body { min-width: 0; }
 .message-kicker { display: flex; align-items: center; gap: 8px; min-height: 20px; }
+.source-name { overflow: hidden; color: #64748b; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.warning-level { padding: 2px 7px; border-radius: 999px; color: #b45309; background: #fff7ed; font-size: 11px; }
+.message-body .warning-meta { display: block; margin-top: 4px; color: #8a5a24; font-size: 12px; -webkit-line-clamp: unset; }
 .type-tag { display: inline-flex; align-items: center; height: 21px; padding: 0 7px; border-radius: 4px; color: #55708c; background: #eef3f7; font-size: 12px; }
 .unread-text { color: #2477bd; font-size: 12px; }
 .message-body h3 { overflow: hidden; margin: 3px 0 2px; color: #283548; font-size: 15px; font-weight: 600; line-height: 1.4; text-overflow: ellipsis; white-space: nowrap; }

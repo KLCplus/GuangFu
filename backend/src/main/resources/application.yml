@@ -119,6 +119,19 @@ weather:
   qweather-private-key-path: ${QWEATHER_PRIVATE_KEY_PATH:}
   jwt-ttl-seconds: ${WEATHER_JWT_TTL_SECONDS:1800}
 
+news:
+  sync:
+    enabled: ${NEWS_SYNC_ENABLED:false}
+    web-cron: ${NEWS_SYNC_WEB_CRON:0 20 */6 * * *}
+    weather-cron: ${NEWS_SYNC_WEATHER_CRON:0 */20 * * * *}
+    mem-enabled: ${NEWS_SYNC_MEM_ENABLED:true}
+    nea-enabled: ${NEWS_SYNC_NEA_ENABLED:true}
+    longi-enabled: ${NEWS_SYNC_LONGI_ENABLED:true}
+    weather-enabled: ${NEWS_SYNC_WEATHER_ENABLED:true}
+    connect-timeout-ms: ${NEWS_SYNC_CONNECT_TIMEOUT_MS:5000}
+    read-timeout-ms: ${NEWS_SYNC_READ_TIMEOUT_MS:8000}
+    max-items-per-source: ${NEWS_SYNC_MAX_ITEMS_PER_SOURCE:10}
+
 pvoutput:
   enabled: ${PVOUTPUT_ENABLED:true}
   api-key: ${PVOUTPUT_API_KEY:}

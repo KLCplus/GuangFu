@@ -128,6 +128,25 @@ public class QWeatherProvider implements WeatherProvider {
         }
     }
 
+    /** 和风天气当前生效预警；与普通天气查询复用同一 JWT、域名和超时配置。 */
+    public List<WeatherWarningResult> getWarnings(double longitude, double latitude) {
+        requireConfigured();
+        try {
+            WarningResponse response = client.get().uri(builder -> builder.path("/v7/warning/now")
+                    .queryParam("location", location(longitude, latitude)).queryParam("lang", "zh").build())
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + createJwt())
+                .retrieve().bodyToMono(WarningResponse.class)
+                .block(Duration.ofMillis(properties.getResponseTimeout() + 500L));
+            if (response == null || !"200".equals(response.code()) || response.warning() == null) return List.of();
+            return response.warning().stream().map(item -> new WeatherWarningResult(
+                item.id(), item.title(), item.typeName(), item.severity(), item.sender(), item.status(),
+                parseOptionalTime(item.pubTime()), parseOptionalTime(item.startTime()), parseOptionalTime(item.endTime()),
+                item.text(), item.instruction())).toList();
+        } catch (BusinessException exception) { throw exception;
+        } catch (WebClientResponseException exception) { throw unavailable(exception);
+        } catch (RuntimeException exception) { throw unavailable(exception); }
+    }
+
     @Override
     public String source() {
         return "QWEATHER";
@@ -245,6 +264,11 @@ public class QWeatherProvider implements WeatherProvider {
         return value == null ? LocalDateTime.now()
             : OffsetDateTime.parse(value, DateTimeFormatter.ISO_OFFSET_DATE_TIME).toLocalDateTime();
     }
+    private LocalDateTime parseOptionalTime(String value) {
+        if (value == null || value.isBlank()) return null;
+        try { return OffsetDateTime.parse(value, DateTimeFormatter.ISO_OFFSET_DATE_TIME).toLocalDateTime(); }
+        catch (Exception ignored) { return null; }
+    }
 
     private BusinessException unavailable() {
         return new BusinessException(502, "调用和风天气接口失败");
@@ -276,4 +300,8 @@ public class QWeatherProvider implements WeatherProvider {
     private record Daily(String fxDate, String tempMax, String tempMin, String textDay,
                          String textNight, String windDirDay, String windScaleDay,
                          String humidity) {}
+    private record WarningResponse(String code, List<WarningItem> warning) {}
+    private record WarningItem(String id, String sender, String pubTime, String title,
+                               String startTime, String endTime, String status, String severity,
+                               String typeName, String text, String instruction) {}
 }

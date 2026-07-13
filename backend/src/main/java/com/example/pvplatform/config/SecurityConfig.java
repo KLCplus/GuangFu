@@ -101,6 +101,7 @@ public class SecurityConfig {
                     "/v3/api-docs/**"
                 ).permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/miniapp/models", "/api/miniapp/models/**").permitAll()
+                .requestMatchers(HttpMethod.GET, "/api/news", "/api/news/**").permitAll()
                 .requestMatchers("/openapi/**").permitAll()
                 .requestMatchers("/api/internal/**").permitAll()
                 .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()

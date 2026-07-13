@@ -2,6 +2,7 @@ import request from './request'
 import type { DateTimeString, PageQuery, PageResult } from './types'
 
 export type NewsType = 'MODEL_UPDATE' | 'SYSTEM_NOTICE' | 'INDUSTRY_NEWS' | string
+export type NewsCategory = 'WEATHER_ALERT' | 'DISASTER' | 'POLICY' | 'INDUSTRY' | 'ENTERPRISE' | 'PLATFORM' | string
 export type NewsTargetRole = 'ALL' | 'USER' | 'API_USER' | 'ADMIN' | string
 export type NewsStatus = 'DRAFT' | 'PUBLISHED' | 'OFFLINE' | string
 
@@ -23,6 +24,19 @@ export interface News {
   content: string
   coverUrl?: string
   newsType: NewsType
+  category?: NewsCategory
+  contentType?: string
+  sourceType?: string
+  sourceName?: string
+  sourceUrl?: string
+  sourcePublishedAt?: DateTimeString
+  fetchedAt?: DateTimeString
+  externalContent?: boolean
+  warningLevel?: string
+  warningRegion?: string
+  warningAgency?: string
+  effectiveAt?: DateTimeString
+  expiresAt?: DateTimeString
   targetRole: NewsTargetRole
   status?: NewsStatus
   publishedAt?: DateTimeString
@@ -35,6 +49,7 @@ export interface NewsPayload {
   content: string
   coverUrl?: string
   newsType: NewsType
+  category?: NewsCategory
   targetRole: NewsTargetRole
 }
 

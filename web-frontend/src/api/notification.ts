@@ -3,6 +3,7 @@ import type { DateTimeString, PageQuery, PageResult } from './types'
 
 export interface NotificationQuery extends PageQuery {
   readStatus?: 0 | 1
+  type?: string
 }
 
 export interface Notification {

@@ -1,49 +1,60 @@
 # news 模块实现现状
 
-## 模块职责
+## 内容边界
 
-`news` 负责新闻/公告内容管理和站内通知读取状态管理。
+- `news` 保存公开新闻、公开公告和外部采集内容。匿名用户只能读取已发布、面向全部用户的内容。
+- `user_notification` 保存当前用户的站内通知及已读状态，所有通知接口必须登录。
+- 公开分类为 `WEATHER_ALERT`、`DISASTER`、`POLICY`、`INDUSTRY`、`ENTERPRISE`、`PLATFORM`。
+- `MODEL_UPDATE`、`ALERT`、`SYSTEM_NOTICE` 属于站内通知类型，不进入公开新闻列表。
+- 旧 `NEWS`、`NOTICE`、`INDUSTRY_NEWS` 数据通过查询兼容和增量 SQL 映射保留。
 
 ## 已实现
 
-- 前台新闻分页列表、按类型筛选、新闻详情。
-- 管理端新闻分页列表、按状态/类型筛选、创建、更新、发布、下线、删除。
-- 新闻状态包括草稿、已发布、下线；前台只展示已发布内容。
-- 发布新闻时会写发布时间和发布人。
-- 发布后可根据目标角色创建站内通知。
-- 站内通知支持分页列表、按已读状态筛选、未读数、标记单条已读、全部已读。
-- 普通用户通知查询只作用于当前登录用户。
+- 公开新闻分页、关键词/分类筛选和详情；草稿、下线内容及非公开目标不可匿名读取。
+- 管理端创建、编辑、发布、下线、删除、封面/正文图片上传及发布时生成用户通知。
+- 站内通知分页、未读筛选、类型筛选、未读数、单条已读和全部已读。
+- 外部内容字段、来源归因、原文链接、发布时间、抓取时间、外部唯一标识及预警扩展字段。
+- MEM、NEA、LONGI 采集器按来源隔离；单源失败不影响其他来源，重复同步使用外部标识和唯一索引去重。
+- QWeather 预警复用既有 JWT 客户端，按启用电站坐标查询并按官方预警 ID 更新。
+- 可配置定时同步和管理员手动同步入口。
 
-## 未实现或限制
+## 同步配置
 
-- 新闻封面文件上传未在本模块实现，只保存 `coverUrl`。
-- 富文本内容没有服务端清洗或 XSS 处理。
-- 发布流程没有审核、定时发布、撤回原因和版本历史。
-- 通知创建目前依赖新闻发布流程或服务内部调用，没有独立后台通知发送接口。
-- 目标角色通知依赖用户角色查询，缺少复杂人群筛选。
+定时同步默认关闭：
+
+```text
+NEWS_SYNC_ENABLED=false
+NEWS_SYNC_WEB_CRON=0 20 */6 * * *
+NEWS_SYNC_WEATHER_CRON=0 */20 * * * *
+NEWS_SYNC_MEM_ENABLED=true
+NEWS_SYNC_NEA_ENABLED=true
+NEWS_SYNC_LONGI_ENABLED=true
+NEWS_SYNC_WEATHER_ENABLED=true
+```
+
+生产启用来源前应先在目标 JVM 环境验证网络、证书链和页面结构。管理员可调用 `POST /api/admin/news/sync?source=LONGI` 等接口手动验证；普通用户和匿名用户不能触发同步。
 
 ## 主要接口
 
-- `GET /api/news`
-- `GET /api/news/{newsId}`
-- `GET /api/admin/news`
-- `POST /api/admin/news`
-- `PUT /api/admin/news/{newsId}`
-- `PUT /api/admin/news/{newsId}/publish`
-- `PUT /api/admin/news/{newsId}/offline`
-- `DELETE /api/admin/news/{newsId}`
-- `GET /api/notifications`
-- `GET /api/notifications/unread-count`
-- `PUT /api/notifications/{notificationId}/read`
-- `PUT /api/notifications/read-all`
+- `GET /api/news`、`GET /api/news/{newsId}`：公开读取。
+- `/api/admin/news/**`：管理员内容管理和手动同步。
+- `/api/notifications/**`：当前登录用户的站内通知。
 
-## 相关表
+## 数据库
 
-- `news`
-- `user_notification`
-- 通知目标角色依赖 `sys_user`、`sys_user_role`、`sys_role`。
+- 增量脚本：`src/main/resources/sql/news_source_migration.sql`。
+- 相关表：`news`、`user_notification`、`sys_user`、`sys_user_role`、`sys_role`。
+- 启动迁移器会为旧库补齐来源和预警字段；不会重写已执行的旧 SQL。
 
-## 测试情况
+## 当前限制
 
-- 已有 `PhaseFourServiceTest` 间接覆盖部分新闻和通知服务。
-- 建议补充新闻发布通知生成、不同目标角色过滤、已读幂等、前台不可见草稿/下线新闻、富文本安全测试。
+- 外部网页解析依赖对方页面结构和目标 JVM 的 TLS 证书链，启用前必须真实验证。
+- 外部正文仅保存清洗后的摘要/片段，不复制完整文章和图片。
+- QWeather 只有在配置有效且电站附近存在生效预警时才会写入数据。
+- 没有审核流、定时发布、撤回原因和版本历史。
+- 通知创建依赖新闻发布流程或服务内部调用，没有独立后台群发页面。
+
+## 测试
+
+- `NewsSecurityTest` 覆盖标准安全配置下匿名公开新闻、匿名通知拒绝和匿名管理接口拒绝。
+- `PhaseFourServiceTest` 覆盖公开新闻与模型更新通知的边界及通知生成。

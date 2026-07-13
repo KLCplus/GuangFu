@@ -2,9 +2,11 @@
   <view wx:if="{{loading}}" class="card state-card"><view class="skeleton article-loading"></view></view>
   <view wx:elif="{{error}}" class="card state-card"><view class="state-mark">!</view><view class="state-title">资讯详情加载失败</view><view class="state-copy">{{error}}</view><button class="button-quiet" bindtap="loadDetail">重新加载</button></view>
   <view wx:elif="{{news}}" class="article">
-    <text class="article-type">{{news.typeLabel}}</text><text class="article-title">{{news.title}}</text><text class="article-time">{{news.timeText}}</text>
+    <text class="article-type">{{news.typeLabel}}</text><text class="article-title">{{news.title}}</text><text class="article-time">{{news.timeText}} · {{news.sourceText}}</text>
+    <view wx:if="{{news.warningRegion || news.warningAgency || news.warningLevel}}" class="warning-panel"><text wx:if="{{news.warningLevel}}">{{news.warningLevel}}</text><text wx:if="{{news.warningRegion}}">地区：{{news.warningRegion}}</text><text wx:if="{{news.warningAgency}}">发布机构：{{news.warningAgency}}</text><text wx:if="{{news.effectiveText}}">生效：{{news.effectiveText}}</text><text wx:if="{{news.expiresText}}">失效：{{news.expiresText}}</text></view>
     <image wx:if="{{news.coverUrl}}" class="article-cover" src="{{news.coverUrl}}" mode="aspectFill" />
     <text wx:if="{{news.summary}}" class="article-summary">{{news.summary}}</text>
     <view class="article-body"><text wx:for="{{news.paragraphs}}" wx:key="*this">{{item}}</text><text wx:if="{{!news.paragraphs.length}}" class="muted">正文暂未补充</text></view>
+    <button wx:if="{{news.sourceUrl}}" class="original-button" bindtap="copyOriginal">复制原文链接</button>
   </view>
 </view>

@@ -1,0 +1,24 @@
+<view class="page wallet-page">
+  <view wx:if="{{loading && !wallet}}" class="card state-card"><view class="skeleton wallet-skeleton"></view></view>
+  <view wx:elif="{{error}}" class="card state-card"><view class="state-mark">!</view><view class="state-title">钱包加载失败</view><view class="state-copy">{{error}}</view><button class="button-quiet" bindtap="loadWallet">重新加载</button></view>
+  <block wx:elif="{{wallet}}">
+    <view class="balance-card">
+      <text class="balance-label">可用余额</text>
+      <text class="balance-value">{{wallet.balanceText}}</text>
+      <view class="balance-grid"><view><text>冻结余额</text><text>{{wallet.frozenText}}</text></view><view><text>本月消费</text><text>{{wallet.monthlyCostText}}</text></view></view>
+      <view class="power-line"><text></text><text></text><text></text><text></text><text></text></view>
+    </view>
+
+    <view class="recharge-note" bindtap="showRechargeStatus"><view><text>充值功能暂未开放</text><text>当前仅支持查看真实余额与流水</text></view><text>说明</text></view>
+
+    <view class="section-head"><text class="section-title">最近资金变动</text><text class="section-caption">{{records.length}} 条</text></view>
+    <view wx:if="{{records.length}}" class="record-list">
+      <view class="record-card" wx:for="{{records}}" wx:key="recordId">
+        <view class="record-mark {{item.income ? 'income' : 'expense'}}">{{item.income ? '入' : '出'}}</view>
+        <view class="record-main"><text>{{item.titleText}}</text><text>{{item.typeText}} · {{item.timeText}}</text><text wx:if="{{item.balanceText}}">变动后余额 {{item.balanceText}}</text></view>
+        <text class="record-amount {{item.income ? 'income' : ''}}">{{item.amountText}}</text>
+      </view>
+    </view>
+    <view wx:else class="card empty-card"><text>暂无资金变动</text><text>产生真实充值、消费或退款流水后会显示在这里。</text></view>
+  </block>
+</view>

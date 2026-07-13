@@ -31,4 +31,23 @@ function errorMessage(error, fallback) {
   return error && error.message ? error.message : fallback
 }
 
-module.exports = { number, money, dateTime, relativeDate, errorMessage }
+function resourceUrl(value) {
+  if (!value) return ''
+  if (/^https?:\/\//i.test(value)) return value
+  const baseUrl = getApp().globalData.apiBaseUrl.replace(/\/$/, '')
+  return `${baseUrl}${String(value).startsWith('/') ? '' : '/'}${value}`
+}
+
+function maskApiKey(item) {
+  const prefix = item && item.apiKeyPrefix ? String(item.apiKeyPrefix) : ''
+  return prefix ? `${prefix}••••••••••••` : '已安全隐藏'
+}
+
+function percent(used, total) {
+  const usedValue = Number(used)
+  const totalValue = Number(total)
+  if (!Number.isFinite(usedValue) || !Number.isFinite(totalValue) || totalValue <= 0) return 0
+  return Math.max(0, Math.min(100, Math.round(usedValue / totalValue * 100)))
+}
+
+module.exports = { number, money, dateTime, relativeDate, errorMessage, resourceUrl, maskApiKey, percent }
