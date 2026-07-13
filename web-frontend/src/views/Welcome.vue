@@ -360,20 +360,21 @@ onBeforeUnmount(() => {
 .hero-brand-title {
   display: grid;
   justify-items: center;
-  gap: 4px;
+  gap: clamp(12px, 1.6vw, 24px);
   color: #ffffff;
 }
 
 .hero-brand-title span {
   font-size: clamp(72px, 14vw, 168px);
   font-weight: 700;
-  line-height: 0.82;
+  line-height: 0.9;
+  transform: translateY(clamp(-18px, -1.5vw, -8px));
 }
 
 .hero-brand-title strong {
   font-size: clamp(34px, 6vw, 86px);
   font-weight: 600;
-  line-height: 1;
+  line-height: 1.05;
   letter-spacing: 0.16em;
   text-indent: 0.16em;
 }
