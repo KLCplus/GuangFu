@@ -25,6 +25,7 @@ model-service/venv/
 .pytest_cache/
 
 .cache/
+start-personal.sh
 
 
 
