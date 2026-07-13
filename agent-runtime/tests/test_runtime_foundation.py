@@ -32,6 +32,13 @@ class FakeGateway:
             })
         if tool_name == "prediction.list":
             return ToolResult(tool_name, True, "最近预测任务 0 条", ["最近任务：0 条"], {"total": 0, "records": []})
+        if tool_name == "model.list":
+            return ToolResult(tool_name, True, "已获取模型列表，共 1 个", ["可用模型：1 个"], [{
+                "modelId": 1,
+                "modelName": "光伏功率预测模型",
+                "modelType": "POWER_PREDICTION",
+                "status": "ONLINE",
+            }])
         return ToolResult(tool_name, False, "unknown", error="unknown")
 
 
@@ -220,6 +227,19 @@ class RuntimeFoundationTest(unittest.TestCase):
         runtime = PhotovoltaicAgentRuntime(FakeGateway(), ROOT / "skills")
         state = runtime.plan("你能做什么", {"sessionId": 1, "userId": 7})
         self.assertEqual([step.tool_name for step in state.plan if step.tool_name], [])
+
+    def test_model_list_accepts_list_payload(self):
+        runtime = PhotovoltaicAgentRuntime(FakeGateway(), ROOT / "skills")
+        state = runtime.run("查看模型列表", {"sessionId": 1, "userId": 7})
+        self.assertEqual(state.tool_results[0].tool_name, "model.list")
+        self.assertIsInstance(state.tool_results[0].data, list)
+        self.assertIn("已获取模型列表", state.final_answer)
+
+    def test_general_question_gets_capability_answer_without_tools(self):
+        runtime = PhotovoltaicAgentRuntime(FakeGateway(), ROOT / "skills")
+        state = runtime.run("你支持哪些功能", {"sessionId": 1, "userId": 7})
+        self.assertEqual(state.tool_results, [])
+        self.assertIn("项目管家", state.final_answer)
 
     def test_memory_filters_sensitive_values(self):
         self.assertEqual(extract_memory_candidates("我的 api_key 是 secret，默认 1 号电站"), [])

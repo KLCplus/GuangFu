@@ -30,7 +30,7 @@ class ToolResult:
     success: bool
     summary: str
     highlights: list[str] = field(default_factory=list)
-    data: dict[str, Any] = field(default_factory=dict)
+    data: Any = field(default_factory=dict)
     error: str | None = None
 
 

@@ -35,11 +35,12 @@ class SpringToolGateway:
         opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
         with opener.open(request, timeout=30) as response:
             body = json.loads(response.read().decode("utf-8"))
+        data = body.get("data")
         return ToolResult(
             tool_name=tool_name,
             success=bool(body.get("success")),
             summary=str(body.get("summary") or ""),
             highlights=list(body.get("highlights") or []),
-            data=dict(body.get("data") or {}),
+            data=data if data is not None else {},
             error=body.get("error"),
         )

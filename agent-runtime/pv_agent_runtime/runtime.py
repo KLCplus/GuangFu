@@ -156,6 +156,8 @@ class PhotovoltaicAgentRuntime:
         )
 
     def _latest_prediction_task_id(self, data: dict[str, Any]) -> int | None:
+        if not isinstance(data, dict):
+            return None
         records = data.get("records")
         if not isinstance(records, list) or not records:
             return None
@@ -170,21 +172,22 @@ class PhotovoltaicAgentRuntime:
 
     def _ui_for_result(self, result: ToolResult):
         data = result.data
+        data_map = data if isinstance(data, dict) else {}
         if self._is_approval_required(result):
             return [ui_instruction("ApprovalActionCard", self._approval_event_data(result))]
         if result.tool_name == "station.detail" and result.success:
             return [ui_instruction("StationSummaryCard", {
-                "stationName": data.get("stationName") or data.get("name") or "未知电站",
-                "capacity": data.get("capacity"),
-                "status": data.get("status"),
-                "location": " ".join(str(data.get(k) or "") for k in ("province", "city", "address")).strip(),
+                "stationName": data_map.get("stationName") or data_map.get("name") or "未知电站",
+                "capacity": data_map.get("capacity"),
+                "status": data_map.get("status"),
+                "location": " ".join(str(data_map.get(k) or "") for k in ("province", "city", "address")).strip(),
             })]
         if result.tool_name == "weather.current" and result.success:
             return [ui_instruction("WeatherImpactCard", {
-                "weather": data.get("weather"),
-                "temperature": data.get("temperature"),
-                "humidity": data.get("humidity"),
-                "windSpeed": data.get("windSpeed"),
+                "weather": data_map.get("weather"),
+                "temperature": data_map.get("temperature"),
+                "humidity": data_map.get("humidity"),
+                "windSpeed": data_map.get("windSpeed"),
                 "impact": result.summary,
             })]
         if result.tool_name.startswith("prediction.") and result.success:
@@ -203,10 +206,11 @@ class PhotovoltaicAgentRuntime:
     def _is_approval_required(self, result: ToolResult | None) -> bool:
         if result is None:
             return False
-        return result.error == "APPROVAL_REQUIRED" or result.data.get("approvalRequired") is True
+        data = result.data if isinstance(result.data, dict) else {}
+        return result.error == "APPROVAL_REQUIRED" or data.get("approvalRequired") is True
 
     def _approval_event_data(self, result: ToolResult) -> dict[str, Any]:
-        data = result.data
+        data = result.data if isinstance(result.data, dict) else {}
         return {
             "approvalId": data.get("approvalId"),
             "toolCallId": data.get("clientToolCallId") or data.get("toolCallId"),
@@ -223,6 +227,8 @@ class PhotovoltaicAgentRuntime:
     def _synthesize(self, state: AgentState) -> str:
         failed = [item for item in state.tool_results if not item.success]
         summaries = [item.summary for item in state.tool_results if item.summary]
+        if not state.tool_results:
+            return self._general_answer(state)
         if self.llm_gateway and summaries:
             try:
                 answer = self._llm_synthesize(state)
@@ -233,7 +239,46 @@ class PhotovoltaicAgentRuntime:
                 return f"LLM 不可用，已降级为工具结果摘要：{fallback}（原因：{exc}）"
         if failed:
             return "部分数据获取失败：" + "；".join(item.summary for item in failed)
-        return "；".join(summaries) if summaries else "已完成任务规划，但没有可用工具结果。"
+        return "；".join(summaries) if summaries else self._general_answer(state)
+
+    def _general_answer(self, state: AgentState) -> str:
+        if self.llm_gateway:
+            try:
+                response = self.llm_gateway.chat_completions(
+                    messages=[
+                        {
+                            "role": "system",
+                            "content": (
+                                "你是光伏预测与运维平台的项目管家。先回答用户问题，不要编造实时业务数据。"
+                                "当问题需要真实数据时，说明可以调用哪些工具；当用户问能力范围时，直接概括能力。"
+                            ),
+                        },
+                        {
+                            "role": "user",
+                            "content": json.dumps({
+                                "task": state.user_task,
+                                "availableCapabilities": self._capability_summary(),
+                            }, ensure_ascii=False),
+                        },
+                    ],
+                    temperature=0.3,
+                    max_tokens=700,
+                )
+                choices = response.get("choices") or []
+                content = ((choices[0].get("message") or {}).get("content") if choices else "")
+                if isinstance(content, str) and content.strip():
+                    return content.strip()
+            except Exception:
+                pass
+        return self._capability_summary()
+
+    def _capability_summary(self) -> str:
+        return (
+            "我可以作为光伏平台项目管家协助你：查询电站和公开电站信息、分析天气影响、查看预测任务和预测详情、"
+            "查询模型列表和模型详情、说明模型运行所需输入、处理云图预测输入要求、查看报告和生成需确认的报告、"
+            "查询 API Key 与调用用量、查看新闻通知、钱包余额、市场套餐和当前用户资料。"
+            "涉及真实数据时我会调用受控工具；一般解释、操作指引、能力说明和排障建议会直接回答。"
+        )
 
     def _llm_synthesize(self, state: AgentState) -> str:
         tool_context = [
@@ -251,8 +296,8 @@ class PhotovoltaicAgentRuntime:
                 {
                     "role": "system",
                     "content": (
-                        "你是光伏预测与运维平台的分析 Agent。只能基于给定工具结果回答；"
-                        "如果数据不完整，要明确指出缺口。输出包括运行结论、风险、建议三部分。"
+                        "你是光伏预测与运维平台的项目管家。基于给定工具结果回答；"
+                        "如果数据不完整，要明确指出缺口。不要让工具过程盖过结论。"
                     ),
                 },
                 {
