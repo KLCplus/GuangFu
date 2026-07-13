@@ -360,14 +360,33 @@ class PhotovoltaicAgentRuntime:
         def add(step_id: str, title: str, tool_name: str, arguments: dict[str, Any] | None = None):
             steps.append(PlanStep(step_id, "Collect", title, self._tool_title(tool_name), tool_name, arguments or {}))
 
-        if any(word in task for word in ("修改个人", "更新个人", "改昵称", "改邮箱", "改手机号", "修改昵称", "修改邮箱", "修改手机号")):
-            args = {}
-            for key in ("nickname", "email", "phone", "avatarUrl", "gender"):
-                if key in context:
-                    args[key] = context[key]
+        if any(word in task for word in ("修改个人", "更新个人", "改昵称", "改邮箱", "改手机号", "改电话", "改联系方式", "修改昵称", "修改邮箱", "修改手机号", "修改电话", "修改联系方式")) or (
+            any(word in task for word in ("手机号", "电话号码", "联系电话", "联系方式", "手机", "电话"))
+            and any(word in task for word in ("改为", "改成", "修改为", "设为", "设置为"))
+        ):
+            args = self._profile_update_args(task, context)
             add("user-profile-update", "修改个人资料", "user.profile.update", args)
         elif any(word in task for word in ("个人信息", "个人资料", "我的资料", "用户信息", "我的账号", "账户信息")) or "profile" in text:
             add("user-profile", "查询个人信息", "user.profile")
+
+        if any(word in task for word in ("公开电站", "公有电站", "PVOutput", "pvoutput")):
+            pvoutput_station_id = explicit_station_id
+            if "天气" in task:
+                add(
+                    "pvoutput-weather-forecast" if "预报" in task else "pvoutput-weather-current",
+                    "查询公开电站天气预报" if "预报" in task else "查询公开电站天气",
+                    "pvoutput.weather.forecast" if "预报" in task else "pvoutput.weather.current",
+                    {"stationId": pvoutput_station_id} if pvoutput_station_id else {},
+                )
+            elif "历史" in task or "状态记录" in task:
+                add("pvoutput-status-history", "查询公开电站历史状态", "pvoutput.status.history", {"stationId": pvoutput_station_id} if pvoutput_station_id else {})
+            elif "状态" in task or "功率" in task or "发电" in task:
+                add("pvoutput-status-latest", "查询公开电站最新状态", "pvoutput.status.latest", {"stationId": pvoutput_station_id} if pvoutput_station_id else {})
+            elif pvoutput_station_id or "详情" in task:
+                add("pvoutput-station-detail", "查询公开电站详情", "pvoutput.station.detail", {"stationId": pvoutput_station_id} if pvoutput_station_id else {})
+            else:
+                add("pvoutput-station-list", "查询公开电站列表", "pvoutput.station.list", {"enabled": True})
+            return steps
 
         if "仪表盘" in task or "dashboard" in text or "概览" in task:
             add("dashboard-overview", "查询仪表盘概览", "dashboard.overview", {"stationId": explicit_station_id} if explicit_station_id else {})
@@ -520,6 +539,38 @@ class PhotovoltaicAgentRuntime:
     def _extract_station_id(self, task: str) -> int | None:
         digits = "".join(ch if ch.isdigit() else " " for ch in task).split()
         return int(digits[0]) if digits else None
+
+    def _profile_update_args(self, task: str, context: dict[str, Any]) -> dict[str, Any]:
+        args: dict[str, Any] = {}
+        for key in ("nickname", "email", "phone", "avatarUrl", "gender"):
+            if key in context:
+                args[key] = context[key]
+        args.setdefault("nickname", self._after_marker(task, "昵称"))
+        args.setdefault("email", self._after_marker(task, "邮箱"))
+        phone = (
+            self._after_marker(task, "手机号")
+            or self._after_marker(task, "电话号码")
+            or self._after_marker(task, "联系电话")
+            or self._after_marker(task, "电话")
+            or self._after_marker(task, "联系方式")
+            or self._after_marker(task, "手机")
+        )
+        if phone:
+            args["phone"] = phone
+        return {key: value for key, value in args.items() if value is not None and value != ""}
+
+    def _after_marker(self, task: str, marker: str) -> str | None:
+        if marker not in task:
+            return None
+        value = task.split(marker, 1)[1].strip()
+        for prefix in ("改成", "改为", "修改为", "设为", "设置为", "为", "成", "是"):
+            if value.startswith(prefix):
+                value = value[len(prefix):].strip()
+                break
+        for separator in ("，", ",", "。", "？", "?", "！", "!"):
+            if separator in value:
+                value = value.split(separator, 1)[0].strip()
+        return value or None
 
     def _conversation_history(self, context: dict[str, Any]) -> list[dict[str, Any]]:
         history = context.get("conversationHistory") or context.get("history") or []

@@ -79,6 +79,10 @@ public class PvOutputStationService {
         return stationMapper.selectList(query).stream().map(this::toStationDTO).toList();
     }
 
+    public PvOutputStationDTO detail(Long id) {
+        return toStationDTO(requireStation(id));
+    }
+
     public PvOutputStationDTO setEnabled(Long id, boolean enabled) {
         ExternalPvStationDO station = requireStation(id);
         station.setEnabled(enabled);

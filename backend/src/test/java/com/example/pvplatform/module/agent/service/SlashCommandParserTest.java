@@ -43,8 +43,19 @@ class SlashCommandParserTest {
         assertEquals("user.profile.update", profile.toolName());
         assertEquals("张三", profile.arguments().get("nickname"));
 
+        AgentToolIntent phone = parser.parse("把我的电话号码改为 13900001111", Map.of(), null, Map.of());
+        assertEquals("user.profile.update", phone.toolName());
+        assertEquals("13900001111", phone.arguments().get("phone"));
+
         AgentToolIntent readAll = parser.parse("全部通知已读", Map.of(), null, Map.of());
         assertEquals("notification.markAllRead", readAll.toolName());
+    }
+
+    @Test
+    void shouldRoutePublicPvOutputTools() {
+        assertTool("查看公开电站", "pvoutput.station.list");
+        assertTool("查看公开电站 2 的状态", "pvoutput.status.latest");
+        assertTool("查看公开电站 2 的天气", "pvoutput.weather.current");
     }
 
     private void assertTool(String message, String expectedTool) {

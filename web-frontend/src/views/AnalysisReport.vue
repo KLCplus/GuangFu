@@ -708,6 +708,9 @@ function handleAgentEvent(event: AgentSseEnvelope) {
       durationMs: firstNumber(data.durationMs) || undefined,
       detail: ok ? '' : firstText(data.error)
     })
+    if (ok && toolName === 'user.profile.update') {
+      void userStore.fetchProfile()
+    }
     return
   }
   if (event.event === 'step_started') {

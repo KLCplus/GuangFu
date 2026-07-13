@@ -107,14 +107,32 @@ public class SlashCommandParser {
 
     public AgentToolIntent natural(String text, Map<String, Object> context) {
         String lower = text == null ? "" : text.toLowerCase(Locale.ROOT);
-        boolean business = lower.matches(".*(电站|station|天气|weather|预测|prediction|任务|task|报告|report|api|模型|model|云图|cloud|钱包|余额|市场|套餐|新闻|通知|公告|个人|资料|用户|profile|账号|账户|仪表盘|dashboard|实时功率|历史功率|功率曲线|已读|昵称|邮箱|手机号|修改|更新).*");
+        boolean business = lower.matches(".*(电站|station|天气|weather|预测|prediction|任务|task|报告|report|api|模型|model|云图|cloud|钱包|余额|市场|套餐|新闻|通知|公告|个人|资料|用户|profile|账号|账户|仪表盘|dashboard|实时功率|历史功率|功率曲线|已读|昵称|邮箱|手机号|电话|联系方式|修改|更新|pvoutput|公开).*");
         if (!business) return AgentToolIntent.none(false);
 
         Map<String, Object> args = new LinkedHashMap<>();
         String toolName = null;
-        if (hasAny(lower, "修改个人", "更新个人", "改昵称", "改邮箱", "改手机号", "修改昵称", "修改邮箱", "修改手机号", "昵称改", "邮箱改", "手机号改")) {
+        if (hasAny(lower, "修改个人", "更新个人", "改昵称", "改邮箱", "改手机号", "改电话", "改联系方式", "修改昵称", "修改邮箱", "修改手机号", "修改电话", "修改联系方式", "昵称改", "邮箱改", "手机号改", "电话改")
+            || (hasAny(lower, "手机号", "电话号码", "联系电话", "联系方式", "手机", "电话") && hasAny(lower, "改为", "改成", "修改为", "设为", "设置为"))) {
             toolName = "user.profile.update";
             args.putAll(profileUpdateArgs(text));
+        } else if (lower.contains("pvoutput") || lower.contains("公开电站") || lower.contains("公有电站")) {
+            Long stationId = extractStationId(text);
+            if (lower.contains("天气")) {
+                toolName = lower.contains("预报") ? "pvoutput.weather.forecast" : "pvoutput.weather.current";
+                if (stationId != null) args.put("stationId", stationId);
+            } else if (lower.contains("历史") || lower.contains("状态记录")) {
+                toolName = "pvoutput.status.history";
+                if (stationId != null) args.put("stationId", stationId);
+            } else if (lower.contains("状态") || lower.contains("功率") || lower.contains("发电")) {
+                toolName = "pvoutput.status.latest";
+                if (stationId != null) args.put("stationId", stationId);
+            } else if (stationId != null || lower.contains("详情")) {
+                toolName = "pvoutput.station.detail";
+                if (stationId != null) args.put("stationId", stationId);
+            } else {
+                toolName = "pvoutput.station.list";
+            }
         } else if (lower.contains("个人") || lower.contains("资料") || lower.contains("用户信息")
             || lower.contains("账号") || lower.contains("账户信息") || lower.contains("profile")) {
             toolName = "user.profile";
@@ -218,6 +236,9 @@ public class SlashCommandParser {
         if (("station.detail".equals(toolName) || "weather.current".equals(toolName) || "report.generate".equals(toolName)) && args.get("stationId") == null) {
             return "请提供电站 ID，例如 /weather 2 或“查看 2 号电站信息”。";
         }
+        if (toolName != null && toolName.startsWith("pvoutput.") && !"pvoutput.station.list".equals(toolName) && args.get("stationId") == null) {
+            return "请提供公开电站 ID，例如“查看公开电站 2 的状态”。";
+        }
         if (("pv.realtime".equals(toolName) || "pv.history".equals(toolName) || "weather.forecast".equals(toolName)) && args.get("stationId") == null) {
             return "请提供电站 ID，例如“查询 2 号电站实时功率”。";
         }
@@ -320,6 +341,10 @@ public class SlashCommandParser {
         if (value != null) args.put("email", value);
         value = afterMarker(text, "手机号");
         if (value == null) value = afterMarker(text, "手机");
+        if (value == null) value = afterMarker(text, "电话号码");
+        if (value == null) value = afterMarker(text, "联系电话");
+        if (value == null) value = afterMarker(text, "电话");
+        if (value == null) value = afterMarker(text, "联系方式");
         if (value != null) args.put("phone", value);
         return args;
     }

@@ -250,6 +250,9 @@ class RuntimeFoundationTest(unittest.TestCase):
             ("查看套餐列表", "marketplace.list"),
             ("查看历史报告", "report.list"),
             ("查看我的电站", "station.list"),
+            ("查看公开电站", "pvoutput.station.list"),
+            ("查看公开电站 2 的状态", "pvoutput.status.latest"),
+            ("查看公开电站 2 的天气", "pvoutput.weather.current"),
         ]
         for message, tool_name in cases:
             with self.subTest(message=message):
@@ -274,6 +277,9 @@ class RuntimeFoundationTest(unittest.TestCase):
         self.assertIn("api.create", [step.tool_name for step in state.plan])
         state = runtime.plan("修改昵称", {"sessionId": 1, "userId": 7, "nickname": "新昵称"})
         self.assertIn("user.profile.update", [step.tool_name for step in state.plan])
+        state = runtime.plan("把我的电话号码改为 13900001111", {"sessionId": 1, "userId": 7})
+        tool_step = next(step for step in state.plan if step.tool_name == "user.profile.update")
+        self.assertEqual(tool_step.arguments["phone"], "13900001111")
         state = runtime.plan("全部通知已读", {"sessionId": 1, "userId": 7})
         self.assertIn("notification.markAllRead", [step.tool_name for step in state.plan])
 
