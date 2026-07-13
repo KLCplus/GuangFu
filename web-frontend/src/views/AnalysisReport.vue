@@ -413,6 +413,10 @@ function addUiInstruction(value: unknown) {
   scrollToBottom('auto')
 }
 
+function primaryUiInstructions(instructions: PvUiInstruction[] = []) {
+  return instructions.filter((instruction) => !['ErrorRecoveryCard', 'ToolProgressCard'].includes(instruction.component))
+}
+
 function uiTitle(instruction: PvUiInstruction) {
   const titles: Record<string, string> = {
     StationSummaryCard: '电站概览',
@@ -1330,23 +1334,33 @@ onMounted(() => {
               v-html="message.role === 'assistant' ? renderMarkdown(message.content) : escapeHtml(message.content)"
             ></div>
 
-            <PvGenerativeUi v-if="message.uiInstructions?.length" :instructions="message.uiInstructions" class="pv-ui-grid" />
+            <PvGenerativeUi
+              v-if="primaryUiInstructions(message.uiInstructions).length"
+              :instructions="primaryUiInstructions(message.uiInstructions)"
+              class="pv-ui-grid"
+            />
 
-            <div v-if="message.tools?.length" class="tool-list">
-              <details v-for="tool in message.tools" :key="tool.id" class="tool-card" :class="tool.status">
-                <summary>
-                  <span>
-                    <strong>{{ tool.title }}</strong>
-                    <small>{{ tool.summary }}</small>
-                  </span>
-                  <em>{{ statusLabel(tool.status) }}<template v-if="tool.durationMs"> · {{ tool.durationMs }} ms</template></em>
-                </summary>
-                <ul v-if="tool.highlights?.length" class="tool-highlights">
-                  <li v-for="item in tool.highlights" :key="item">{{ item }}</li>
-                </ul>
-                <p v-else>{{ tool.detail || tool.summary }}</p>
-              </details>
-            </div>
+            <details v-if="message.tools?.length" class="diagnostic-panel">
+              <summary>
+                <span>诊断明细</span>
+                <em>{{ message.tools.length }} 个工具调用</em>
+              </summary>
+              <div class="tool-list">
+                <details v-for="tool in message.tools" :key="tool.id" class="tool-card" :class="tool.status">
+                  <summary>
+                    <span>
+                      <strong>{{ tool.title }}</strong>
+                      <small>{{ tool.summary }}</small>
+                    </span>
+                    <em>{{ statusLabel(tool.status) }}<template v-if="tool.durationMs"> · {{ tool.durationMs }} ms</template></em>
+                  </summary>
+                  <ul v-if="tool.highlights?.length" class="tool-highlights">
+                    <li v-for="item in tool.highlights" :key="item">{{ item }}</li>
+                  </ul>
+                  <p v-else>{{ tool.detail || tool.summary }}</p>
+                </details>
+              </div>
+            </details>
 
             <div v-if="message.approval" class="approval-card" :class="message.approval.status.toLowerCase()">
               <div class="approval-head">
@@ -1825,6 +1839,7 @@ button {
 .process-strip,
 .run-card,
 .pv-ui-grid,
+.diagnostic-panel,
 .tool-list,
 .approval-card,
 .final-actions {
@@ -2043,12 +2058,54 @@ button {
   gap: 8px;
 }
 
+.diagnostic-panel {
+  max-width: 760px;
+  border: 1px solid rgba(130, 150, 180, 0.14);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.64);
+  overflow: hidden;
+}
+
+.diagnostic-panel > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 9px 12px;
+  color: #5f6e84;
+  cursor: pointer;
+  list-style: none;
+}
+
+.diagnostic-panel > summary::-webkit-details-marker {
+  display: none;
+}
+
+.diagnostic-panel > summary span {
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.diagnostic-panel > summary em {
+  color: #8a97aa;
+  font-size: 12px;
+  font-style: normal;
+}
+
+.diagnostic-panel[open] {
+  background: rgba(255, 255, 255, 0.88);
+}
+
+.diagnostic-panel .tool-list {
+  padding: 0 10px 10px;
+}
+
 .tool-card {
   border: 1px solid rgba(130, 150, 180, 0.18);
-  border-radius: 14px;
+  border-radius: 10px;
   background: rgba(255, 255, 255, 0.96);
   overflow: hidden;
-  box-shadow: 0 12px 32px rgba(70, 96, 140, 0.07);
+  box-shadow: none;
 }
 
 .tool-card summary {

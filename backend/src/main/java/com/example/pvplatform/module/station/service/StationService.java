@@ -60,6 +60,7 @@ public class StationService {
                 .stream().map(UserStationPermissionDO::getStationId).distinct().toList();
             query.and(q -> {
                 q.eq(PowerStationDO::getOwnerUserId, user.getUserId());
+                q.or().isNull(PowerStationDO::getOwnerUserId);
                 if (!permittedStationIds.isEmpty()) {
                     q.or().in(PowerStationDO::getStationId, permittedStationIds);
                 }

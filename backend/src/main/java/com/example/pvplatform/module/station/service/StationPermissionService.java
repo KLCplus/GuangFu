@@ -46,6 +46,9 @@ public class StationPermissionService {
             && station.getOwnerUserId().equals(user.getUserId())) {
             return station;
         }
+        if (!manage && station.getOwnerUserId() == null) {
+            return station;
+        }
         UserStationPermissionDO permission = permissionMapper.selectOne(
             Wrappers.<UserStationPermissionDO>lambdaQuery()
                 .eq(UserStationPermissionDO::getUserId, user.getUserId())

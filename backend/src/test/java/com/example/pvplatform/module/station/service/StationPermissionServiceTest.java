@@ -49,6 +49,21 @@ class StationPermissionServiceTest {
         assertSame(station, service.requireManage(1L));
     }
 
+    @Test
+    void shouldAllowPublicStationViewButDenyManageForNormalUser() {
+        PowerStationMapper stations = mock(PowerStationMapper.class);
+        UserStationPermissionMapper permissions = mock(UserStationPermissionMapper.class);
+        PowerStationDO station = new PowerStationDO();
+        station.setOwnerUserId(null);
+        when(stations.selectById(1L)).thenReturn(station);
+        StationPermissionService service = new StationPermissionService(stations, permissions);
+
+        authenticate(11L, "USER");
+        assertSame(station, service.requireView(1L));
+        assertEquals(403,
+            assertThrows(BusinessException.class, () -> service.requireManage(1L)).getCode());
+    }
+
     private void authenticate(Long id, String role) {
         SecurityUser user = new SecurityUser(id, "test", 1, List.of(role));
         SecurityContextHolder.getContext().setAuthentication(
