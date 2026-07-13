@@ -1,0 +1,12 @@
+.login-page { padding-top: 76rpx; }
+.brand-mark { position: relative; display: flex; align-items: center; justify-content: center; width: 104rpx; height: 104rpx; margin-bottom: 34rpx; overflow: hidden; border-radius: 32rpx; background: linear-gradient(145deg, #1677ff, #0b4eaa); color: #fff; font-size: 48rpx; font-weight: 800; box-shadow: 0 18rpx 40rpx rgba(22,119,255,.25); }
+.brand-ray { position: absolute; width: 140rpx; height: 16rpx; background: rgba(255,255,255,.22); transform: rotate(-32deg); }
+.login-title { font-size: 46rpx; font-weight: 800; letter-spacing: -1rpx; }
+.login-copy { max-width: 620rpx; margin: 18rpx 0 48rpx; color: #6f7f96; line-height: 1.7; }
+.form-card { padding: 34rpx; }
+.field-label { display: block; margin: 18rpx 0 14rpx; color: #43536a; font-size: 24rpx; font-weight: 600; }
+.field-input { height: 88rpx; padding: 0 24rpx; border: 1rpx solid #dbe6f2; border-radius: 18rpx; background: #f8fbff; box-sizing: border-box; }
+.form-error { margin-top: 20rpx; color: #df4b5f; font-size: 24rpx; }
+.submit-button { width: 100%; margin-top: 34rpx; }
+.security-note { padding: 30rpx 12rpx; color: #8190a4; font-size: 23rpx; line-height: 1.65; }
+.security-note text { color: #1677ff; }

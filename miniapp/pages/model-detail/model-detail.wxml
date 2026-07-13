@@ -1,0 +1,11 @@
+<view class="page detail-page">
+  <view wx:if="{{loading}}" class="card state-card"><view class="skeleton detail-loading"></view></view>
+  <view wx:elif="{{error}}" class="card state-card"><view class="state-mark">!</view><view class="state-title">详情加载失败</view><view class="state-copy">{{error}}</view><button class="button-quiet" bindtap="loadDetail">重新加载</button></view>
+  <block wx:elif="{{model}}">
+    <view class="detail-hero"><view class="hero-code">{{model.modelCode || 'MODEL'}}</view><view class="hero-title">{{model.modelName}}</view><view class="hero-meta"><text class="status {{model.online ? 'online' : ''}}">{{model.statusLabel}}</text><text wx:if="{{model.provider}}">{{model.provider}}</text><text wx:if="{{model.releaseYear}}">{{model.releaseYear}}</text></view></view>
+    <view class="card description-card"><text class="block-title">模型说明</text><text class="description">{{model.descriptionText}}</text><view class="tags"><text class="tag" wx:for="{{model.tags}}" wx:key="*this">{{item}}</text></view></view>
+    <view wx:if="{{model.configs.length}}" class="card config-card"><text class="block-title">输入输出配置</text><view class="config-grid"><view wx:for="{{model.configs}}" wx:key="label"><text>{{item.label}}</text><text>{{item.value}}</text></view></view></view>
+    <view class="card list-card" wx:for="{{model.lists}}" wx:key="title"><text class="block-title">{{item.title}}</text><view class="bullet" wx:for="{{item.values}}" wx:for-item="value" wx:key="*this"><text></text><text>{{value}}</text></view></view>
+    <view class="card placeholder-card"><view><text>购买与试用</text><text>等待真实业务接口开放</text></view><button class="button-quiet" bindtap="showActionStatus">查看说明</button></view>
+  </block>
+</view>

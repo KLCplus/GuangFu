@@ -1,0 +1,15 @@
+<view class="page login-page">
+  <view class="brand-mark"><view class="brand-ray"></view><text>光</text></view>
+  <view class="login-title">连接平台账号</view>
+  <view class="login-copy">使用现有光伏平台账号登录。小程序只保存后端签发的登录令牌，不保存密码。</view>
+
+  <view class="card form-card">
+    <text class="field-label">用户名</text>
+    <input class="field-input" value="{{username}}" placeholder="请输入用户名" bindinput="onUsernameInput" />
+    <text class="field-label">密码</text>
+    <input class="field-input" value="{{password}}" password placeholder="请输入密码" bindinput="onPasswordInput" confirm-type="done" bindconfirm="submit" />
+    <view wx:if="{{error}}" class="form-error">{{error}}</view>
+    <button class="button-primary submit-button" loading="{{loading}}" disabled="{{loading}}" bindtap="submit">{{loading ? '正在连接' : '登录并连接'}}</button>
+  </view>
+  <view class="security-note">本页调用现有 <text>/api/auth/login</text>，未新增微信快捷登录或测试账号。</view>
+</view>

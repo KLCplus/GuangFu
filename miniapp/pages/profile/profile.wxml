@@ -1,1 +1,15 @@
-<view class="page"><view class="card">用户中心页面占位</view></view>
+<view class="page profile-page">
+  <view class="profile-hero">
+    <view class="avatar">{{user ? user.avatarText : '光'}}</view>
+    <view wx:if="{{loggedIn && user}}" class="identity"><text>{{user.displayName}}</text><text>@{{user.username}}</text></view>
+    <view wx:else class="identity"><text>尚未连接账号</text><text>连接后可查看个人调用数据</text></view>
+  </view>
+  <view wx:if="{{!loggedIn}}" class="card connect-card"><text class="connect-title">连接现有平台账号</text><text class="connect-copy">使用统一登录接口，不创建或保存测试身份。</text><button class="button-primary" bindtap="goLogin">去连接</button></view>
+  <block wx:else>
+    <view wx:if="{{error}}" class="card profile-error"><text>{{error}}</text><text bindtap="loadProfile">重试</text></view>
+    <view class="card info-card"><view><text>账号状态</text><text class="success">已连接</text></view><view><text>角色</text><text>{{user ? user.roleText : '普通用户'}}</text></view><view><text>服务地址</text><text class="base-url">{{apiBaseUrl}}</text></view></view>
+    <view class="card roadmap-card" bindtap="showRoadmap"><view><text>个人中心</text><text>资料与安全功能等待 PC 端方案定稿</text></view><text>›</text></view>
+    <button class="logout-button" bindtap="logout">断开平台账号</button>
+  </block>
+  <view class="scope-note"><text>本期范围</text><text>保留基础账号状态与退出能力，不扩展个人资料、密码、人脸或第三方绑定。</text></view>
+</view>

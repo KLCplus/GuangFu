@@ -1,1 +1,67 @@
-<view class="page"><view class="card"><text>光伏发电综合分析与预测系统</text><view>小程序骨架版本</view></view></view>
+<view class="page">
+  <view class="overview-hero">
+    <view class="hero-top"><text class="hero-kicker">OPEN PLATFORM</text><text class="hero-range">近 30 天</text></view>
+    <view class="hero-title">每一次调用，都看得见</view>
+    <view class="pulse-line"><view class="pulse-dot"></view><view class="pulse-track"></view></view>
+    <view class="hero-metrics" wx:if="{{loggedIn}}">
+      <view><text class="hero-value">{{summary.totalCallsText}}</text><text class="hero-label">总调用</text></view>
+      <view><text class="hero-value">{{summary.successRateText}}</text><text class="hero-label">成功率</text></view>
+      <view><text class="hero-value">{{summary.avgCostText}}</text><text class="hero-label">平均响应</text></view>
+    </view>
+  </view>
+
+  <view wx:if="{{!loggedIn}}" class="card state-card login-state">
+    <view class="state-mark">钥</view><view class="state-title">连接账号后查看开放平台</view>
+    <view class="state-copy">API Key、余额与调用记录均按当前用户隔离。</view>
+    <button class="button-primary" bindtap="goLogin">连接平台账号</button>
+  </view>
+
+  <block wx:elif="{{loading}}">
+    <view class="loading-grid"><view class="skeleton loading-block"></view><view class="skeleton loading-block"></view></view>
+    <view class="skeleton loading-wide"></view><view class="skeleton loading-wide"></view>
+  </block>
+
+  <block wx:else>
+    <view class="section-head"><text class="section-title">钱包</text><text class="section-action" bindtap="showRechargeStatus">充值说明</text></view>
+    <view wx:if="{{sectionErrors.wallet}}" class="card inline-error"><text>{{sectionErrors.wallet}}</text><text bindtap="loadOverview">重试</text></view>
+    <view wx:elif="{{wallet}}" class="card wallet-card">
+      <view class="wallet-main"><text class="wallet-label">可用余额</text><text class="wallet-amount">{{wallet.balanceText}}</text><text class="wallet-frozen">冻结 {{wallet.frozenText}}</text></view>
+      <view class="wallet-side"><text>本月消费</text><text>{{wallet.monthlyCostText}}</text></view>
+      <view wx:if="{{wallet.records.length}}" class="wallet-records">
+        <view class="wallet-record" wx:for="{{wallet.records}}" wx:key="recordId"><view><text>{{item.title}}</text><text>{{item.timeText}}</text></view><text class="record-amount">{{item.amountText}}</text></view>
+      </view>
+      <view wx:else class="compact-empty">暂无钱包流水</view>
+    </view>
+
+    <view class="section-head"><text class="section-title">API Key</text><text class="section-action" bindtap="createKey">创建 Key</text></view>
+    <view wx:if="{{sectionErrors.keys}}" class="card inline-error"><text>{{sectionErrors.keys}}</text><text bindtap="loadOverview">重试</text></view>
+    <view wx:elif="{{keys.length}}" class="key-list">
+      <view class="card key-card" wx:for="{{keys}}" wx:key="apiKeyId" data-id="{{item.apiKeyId}}" bindtap="keyAction">
+        <view class="key-status {{item.active ? 'is-active' : ''}}"></view>
+        <view class="key-body"><view class="key-name-row"><text class="key-name">{{item.keyName}}</text><text class="key-state {{item.active ? 'success' : 'muted'}}">{{item.active ? '运行中' : '已停用'}}</text></view><text class="key-mask">{{item.maskedKey}}</text><text class="key-meta">最近使用 · {{item.lastUsedText}}</text></view>
+        <text class="key-more">•••</text>
+      </view>
+    </view>
+    <view wx:else class="card compact-empty">还没有 API Key，可点击右上角创建</view>
+
+    <view class="section-head"><text class="section-title">调用脉冲</text><text class="section-caption">每日调用量</text></view>
+    <view class="card trend-card">
+      <view wx:if="{{sectionErrors.trend}}" class="compact-error">{{sectionErrors.trend}}</view>
+      <view wx:elif="{{trend.length}}" class="trend-bars">
+        <view class="trend-item" wx:for="{{trend}}" wx:key="timeBucket"><view class="trend-value">{{item.totalCalls}}</view><view class="trend-bar" style="height: {{item.height}}rpx"></view><text>{{item.label}}</text></view>
+      </view>
+      <view wx:else class="compact-empty">当前时间范围暂无调用趋势</view>
+      <view class="token-note">Token 用量：{{summary.tokenText}}</view>
+    </view>
+
+    <view class="section-head"><text class="section-title">最近调用</text><text class="section-caption">最多 6 条</text></view>
+    <view wx:if="{{sectionErrors.logs}}" class="card inline-error"><text>{{sectionErrors.logs}}</text><text bindtap="loadOverview">重试</text></view>
+    <view wx:elif="{{logs.length}}" class="card log-list">
+      <view class="log-item" wx:for="{{logs}}" wx:key="logId">
+        <view class="log-dot {{item.success ? 'ok' : 'fail'}}"></view>
+        <view class="log-main"><view><text class="log-model">{{item.modelText}}</text><text class="log-cost">{{item.costText}}</text></view><text class="log-path">{{item.pathText}}</text><text class="log-time">{{item.timeText}}</text><text wx:if="{{!item.success && item.errorMessage}}" class="log-error">{{item.errorMessage}}</text></view>
+      </view>
+    </view>
+    <view wx:else class="card compact-empty">暂无调用记录</view>
+  </block>
+</view>

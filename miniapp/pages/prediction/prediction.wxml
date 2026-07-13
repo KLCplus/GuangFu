@@ -1,1 +1,26 @@
-<view class="page"><view class="card">模型预测页面占位</view></view>
+<view class="page model-page">
+  <view class="model-intro"><text class="intro-kicker">MODEL CATALOG</text><text class="intro-title">找到适合光伏场景的模型</text><text class="intro-copy">列表、标签与状态均来自平台模型接口</text></view>
+  <view wx:if="{{!loggedIn}}" class="card state-card"><view class="state-mark">模</view><view class="state-title">登录后浏览模型广场</view><view class="state-copy">当前后端要求访问模型接口时携带平台登录令牌。</view><button class="button-primary" bindtap="goLogin">连接平台账号</button></view>
+  <block wx:else>
+  <view class="search-row">
+    <view class="search-box"><text>⌕</text><input value="{{keyword}}" placeholder="搜索模型、标签或机构" bindinput="onSearch" /></view>
+    <view class="filter-button {{status !== 'ALL' ? 'active' : ''}}" bindtap="toggleFilter">筛选<text wx:if="{{status !== 'ALL'}}">1</text></view>
+  </view>
+  <view wx:if="{{filterOpen}}" class="card filter-popover">
+    <text class="filter-label">可用状态</text>
+    <view class="filter-options"><text class="{{status === 'ALL' ? 'selected' : ''}}" data-value="ALL" bindtap="chooseStatus">全部</text><text class="{{status === 'ONLINE' ? 'selected' : ''}}" data-value="ONLINE" bindtap="chooseStatus">已上线</text><text class="{{status === 'TESTING' ? 'selected' : ''}}" data-value="TESTING" bindtap="chooseStatus">测试中</text><text class="{{status === 'OFFLINE' ? 'selected' : ''}}" data-value="OFFLINE" bindtap="chooseStatus">仅展示</text></view>
+  </view>
+  <scroll-view class="type-strip" scroll-x enhanced show-scrollbar="{{false}}"><view class="type-items"><text class="type-chip {{activeType === item.value ? 'active' : ''}}" wx:for="{{types}}" wx:key="value" data-value="{{item.value}}" bindtap="chooseType">{{item.label}}</text></view></scroll-view>
+
+  <view wx:if="{{loading}}" class="model-list"><view class="card model-skeleton" wx:for="{{[1,2,3]}}" wx:key="*this"><view class="skeleton sk-icon"></view><view class="sk-body"><view class="skeleton sk-title"></view><view class="skeleton sk-line"></view><view class="skeleton sk-line short"></view></view></view></view>
+  <view wx:elif="{{error}}" class="card state-card"><view class="state-mark">!</view><view class="state-title">模型列表加载失败</view><view class="state-copy">{{error}}</view><button class="button-quiet" bindtap="loadModels">重新加载</button></view>
+  <view wx:elif="{{!visibleModels.length}}" class="card state-card"><view class="state-mark">⌕</view><view class="state-title">没有匹配的模型</view><view class="state-copy">接口已正常返回，但当前搜索或筛选条件没有结果。</view><button class="button-quiet" bindtap="clearFilters">清空条件</button></view>
+  <view wx:else class="model-list">
+    <view class="card model-card" wx:for="{{visibleModels}}" wx:key="modelId" data-id="{{item.modelId}}" bindtap="openDetail">
+      <view class="model-icon"><text>{{item.monogram}}</text><view class="icon-orbit"></view></view>
+      <view class="model-body"><view class="model-title-row"><text class="model-name">{{item.modelName}}</text><text class="status {{item.online ? 'online' : ''}}">{{item.statusLabel}}</text></view><text class="model-description">{{item.descriptionText}}</text><view class="model-tags"><text class="tag type-tag">{{item.typeLabel}}</text><text class="tag" wx:for="{{item.tags}}" wx:key="*this">{{item}}</text></view></view>
+      <text class="arrow">›</text>
+    </view>
+  </view>
+  </block>
+</view>

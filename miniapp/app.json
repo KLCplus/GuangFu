@@ -1,15 +1,30 @@
 {
   "pages": [
     "pages/index/index",
-    "pages/station/station",
     "pages/prediction/prediction",
     "pages/news/news",
-    "pages/profile/profile"
+    "pages/profile/profile",
+    "pages/login/login",
+    "pages/model-detail/model-detail",
+    "pages/news-detail/news-detail",
+    "pages/station/station"
   ],
   "window": {
     "navigationBarTitleText": "光伏发电平台",
-    "navigationBarBackgroundColor": "#15803d",
+    "navigationBarBackgroundColor": "#1677ff",
     "navigationBarTextStyle": "white"
+  },
+  "tabBar": {
+    "color": "#7d8da3",
+    "selectedColor": "#1677ff",
+    "backgroundColor": "#ffffff",
+    "borderStyle": "white",
+    "list": [
+      { "pagePath": "pages/index/index", "text": "概览" },
+      { "pagePath": "pages/prediction/prediction", "text": "模型" },
+      { "pagePath": "pages/news/news", "text": "资讯" },
+      { "pagePath": "pages/profile/profile", "text": "我的" }
+    ]
   },
   "style": "v2",
   "sitemapLocation": "sitemap.json"

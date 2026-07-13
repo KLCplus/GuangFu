@@ -1,1 +1,1 @@
-{ "navigationBarTitleText": "新闻通知" }
+{ "navigationBarTitleText": "资讯", "enablePullDownRefresh": true, "onReachBottomDistance": 120, "backgroundColor": "#f3f7fc" }

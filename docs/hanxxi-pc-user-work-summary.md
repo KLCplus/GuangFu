@@ -1,6 +1,6 @@
-﻿# hanxxi PC 用户端阶段工作总结
+﻿# hanxxi PC 用户端与微信小程序阶段工作总结
 
-更新时间：2026-07-10
+更新时间：2026-07-13
 
 ## 工作范围
 
@@ -671,3 +671,149 @@ http://127.0.0.1:5173/profile
 - API 管理相关 `ApiCallLogServiceTest`、`ApiKeyServiceTest`、`ApiQuotaServiceTest` 共 6 个测试全部通过。
 - 全量后端测试共执行 64 个：0 个断言失败、1 个错误、1 个跳过；唯一错误来自既有 `PhaseFourServiceTest` 缺少 DeepSeek API Key，与本次 API 管理修改无关。
 - 本机检查时 MySQL、后端和前端均未运行，因此没有用真实登录态完成 HTTP 运行联调；应用下次连接现有 MySQL 启动时会自动执行幂等迁移。
+
+## 微信小程序首期用户端（2026-07-13）
+
+### 原有结构判断
+
+`miniapp` 原本不是空目录，已有全局配置、样式、最简请求函数，以及首页、电站、预测、新闻、我的 5 个页面。除请求函数外，各页面均为占位骨架：没有底部导航、登录入口、统一响应解包、分页、字段转换或错误状态。原小程序没有业务 mock，也没有“后端不可用时自动回退 mock”的机制；本次保留了电站占位页及全部原文件，没有删除已有页面或工具。
+
+本次只修改小程序与本工作总结，没有修改后端业务代码、数据库结构/初始化数据、PC 页面、`.env` 或本地私密配置。
+
+### 新增和修改文件
+
+修改：
+
+```text
+miniapp/app.js
+miniapp/app.json
+miniapp/app.wxss
+miniapp/README.md
+miniapp/utils/request.js
+miniapp/pages/index/index.*
+miniapp/pages/prediction/prediction.*
+miniapp/pages/news/news.*
+miniapp/pages/profile/profile.*
+docs/hanxxi-pc-user-work-summary.md
+```
+
+新增：
+
+```text
+miniapp/utils/api.js
+miniapp/utils/format.js
+miniapp/pages/login/login.*
+miniapp/pages/model-detail/model-detail.*
+miniapp/pages/news-detail/news-detail.*
+```
+
+### 公共基础设施与四栏导航
+
+- `utils/request.js` 继续作为唯一底层请求入口，新增查询参数编码、Spring Boot `Result` 的 `code/message/data` 解包、Bearer Token、HTTP/业务错误对象和 401 本地登录态清理。
+- `utils/api.js` 只封装当前 PC API 和后端 Controller 已存在的路径，没有发明接口；`utils/format.js` 统一处理金额、数量、日期和错误文案。
+- 新增账号连接页，复用 `POST /api/auth/login`；只保存后端返回的 Token、Refresh Token 和用户摘要，不保存用户名密码，不内置测试账号。
+- `app.json` 使用原有 `index`、`prediction`、`news`、`profile` 页面建立“概览 / 模型 / 资讯 / 我的”四栏原生 `tabBar`。原 `station` 页面仍保留并注册为普通页面。
+- 全局样式统一为浅色背景、蓝色主色、圆角卡片；识别元素使用与光伏监测相关的“调用脉冲/轨迹”，没有新增 UI 框架或依赖。
+
+### 概览页
+
+复用 PC `ApiPlatform.vue` 的 API Key、钱包、统计和调用日志逻辑，并按手机空间改造成纵向卡片：
+
+- 顶部展示近 30 天总调用、成功率和平均响应时间。
+- 钱包展示可用余额、冻结金额、本月消费和最近 3 条流水。
+- API Key 展示名称、基于后端 `apiKeyPrefix` 生成的掩码、启用状态和最近使用时间；支持创建、启停、重命名、重置、删除。
+- 创建/重置时只有后端响应确实包含 `apiKey` 才一次性弹出完整值，关闭后不写入页面持久状态或本地存储。
+- 调用趋势使用轻量柱形脉冲展示最近时间桶，不引入 ECharts；最近调用展示模型、接口、状态、错误和耗时。
+- 钱包、Key、统计、趋势、日志使用独立请求结果，单项失败只影响对应区域；真实空数组展示空状态。
+- Token 为 0 时明确显示“暂未接通”，不估算或伪造。
+- 小程序充值只展示状态说明，不调用充值接口。后端当前 `MOCK` 渠道会模拟支付成功，不适合作为小程序真实充值流程。
+
+真实接口：
+
+```http
+GET    /api/open/keys
+POST   /api/open/apply-key
+PUT    /api/open/keys/{apiKeyId}/status
+PUT    /api/open/keys/{apiKeyId}/name
+POST   /api/open/keys/{apiKeyId}/reset
+DELETE /api/open/keys/{apiKeyId}
+GET    /api/open/wallet
+GET    /api/open/usage/summary
+GET    /api/open/usage/trend
+GET    /api/open/call-logs
+```
+
+### 模型页
+
+复用 PC 模型广场的真实字段与状态判断，移动端采用顶部搜索、横向类型标签、状态筛选浮层和单列卡片：
+
+- 搜索使用后端实际返回的名称、Code、说明、家族、机构和标签；模型类型选项由当前真实列表动态生成。
+- 状态只使用 `ONLINE`、`TESTING`、`OFFLINE` 等真实值，不创建额外筛选字段。
+- 详情页展示说明、标签、输入输出配置、能力、场景、优缺点等后端实际返回内容；缺失字段直接不展示。
+- 购买与试用仅显示“等待真实业务接口”的说明，不发起购买，也不模拟成功。
+
+真实接口：
+
+```http
+GET /api/models
+GET /api/models/{modelId}
+```
+
+### 资讯页
+
+复用 PC 新闻通知页，以移动端顶部切换合并“平台资讯”和“站内通知”：
+
+- 新闻支持真实类型筛选、当前已加载记录的关键词搜索、后端分页、上拉加载更多、下拉刷新与详情页。
+- 新闻与通知使用各自真实接口，没有合并成虚构接口。
+- 通知支持全部/未读切换、未读计数、单条标为已读和全部已读。
+- 新闻和通知分别处理加载、真实空数据、失败和刷新；接口失败不会显示成“暂无数据”。
+- 新闻详情按 `content` 换行拆段，封面仅在 `coverUrl` 存在时展示。
+
+真实接口：
+
+```http
+GET /api/news
+GET /api/news/{newsId}
+GET /api/notifications
+GET /api/notifications/unread-count
+PUT /api/notifications/{notificationId}/read
+PUT /api/notifications/read-all
+```
+
+### 我的页
+
+按本期边界只提供平台账号连接状态、角色、当前服务地址、退出登录和“功能完善中”说明。没有复用旧 PC 页扩展个人资料、密码、人脸、OAuth 或邮箱绑定功能。
+
+### 真实接口、mock 与占位分类
+
+- 真实接口：上述登录、开放平台、模型、新闻和通知接口，路径与字段已同时核对 PC 封装、`docs/back_front_api.md`、Controller 和 VO。
+- mock：小程序没有新增业务 mock，也没有复制 PC `userPages.ts` 的新闻/通知 mock。后端返回空数组时保持真实空状态。
+- 占位：小程序充值入口只说明当前支付状态；模型购买/试用只说明等待接口；“我的”完整功能暂缓；原电站页维持历史占位。
+- 后端暂不完整支持：正式微信/支付宝支付、模型购买、可靠 Token 用量写入。后端本地 `MOCK` 充值渠道不是正式支付。
+
+### 本地运行与测试步骤
+
+1. 启动 MySQL 和 Spring Boot 后端，确认 `http://127.0.0.1:8080` 可访问。
+2. 使用微信开发者工具导入项目根目录的 `miniapp` 目录。
+3. 本地调试在“详情 → 本地设置”勾选“不校验合法域名、web-view（业务域名）、TLS 版本以及 HTTPS 证书”。
+4. 编译后进入“我的”，用现有平台账号连接；不要写入测试账号或 Token。
+5. 依次验证概览下拉刷新、Key 操作、模型搜索/筛选/详情、资讯分类/加载更多/详情、通知已读操作。
+6. 验证接口返回空数组时的空状态；停止后端后验证错误与重试状态；清除 Storage 后验证四个页面的未登录状态。
+7. 真机或体验版使用已备案 HTTPS 后端域名，并在微信公众平台配置 request 合法域名。调试环境可通过 `wx.setStorageSync('apiBaseUrl', 'https://your-domain.example')` 覆盖默认地址后重启，不写死个人电脑路径。
+
+静态检查：
+
+```powershell
+node --check miniapp 下所有 JavaScript 文件
+ConvertFrom-Json 检查 miniapp 下所有 JSON 文件
+```
+
+JavaScript 与 JSON 语法检查均通过。微信开发者工具需要开发者本地完成最终编译、网络域名和真机视觉验证。
+
+### 已知问题与后续协作
+
+- 当前安全配置要求 `/api/**` 认证，因此模型和新闻页也必须先连接平台账号；若产品希望公开浏览，需要后端与安全策略共同确认，不能由小程序绕过。
+- 小程序没有微信 `code` 换取平台身份的后端接口，目前沿用用户名密码登录。后续若接入微信身份，应新增后端授权绑定方案并处理隐私合规。
+- 正式支付需要后端提供微信支付下单、回调验签、订单查询和幂等入账；在此之前小程序不发起充值。
+- Token 统计字段存在，但模型调用链尚无可靠 Token 数据；页面保持“暂未接通”。
+- 当前未提供微信开发者工具 CLI/项目配置文件，命令行无法替代开发者工具完成 WXML/WXSS 编译和真机预览。
