@@ -71,7 +71,7 @@ body {
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   color: #172033;
-  background: #f4f8fc;
+  background: #ffffff;
   --color-primary: #1d6fdc;
   --color-primary-dark: #1558b0;
   --color-primary-soft: #e8f2ff;
@@ -116,18 +116,21 @@ a {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 36px;
-  height: 36px;
-  flex: 0 0 36px;
-  border-radius: 8px;
-  background: var(--color-primary);
-  color: #ffffff;
-  font-weight: 800;
+  width: 36px; height: 36px; flex: 0 0 36px;
+  border-radius: 9px; background: #202124; color: #fff; font-weight: 700;
 }
+
+.brand-icon { width: 25px; height: 25px; flex: 0 0 25px; }
+
+.brand-lockup { display: flex; flex-direction: column; justify-content: center; gap: 1px; line-height: 1; min-width: 0; }
+
+.brand-wordmark { font-family: "Dancing Script", "Segoe Script", cursive; font-size: 19px; font-weight: 700; letter-spacing: -0.02em; color: #202124; }
+
+.brand-cn { color: #737373; font-size: 10px; letter-spacing: 0.14em; white-space: nowrap; }
 
 .app-layout {
   display: grid;
-  grid-template-columns: 176px minmax(0, 1fr);
+  grid-template-columns: 224px minmax(0, 1fr);
   min-height: 100vh;
   background: #f4f8fc;
 }
@@ -141,9 +144,9 @@ a {
   position: sticky;
   top: 0;
   height: 100vh;
-  padding: 16px 10px;
-  border-right: 1px solid var(--color-border);
-  background: #ffffff;
+  padding: 12px 8px;
+  border-right: 1px solid #e8e8e8;
+  background: #fafafa;
   display: flex;
   flex-direction: column;
   overflow-x: hidden;
@@ -152,31 +155,28 @@ a {
 .app-logo {
   display: flex;
   align-items: center;
+  justify-content: flex-start;
   gap: 8px;
-  height: 44px;
-  padding: 0 8px;
-  color: #10274c;
-  font-weight: 700;
+  height: 48px;
+  padding: 0;
   min-width: 0;
 }
 
-.app-menu {
-  flex: 1;
-  margin-top: 14px;
-  border-right: 0;
-}
+.app-menu { flex: 1; margin-top: 14px; border-right: 0; background: #fff; }
 
 .app-menu .el-menu-item {
   height: 40px;
   margin: 3px 0;
   border-radius: 8px;
-  color: #40516b;
-  padding-left: 14px !important;
+  color: #737373;
+  padding-left: 12px !important;
+  font-size: 14px;
+  font-weight: 400;
 }
 
 .app-menu .el-menu-item.is-active {
-  background: var(--color-primary-soft);
-  color: var(--color-primary);
+  background: #f1f1f1;
+  color: #202124;
   font-weight: 700;
 }
 
@@ -210,12 +210,9 @@ a {
 
 .sidebar-avatar {
   display: inline-flex;
-  align-items: center;
-  justify-content: center;
   width: 28px;
   height: 28px;
   flex: 0 0 28px;
-  border-radius: 50%;
   background: var(--color-primary);
   color: #ffffff;
   font-size: 13px;
@@ -642,5 +639,3 @@ a {
     padding: 28px 20px;
   }
 }
-
-

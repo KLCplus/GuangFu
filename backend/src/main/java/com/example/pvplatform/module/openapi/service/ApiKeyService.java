@@ -136,6 +136,25 @@ public class ApiKeyService {
         return row;
     }
 
+    /** Resolves a key selected from the signed-in console without exposing its secret. */
+    public ApiKeyDO requireOwnActive(Long id) {
+        if (id == null) throw new BusinessException(400, "请选择用于本次调用的 API Key");
+        ApiKeyDO row = apiKeyMapper.selectOne(Wrappers.<ApiKeyDO>lambdaQuery()
+            .eq(ApiKeyDO::getApiKeyId, id)
+            .eq(ApiKeyDO::getUserId, SecurityUtils.requireCurrentUserId()).last("LIMIT 1"));
+        if (row == null) throw new BusinessException(404, "API Key 不存在或不属于当前账户");
+        if (!"ACTIVE".equals(row.getStatus())) throw new BusinessException(403, "所选 API Key 未启用");
+        if (row.getExpireTime() != null && !row.getExpireTime().isAfter(LocalDateTime.now())) {
+            row.setStatus("EXPIRED");
+            row.setUpdatedAt(LocalDateTime.now());
+            apiKeyMapper.updateById(row);
+            throw new BusinessException(403, "所选 API Key 已过期");
+        }
+        row.setLastUsedAt(LocalDateTime.now());
+        apiKeyMapper.updateById(row);
+        return row;
+    }
+
     public List<ApiKeyVO> adminList() {
         return apiKeyMapper.selectList(Wrappers.<ApiKeyDO>lambdaQuery()
                 .orderByDesc(ApiKeyDO::getCreatedAt)).stream()

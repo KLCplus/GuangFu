@@ -17,6 +17,7 @@ export interface PredictionImageFrame {
 export interface PredictionPayload {
   stationId: number
   modelId: number
+  apiKeyId?: number
   inputMode: PredictionInputMode
   inputStartTime?: DateTimeString
   inputEndTime?: DateTimeString

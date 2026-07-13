@@ -762,6 +762,7 @@ GET  /api/predictions/history?pageNum=1&pageSize=10&stationId=&modelId=&status=
 {
   "stationId": 1,
   "modelId": 1,
+  "apiKeyId": 12,
   "inputMode": "MANUAL_MULTIMODAL",
   "numericValues": [
     { "time": "2026-07-06 10:00:00", "value": 500.2 }
@@ -773,6 +774,10 @@ GET  /api/predictions/history?pageNum=1&pageSize=10&stationId=&modelId=&status=
 ```
 
 `numericValues` 必须正好 30 个数值，`inputImages` 必须正好 30 张图片；两组数据都按时间升序排列，时间间隔均为 1 分钟，且同一序号的数值和图片时间必须一致。图片支持 data URL 或纯 base64 字符串。
+
+`apiKeyId` 是模型使用页面选择的 API Key ID。前端只传递 ID，不能传递或保存 API Key 明文；后端会校验该 Key 属于当前 JWT 用户、处于 `ACTIVE` 状态且未过期，并执行每分钟/每日额度检查。
+
+携带 `apiKeyId` 的预测在成功后会从开放平台钱包扣除一次调用费用（当前 `0.01 CNY`），并写入 `api_call_log`。日志包含 Key、模型、任务 ID、输入帧数量和输出预测点数量，会纳入 `/api/open/call-logs`、`/api/open/usage/*` 及 API Key 页面统计。余额不足时返回 `402`。未携带 `apiKeyId` 仅兼容已有内部调用；前端模型使用页面必须选择 Key 后再发起预测。
 
 创建预测响应：
 
@@ -1069,7 +1074,7 @@ GET /api/open/overview
 }
 ```
 
-当前版本已新增 `open_wallet_account`、`open_recharge_order`、`open_wallet_record` 三张表。`/api/open/wallet` 返回真实账户余额、冻结余额、最近流水和本月消费流水聚合；`/api/open/wallet/recharge` 在本地联调环境创建充值订单并模拟支付成功入账。开放 API 预测调用成功后按 0.01 元写入消费流水并扣减余额，余额不足时返回 402。套餐列表仍为后端固定配置，用于前端展示和后续购买接口衔接。
+当前版本已新增 `open_wallet_account`、`open_recharge_order`、`open_wallet_record` 三张表。`/api/open/wallet` 返回真实账户余额、冻结余额、最近流水和本月消费流水聚合；`/api/open/wallet/recharge` 在本地联调环境创建充值订单并模拟支付成功入账。开放 API 和模型使用页面中携带 API Key 的预测，成功后均按 `0.01 CNY` 写入消费流水并扣减余额；余额不足时返回 `402`。套餐列表仍为后端固定配置，用于前端展示和后续购买接口衔接。
 
 ### 14.2 调用日志查询（增强）
 
@@ -1116,7 +1121,7 @@ GET /api/open/call-logs?pageNum=1&pageSize=10&apiKeyId=&status=&startTime=&endTi
 }
 ```
 
-`modelName` 通过关联 `model_info` 表获取；`inputTokens`、`outputTokens`、`totalTokens` 是兼容字段名，数据库、DO、VO 和聚合 SQL 已就绪。当前模型调用结果没有可靠的 input/output Token 字段，开放预测日志仍写入 null，不做估算或伪造。
+`modelName` 通过关联 `model_info` 表获取；`inputTokens`、`outputTokens`、`totalTokens` 是兼容字段名，数据库、DO、VO 和聚合 SQL 已就绪。`/openapi/v1/predict` 在没有可靠 Token 数据时保持为 `null`；模型使用页面提交的 `/api/predictions` 会将输入帧数、输出预测点数及其合计写入这三个字段，便于按 Key 和模型核对用量（它们不是大语言模型 Token）。
 
 ### 14.3 调用日志导出
 

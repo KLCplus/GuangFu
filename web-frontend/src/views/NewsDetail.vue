@@ -1,9 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ElMessage } from 'element-plus'
 import { loadNewsDetail, loadNewsPage } from '../api/userPages'
-import type { DataSource } from '../api/userPages'
 import type { News } from '../api/news'
 
 const route = useRoute()
@@ -14,17 +12,10 @@ const relatedLoading = ref(false)
 const loadError = ref('')
 const news = ref<News | null>(null)
 const relatedNews = ref<News[]>([])
-const dataSource = ref<DataSource>('remote')
 
 const newsId = computed(() => Number(route.params.newsId))
 
-const paragraphs = computed(() => {
-  const content = news.value?.content ?? ''
-  return content
-    .split(/\n+/)
-    .map((item) => item.trim())
-    .filter(Boolean)
-})
+const safeContent = computed(() => news.value?.content ?? '')
 
 onMounted(() => {
   void fetchDetail()
@@ -50,10 +41,6 @@ async function fetchDetail() {
   try {
     const result = await loadNewsDetail(newsId.value)
     news.value = result.data
-    dataSource.value = result.source
-    if (result.source === 'mock') {
-      ElMessage.info('新闻详情真实接口暂不可用，当前展示模拟数据')
-    }
   } catch (error) {
     loadError.value = error instanceof Error ? error.message : '新闻详情加载失败'
   } finally {
@@ -105,33 +92,13 @@ function publishTime(item?: News | null) {
   return item?.publishedAt || item?.createdAt || '-'
 }
 
-function sourceLabel(source: DataSource) {
-  if (source === 'remote') return '真实接口'
-  if (source === 'mixed') return '混合数据'
-  return '模拟数据'
-}
-
-function sourceType(source: DataSource) {
-  if (source === 'remote') return 'success'
-  if (source === 'mixed') return 'warning'
-  return 'info'
-}
 </script>
 
 <template>
   <section class="news-detail-page">
     <div class="page-heading">
       <el-button @click="goBack">返回新闻列表</el-button>
-      <el-tag :type="sourceType(dataSource)" effect="light">{{ sourceLabel(dataSource) }}</el-tag>
     </div>
-
-    <el-alert
-      v-if="dataSource === 'mock'"
-      title="当前展示模拟新闻详情；真实接口恢复后会自动使用后端数据。"
-      type="info"
-      show-icon
-      :closable="false"
-    />
 
     <el-alert v-if="loadError" :title="loadError" type="error" show-icon :closable="false">
       <template #default>
@@ -153,10 +120,7 @@ function sourceType(source: DataSource) {
 
         <img v-if="news.coverUrl" class="cover-image" :src="news.coverUrl" alt="新闻封面" />
 
-        <div class="article-content">
-          <p v-for="(paragraph, index) in paragraphs" :key="index">{{ paragraph }}</p>
-          <p v-if="paragraphs.length === 0">{{ news.content || '暂无正文内容' }}</p>
-        </div>
+        <div class="article-content" v-html="safeContent" />
       </article>
 
       <el-empty v-else-if="!loading && !loadError" description="新闻不存在" />

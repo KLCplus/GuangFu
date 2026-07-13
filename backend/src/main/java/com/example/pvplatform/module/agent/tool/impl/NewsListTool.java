@@ -21,7 +21,7 @@ public class NewsListTool extends AbstractAgentTool {
             Long page = longArg(arguments, "page", false);
             Long size = longArg(arguments, "size", false);
             String type = stringArg(arguments, "type", null);
-            var result = newsService.list(page == null ? 1 : page.intValue(), size == null ? 10 : size.intValue(), type);
+            var result = newsService.list(page == null ? 1 : page.intValue(), size == null ? 10 : size.intValue(), type, null);
             return ToolExecutionResult.success(result, "已获取新闻/通知列表，共 " + result.total() + " 条");
         });
     }

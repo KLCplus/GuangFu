@@ -75,6 +75,7 @@ CREATE TABLE sys_user (
     email VARCHAR(128) DEFAULT NULL COMMENT '邮箱',
     phone VARCHAR(32) DEFAULT NULL COMMENT '手机号',
     avatar_url VARCHAR(512) DEFAULT NULL COMMENT '头像URL',
+    avatar_file_id BIGINT DEFAULT NULL COMMENT 'OSS头像文件ID',
     gender TINYINT DEFAULT 0 COMMENT '性别：0未知，1男，2女',
     status TINYINT NOT NULL DEFAULT 1 COMMENT '状态：1正常，0禁用',
     last_login_time DATETIME DEFAULT NULL COMMENT '最后登录时间',
@@ -901,10 +902,17 @@ CREATE TABLE file_resource (
     business_type VARCHAR(64) DEFAULT NULL COMMENT '业务类型：PV_DATA，MODEL_FILE，NEWS_COVER，AVATAR等',
     file_size BIGINT DEFAULT NULL COMMENT '文件大小，单位字节',
     checksum VARCHAR(128) DEFAULT NULL COMMENT '文件校验值',
+    object_key VARCHAR(500) DEFAULT NULL COMMENT 'OSS ObjectKey',
+    content_type VARCHAR(100) DEFAULT NULL COMMENT 'MIME类型',
+    file_status VARCHAR(20) NOT NULL DEFAULT 'BOUND' COMMENT 'TEMP/BOUND/DELETED',
+    biz_id BIGINT DEFAULT NULL COMMENT '业务对象ID',
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
 
     KEY idx_file_owner (owner_user_id),
     KEY idx_file_business (business_type),
+    UNIQUE KEY uk_file_object_key (object_key),
+    KEY idx_file_biz (business_type, biz_id),
 
     CONSTRAINT fk_file_owner
         FOREIGN KEY (owner_user_id) REFERENCES sys_user(user_id)
@@ -920,6 +928,7 @@ CREATE TABLE news (
     summary VARCHAR(500) DEFAULT NULL COMMENT '摘要',
     content LONGTEXT NOT NULL COMMENT '正文内容',
     cover_url VARCHAR(512) DEFAULT NULL COMMENT '封面图URL',
+    cover_file_id BIGINT DEFAULT NULL COMMENT '封面文件ID',
 
     news_type VARCHAR(32) NOT NULL DEFAULT 'NEWS' COMMENT '类型：NEWS新闻，NOTICE公告，MODEL_UPDATE模型更新，ALERT异常提醒',
     target_role VARCHAR(64) DEFAULT 'ALL' COMMENT '目标角色：ALL，USER，ADMIN，API_USER',
@@ -934,6 +943,7 @@ CREATE TABLE news (
     KEY idx_news_type (news_type),
     KEY idx_news_status (status),
     KEY idx_news_published_at (published_at),
+    KEY idx_news_status_publish (status, published_at),
     KEY idx_news_publisher (publisher_id),
 
     CONSTRAINT fk_news_publisher

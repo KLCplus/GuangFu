@@ -22,7 +22,7 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 import java.util.List;
 
 @Configuration
-@EnableConfigurationProperties({OAuthProperties.class, FaceProperties.class, MailProperties.class})
+@EnableConfigurationProperties({OAuthProperties.class, FaceProperties.class, MailProperties.class, OssProperties.class})
 public class SecurityConfig {
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
     private final RestAuthenticationEntryPoint authenticationEntryPoint;
@@ -93,7 +93,7 @@ public class SecurityConfig {
                     "/api/auth/email/**",
                     "/api/auth/face-login",
                     "/api/auth/oauth/**",
-                    "/api/avatars/**",
+                    "/api/files/*/view",
                     "/login.html",
                     "/weather-debug.html",
                     "/swagger-ui.html",

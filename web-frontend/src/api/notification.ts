@@ -9,6 +9,9 @@ export interface Notification {
   notificationId: number
   title: string
   content: string
+  notificationType?: string
+  relatedType?: string
+  relatedId?: number
   readStatus: 0 | 1
   createdAt: DateTimeString
 }

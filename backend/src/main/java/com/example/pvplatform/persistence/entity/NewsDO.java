@@ -17,6 +17,7 @@ public class NewsDO {
     private String summary;
     private String content;
     private String coverUrl;
+    private Long coverFileId;
     private String newsType;
     private String targetRole;
     private String status;
