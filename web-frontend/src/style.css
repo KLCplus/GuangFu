@@ -210,12 +210,9 @@ a {
 
 .sidebar-avatar {
   display: inline-flex;
-  align-items: center;
-  justify-content: center;
   width: 28px;
   height: 28px;
   flex: 0 0 28px;
-  border-radius: 50%;
   background: var(--color-primary);
   color: #ffffff;
   font-size: 13px;

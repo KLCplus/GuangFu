@@ -59,7 +59,7 @@ function logout() {
         </el-button>
         <el-dropdown>
           <span class="admin-user">
-            <span class="admin-avatar">{{ displayName.charAt(0) }}</span>
+            <el-avatar class="admin-avatar" :size="28" :src="userStore.userInfo.avatarUrl">{{ displayName.charAt(0) }}</el-avatar>
             <span>{{ displayName }}</span>
           </span>
           <template #dropdown>
@@ -213,11 +213,8 @@ function logout() {
 
 .admin-avatar {
   display: inline-flex;
-  align-items: center;
-  justify-content: center;
   width: 28px;
   height: 28px;
-  border-radius: 50%;
   background: var(--color-primary);
   color: #ffffff;
   font-size: 13px;

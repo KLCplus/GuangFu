@@ -87,7 +87,7 @@ function logout() {
         </el-button>
         <el-dropdown>
           <span class="sidebar-user">
-            <span class="sidebar-avatar">{{ displayName.charAt(0) }}</span>
+            <el-avatar class="sidebar-avatar" :size="28" :src="userStore.userInfo.avatarUrl">{{ displayName.charAt(0) }}</el-avatar>
             <span>{{ displayName }}</span>
           </span>
           <template #dropdown>
