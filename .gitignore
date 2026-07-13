@@ -24,6 +24,8 @@ model-service/venv/
 *.py[cod]
 .pytest_cache/
 
+.cache/
+
 
 
 # Logs
