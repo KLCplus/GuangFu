@@ -69,6 +69,19 @@ public class AgentApprovalService {
         return row;
     }
 
+    public AgentApprovalDO findLatestPending(Long sessionId) {
+        Long userId = SecurityUtils.requireCurrentUserId();
+        if (sessionId == null) {
+            return null;
+        }
+        return approvalMapper.selectOne(Wrappers.<AgentApprovalDO>lambdaQuery()
+            .eq(AgentApprovalDO::getSessionId, sessionId)
+            .eq(AgentApprovalDO::getUserId, userId)
+            .eq(AgentApprovalDO::getStatus, "PENDING")
+            .orderByDesc(AgentApprovalDO::getCreatedAt)
+            .last("LIMIT 1"));
+    }
+
     public AgentToolCallDO requireToolCall(AgentApprovalDO approval) {
         AgentToolCallDO row = toolCallMapper.selectById(approval.getToolCallId());
         if (row == null) {

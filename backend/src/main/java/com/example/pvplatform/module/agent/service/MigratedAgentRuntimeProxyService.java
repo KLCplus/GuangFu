@@ -1,6 +1,7 @@
 package com.example.pvplatform.module.agent.service;
 
 import com.example.pvplatform.common.exception.BusinessException;
+import com.example.pvplatform.module.agent.dto.AgentApprovalDecision;
 import com.example.pvplatform.module.agent.dto.AgentChatRequest;
 import com.example.pvplatform.module.agent.entity.AgentApprovalDO;
 import com.example.pvplatform.module.agent.entity.AgentMessageDO;
@@ -74,6 +75,14 @@ public class MigratedAgentRuntimeProxyService {
             }
             AgentSessionDO session = sessionService.ensure(request.sessionId(), request.message());
             AgentMessageDO userMessage = messageService.save(session.getSessionId(), "user", request.message(), request.context());
+            AgentApprovalDO naturalApproval = naturalApproval(session.getSessionId(), request.message());
+            if (naturalApproval != null) {
+                approvalService.decide(naturalApproval.getApprovalId(), new AgentApprovalDecision(isApprovalText(request.message()), "用户通过会话文本确认"));
+                continueApproval(new AgentChatRequest(session.getSessionId(), request.message(), request.context(), request.mode(),
+                    request.allowedTools(), request.preferredTool(), request.toolArguments(), request.requireApproval(),
+                    naturalApproval.getApprovalId()), emitter, userId, user);
+                return;
+            }
             progress.send(emitter, "started", Map.of(
                 "sessionId", session.getSessionId(),
                 "messageId", userMessage.getMessageId(),
@@ -86,7 +95,9 @@ public class MigratedAgentRuntimeProxyService {
             payload.put("username", user == null ? null : user.getUsername());
             payload.put("roles", roles(user));
             payload.put("message", request.message());
-            payload.put("context", request.context() == null ? Map.of() : request.context());
+            Map<String, Object> runtimeContext = new LinkedHashMap<>(request.context() == null ? Map.of() : request.context());
+            runtimeContext.put("conversationHistory", recentHistory(session.getSessionId(), 12));
+            payload.put("context", runtimeContext);
             if (request.preferredTool() != null && !request.preferredTool().isBlank()) {
                 payload.put("preferredTool", request.preferredTool());
             }
@@ -163,6 +174,38 @@ public class MigratedAgentRuntimeProxyService {
         AgentMessageDO assistant = messageService.save(session.getSessionId(), "assistant", answer, Map.of("approvalId", approval.getApprovalId(), "toolResult", result));
         sessionService.touch(session.getSessionId());
         progress.send(emitter, "final", finalPayload(assistant, answer, List.of(payload)));
+    }
+
+    private AgentApprovalDO naturalApproval(Long sessionId, String message) {
+        String text = message == null ? "" : message.trim();
+        if (!isApprovalText(text) && !isRejectionText(text)) {
+            return null;
+        }
+        return approvalService.findLatestPending(sessionId);
+    }
+
+    private boolean isApprovalText(String message) {
+        String text = message == null ? "" : message.trim().toLowerCase(Locale.ROOT);
+        return Set.of("确认", "确定", "同意", "执行", "可以", "继续", "approve", "yes", "ok").contains(text);
+    }
+
+    private boolean isRejectionText(String message) {
+        String text = message == null ? "" : message.trim().toLowerCase(Locale.ROOT);
+        return Set.of("取消", "拒绝", "不同意", "不要", "停止", "reject", "no", "cancel").contains(text);
+    }
+
+    private List<Map<String, Object>> recentHistory(Long sessionId, int limit) {
+        List<AgentMessageDO> rows = messageService.list(sessionId);
+        int start = Math.max(0, rows.size() - limit);
+        return rows.subList(start, rows.size()).stream()
+            .filter(row -> row.getContent() != null && !row.getContent().isBlank())
+            .map(row -> metadata(
+                "role", row.getRole(),
+                "content", row.getContent(),
+                "messageId", row.getMessageId(),
+                "createdAt", row.getCreatedAt()
+            ))
+            .toList();
     }
 
     private void forwardRuntimeEvents(java.util.stream.Stream<String> lines, SseEmitter emitter, Long sessionId) {

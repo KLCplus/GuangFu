@@ -86,6 +86,15 @@ class FakeLlmGateway:
         }
 
 
+class CapturingLlmGateway(FakeLlmGateway):
+    def __init__(self):
+        self.calls = []
+
+    def chat_completions(self, messages, **options):
+        self.calls.append((messages, options))
+        return super().chat_completions(messages, **options)
+
+
 class FailingLlmGateway:
     def chat_completions(self, messages, **options):
         raise RuntimeError("llm timeout")
@@ -142,6 +151,41 @@ class RuntimeFoundationTest(unittest.TestCase):
         runtime = PhotovoltaicAgentRuntime(FakeGateway(), ROOT / "skills", llm_gateway=FakeLlmGateway())
         state = runtime.run("分析 1 号电站当前运行情况，结合天气和最近预测结果。", {"sessionId": 1})
         self.assertIn("运行结论：1号电站运行正常", state.final_answer)
+
+    def test_follow_up_weather_uses_station_from_conversation_history(self):
+        gateway = FakeGateway()
+        runtime = PhotovoltaicAgentRuntime(gateway, ROOT / "skills")
+        runtime.run("再查一下天气", {
+            "sessionId": 1,
+            "userId": 7,
+            "conversationHistory": [{"role": "user", "content": "先分析 2 号电站"}],
+        })
+        weather_call = next(call for call in gateway.calls if call[0] == "weather.current")
+        self.assertEqual(weather_call[1]["stationId"], 2)
+
+    def test_llm_receives_conversation_history_for_general_answer(self):
+        llm = CapturingLlmGateway()
+        runtime = PhotovoltaicAgentRuntime(FakeGateway(), ROOT / "skills", llm_gateway=llm)
+        runtime.run("那它还能做什么", {
+            "sessionId": 1,
+            "userId": 7,
+            "conversationHistory": [{"role": "user", "content": "我想了解项目管家能力"}],
+        })
+        payload = llm.calls[0][0][1]["content"]
+        self.assertIn("conversationHistory", payload)
+        self.assertIn("我想了解项目管家能力", payload)
+
+    def test_llm_receives_conversation_history_for_tool_synthesis(self):
+        llm = CapturingLlmGateway()
+        runtime = PhotovoltaicAgentRuntime(FakeGateway(), ROOT / "skills", llm_gateway=llm)
+        runtime.run("分析 1 号电站当前运行情况", {
+            "sessionId": 1,
+            "userId": 7,
+            "conversationHistory": [{"role": "user", "content": "上一轮关注 1 号电站"}],
+        })
+        payload = llm.calls[0][0][1]["content"]
+        self.assertIn("conversationHistory", payload)
+        self.assertIn("上一轮关注 1 号电站", payload)
 
     def test_llm_synthesis_degrades_when_gateway_fails(self):
         runtime = PhotovoltaicAgentRuntime(FakeGateway(), ROOT / "skills", llm_gateway=FailingLlmGateway())

@@ -30,8 +30,22 @@ class PhotovoltaicAgentRuntime:
         skill = self.skill_loader.select(task, self.skills)
         memories = self._load_memories(context)
         context["memories"] = memories
-        station_id = int(context.get("stationId") or self._extract_station_id(task) or self._default_station_id(memories) or 1)
-        state = AgentState(session_id=context.get("sessionId"), user_task=task, selected_skill=skill.name, memories=memories)
+        conversation_history = self._conversation_history(context)
+        explicit_station_id = self._extract_station_id(task)
+        station_id = int(
+            context.get("stationId")
+            or explicit_station_id
+            or self._station_id_from_history(conversation_history)
+            or self._default_station_id(memories)
+            or 1
+        )
+        state = AgentState(
+            session_id=context.get("sessionId"),
+            user_task=task,
+            selected_skill=skill.name,
+            memories=memories,
+            conversation_history=conversation_history,
+        )
         explicit_tool = self._explicit_tool_step(task, context)
         if explicit_tool:
             state.plan = [
@@ -42,7 +56,7 @@ class PhotovoltaicAgentRuntime:
             return state
 
         manager_steps = self._manager_steps(task, context, station_id)
-        if manager_steps:
+        if manager_steps and not self._should_use_station_analysis_chain(task):
             state.plan = [PlanStep("understand", "Understand", "理解任务", "识别项目管家请求")]
             state.plan.extend(manager_steps)
             state.plan.append(PlanStep("synthesize", "Synthesize", "生成结论", "基于工具结果回答用户"))
@@ -251,12 +265,14 @@ class PhotovoltaicAgentRuntime:
                             "content": (
                                 "你是光伏预测与运维平台的项目管家。先回答用户问题，不要编造实时业务数据。"
                                 "当问题需要真实数据时，说明可以调用哪些工具；当用户问能力范围时，直接概括能力。"
+                                "结合 conversationHistory 理解省略、指代和追问。"
                             ),
                         },
                         {
                             "role": "user",
                             "content": json.dumps({
                                 "task": state.user_task,
+                                "conversationHistory": state.conversation_history,
                                 "availableCapabilities": self._capability_summary(),
                             }, ensure_ascii=False),
                         },
@@ -299,6 +315,7 @@ class PhotovoltaicAgentRuntime:
                     "content": (
                         "你是光伏预测与运维平台的项目管家。基于给定工具结果回答；"
                         "如果数据不完整，要明确指出缺口。不要让工具过程盖过结论。"
+                        "结合 conversationHistory 理解用户追问，但结论必须以本轮工具结果为准。"
                     ),
                 },
                 {
@@ -306,6 +323,7 @@ class PhotovoltaicAgentRuntime:
                     "content": json.dumps({
                         "task": state.user_task,
                         "skill": state.selected_skill,
+                        "conversationHistory": state.conversation_history,
                         "memories": state.memories,
                         "toolResults": tool_context,
                     }, ensure_ascii=False),
@@ -336,6 +354,8 @@ class PhotovoltaicAgentRuntime:
         report_id = self._extract_report_id(task)
         model_id = self._extract_model_id(task)
         explicit_station_id = self._extract_station_id(task)
+        history_station_id = self._station_id_from_history(self._conversation_history(context))
+        has_station_context = explicit_station_id is not None or context.get("stationId") is not None or history_station_id is not None
 
         def add(step_id: str, title: str, tool_name: str, arguments: dict[str, Any] | None = None):
             steps.append(PlanStep(step_id, "Collect", title, self._tool_title(tool_name), tool_name, arguments or {}))
@@ -357,14 +377,16 @@ class PhotovoltaicAgentRuntime:
         elif any(word in task for word in ("电站", "站点")) and not any(word in task for word in ("运行", "分析", "天气", "预测")):
             add("station-detail", "查询电站", "station.detail", {"stationId": station_id})
 
-        if ("天气预报" in task or "forecast" in text) and ("电站" in task or explicit_station_id):
+        if ("天气预报" in task or "forecast" in text) and ("电站" in task or has_station_context):
             add("weather-forecast", "查询天气预报", "weather.forecast", {"stationId": station_id})
-        elif ("天气预报" in task or "forecast" in text) and ("电站" not in task and not explicit_station_id):
+        elif ("天气预报" in task or "forecast" in text) and ("电站" not in task and not has_station_context):
             location = context.get("location") or self._extract_location(task)
             add("weather-location-forecast", "查询地点天气预报", "weather.locationForecast", {"location": location} if location else {})
-        elif "城市天气" in task or "当地天气" in task or "天气" in task and "电站" not in task and not self._extract_station_id(task):
+        elif "城市天气" in task or "当地天气" in task or "天气" in task and "电站" not in task and not has_station_context:
             location = context.get("location") or self._extract_location(task)
             add("weather-location", "查询地点天气", "weather.location", {"location": location} if location else {})
+        elif "天气" in task and has_station_context:
+            add("weather-current", "查询电站天气", "weather.current", {"stationId": station_id})
 
         if any(word in task for word in ("实时功率", "实时数据", "当前功率", "最新功率")):
             add("pv-realtime", "查询实时功率", "pv.realtime", {"stationId": station_id})
@@ -447,6 +469,14 @@ class PhotovoltaicAgentRuntime:
         analysis_words = ("运行", "分析", "功率", "运维", "异常", "故障", "风险", "综合", "发电", "预测结果")
         return mentions_station and any(word in task for word in analysis_words)
 
+    def _should_use_station_analysis_chain(self, task: str) -> bool:
+        if not self._is_station_analysis_task(task):
+            return False
+        direct_lookup_words = ("实时功率", "历史功率", "功率曲线", "天气预报", "预测详情", "报告详情")
+        if any(word in task for word in direct_lookup_words):
+            return False
+        return any(word in task for word in ("运行情况", "综合分析", "分析", "运维", "异常", "故障", "风险", "预测结果"))
+
     def _tool_title(self, tool_name: str) -> str:
         return self.router.capabilities.get(tool_name).description if tool_name in self.router.capabilities else tool_name
 
@@ -490,6 +520,34 @@ class PhotovoltaicAgentRuntime:
     def _extract_station_id(self, task: str) -> int | None:
         digits = "".join(ch if ch.isdigit() else " " for ch in task).split()
         return int(digits[0]) if digits else None
+
+    def _conversation_history(self, context: dict[str, Any]) -> list[dict[str, Any]]:
+        history = context.get("conversationHistory") or context.get("history") or []
+        if not isinstance(history, list):
+            return []
+        cleaned: list[dict[str, Any]] = []
+        for item in history[-12:]:
+            if not isinstance(item, dict):
+                continue
+            role = item.get("role")
+            content = item.get("content")
+            if not isinstance(role, str) or not isinstance(content, str) or not content.strip():
+                continue
+            cleaned.append({
+                "role": role,
+                "content": content.strip()[:1200],
+            })
+        return cleaned
+
+    def _station_id_from_history(self, history: list[dict[str, Any]]) -> int | None:
+        for item in reversed(history):
+            content = item.get("content")
+            if not isinstance(content, str):
+                continue
+            station_id = self._extract_station_id(content)
+            if station_id is not None and ("电站" in content or "站点" in content or "station" in content.lower()):
+                return station_id
+        return None
 
     def _wants_report(self, task: str) -> bool:
         normalized = task.lower()

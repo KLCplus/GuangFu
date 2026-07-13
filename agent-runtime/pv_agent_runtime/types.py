@@ -46,6 +46,7 @@ class AgentState:
     user_task: str
     selected_skill: str | None = None
     memories: list[dict[str, Any]] = field(default_factory=list)
+    conversation_history: list[dict[str, Any]] = field(default_factory=list)
     plan: list[PlanStep] = field(default_factory=list)
     tool_results: list[ToolResult] = field(default_factory=list)
     ui: list[UIInstruction] = field(default_factory=list)

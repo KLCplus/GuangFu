@@ -32,9 +32,11 @@ class RuntimeHandler(BaseHTTPRequestHandler):
             context = payload.get("context") or {}
             if payload.get("sessionId") is not None:
                 context.setdefault("sessionId", payload.get("sessionId"))
-            for key in ("userId", "username", "roles", "approved", "preferredTool", "toolArguments", "allowedTools"):
+            for key in ("userId", "username", "roles", "approved", "preferredTool", "toolArguments", "allowedTools", "conversationHistory", "history"):
                 if payload.get(key) is not None:
                     context.setdefault(key, payload.get(key))
+            if "history" in context and "conversationHistory" not in context:
+                context["conversationHistory"] = context["history"]
         except Exception as exc:
             self.send_error(400, f"Invalid request: {exc}")
             return
