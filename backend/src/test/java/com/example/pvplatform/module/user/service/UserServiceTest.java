@@ -87,9 +87,13 @@ class UserServiceTest {
         authenticateAs(currentUserId, "profileuser", List.of("USER"));
 
         UserProfileVO updated = userService.updateProfile(
-            new UpdateProfileRequest("NewNick", null, null, null, null));
+            new UpdateProfileRequest("NewNick", null, "13900001111", null, null));
 
         assertEquals("NewNick", updated.nickname());
+        assertEquals("13900001111", updated.phone());
+        SysUserDO saved = userMapper.selectById(currentUserId);
+        assertEquals("13900001111", saved.getPhone());
+        assertNotNull(saved.getUpdatedAt());
     }
 
     @Test

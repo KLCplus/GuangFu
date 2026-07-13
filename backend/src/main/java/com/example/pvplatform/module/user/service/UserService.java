@@ -14,6 +14,7 @@ import com.example.pvplatform.security.SecurityUtils;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
 
@@ -86,9 +87,11 @@ public class UserService {
             user.setGender(req.gender());
         }
 
+        user.setUpdatedAt(LocalDateTime.now());
         userMapper.updateById(user);
+        SysUserDO saved = userMapper.selectById(userId);
         List<String> roles = roleMapper.selectRoleCodesByUserId(userId);
-        return toVO(user, roles);
+        return toVO(saved, roles);
     }
 
     public void changePassword(ChangePasswordRequest req) {
@@ -149,7 +152,7 @@ public class UserService {
             user.getUsername(),
             user.getNickname(),
             user.getEmail(),
-            maskPhone(user.getPhone()),
+            user.getPhone(),
             user.getAvatarUrl(),
             user.getGender(),
             user.getStatus(),

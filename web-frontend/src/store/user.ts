@@ -7,6 +7,9 @@ export interface UserInfo {
   username: string
   nickname?: string
   email?: string
+  phone?: string
+  avatarUrl?: string
+  gender?: number
   roles: string[]
   role?: 'USER' | 'ADMIN' | 'API_USER'
   status?: 'ENABLE' | 'DISABLE' | number

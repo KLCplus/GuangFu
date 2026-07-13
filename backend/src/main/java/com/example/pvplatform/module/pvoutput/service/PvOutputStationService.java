@@ -91,6 +91,9 @@ public class PvOutputStationService {
     }
 
     public ExternalPvStationDO requireStation(Long id) {
+        if (id == null || id <= 0) {
+            throw new BusinessException(400, "公开电站 ID 不合法");
+        }
         ExternalPvStationDO station = stationMapper.selectById(id);
         if (station == null) {
             throw new BusinessException(404, "公开电站不存在");
@@ -100,6 +103,7 @@ public class PvOutputStationService {
 
     public PvOutputStatusDTO latestStatus(Long stationId) {
         ExternalPvStationDO station = requireStation(stationId);
+        requireExternalSystemId(station);
         ExternalPvStationStatusDO status = statusMapper.selectOne(Wrappers.<ExternalPvStationStatusDO>lambdaQuery()
             .eq(ExternalPvStationStatusDO::getExternalSystemId, station.getExternalSystemId())
             .orderByDesc(ExternalPvStationStatusDO::getSampleTime)
@@ -109,6 +113,7 @@ public class PvOutputStationService {
 
     public List<PvOutputStatusDTO> history(Long stationId, LocalDateTime startTime, LocalDateTime endTime) {
         ExternalPvStationDO station = requireStation(stationId);
+        requireExternalSystemId(station);
         LocalDateTime end = endTime == null ? LocalDateTime.now() : endTime;
         LocalDateTime start = startTime == null ? end.minusDays(7) : startTime;
         return statusMapper.selectList(Wrappers.<ExternalPvStationStatusDO>lambdaQuery()
@@ -117,6 +122,12 @@ public class PvOutputStationService {
                 .le(ExternalPvStationStatusDO::getSampleTime, end)
                 .orderByAsc(ExternalPvStationStatusDO::getSampleTime))
             .stream().map(this::toStatusDTO).toList();
+    }
+
+    private void requireExternalSystemId(ExternalPvStationDO station) {
+        if (station.getExternalSystemId() == null) {
+            throw new BusinessException(400, "公开电站缺少外部系统 ID，无法读取状态数据");
+        }
     }
 
     private void fillStation(ExternalPvStationDO station, PvOutputStationSaveRequest request) {

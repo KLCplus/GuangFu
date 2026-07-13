@@ -1,5 +1,6 @@
 package com.example.pvplatform.module.agent.tool.impl;
 
+import com.example.pvplatform.common.exception.BusinessException;
 import com.example.pvplatform.module.agent.tool.AbstractAgentTool;
 import com.example.pvplatform.module.agent.tool.ToolCategory;
 import com.example.pvplatform.module.agent.tool.ToolExecutionContext;
@@ -36,10 +37,11 @@ class PvOutputStationListTool extends AbstractAgentTool {
         });
     }
     private String highlight(PvOutputStationDTO station) {
-        return station.id() + "：" + value(station.systemName(), "未命名公开电站") + size(station.systemSizeW());
+        return value(station.id(), "未知ID") + "：" + value(station.systemName(), "未命名公开电站") + size(station.systemSizeW());
     }
     private String size(Integer watts) { return watts == null ? "" : "，容量 " + watts + " W"; }
     private String value(String value, String fallback) { return value == null || value.isBlank() ? fallback : value; }
+    private String value(Object value, String fallback) { return value == null ? fallback : String.valueOf(value); }
 }
 
 @Component
@@ -56,13 +58,14 @@ class PvOutputStationDetailTool extends AbstractAgentTool {
         return guard(() -> {
             PvOutputStationDTO station = stationService.detail(longArg(arguments, "stationId", true));
             return ToolExecutionResult.success(displayName(), station, "已获取公开电站 " + value(station.systemName(), String.valueOf(station.id())) + " 详情", List.of(
-                "系统 ID：" + station.externalSystemId(),
+                "系统 ID：" + value(station.externalSystemId(), "未知"),
                 "容量：" + (station.systemSizeW() == null ? "未知" : station.systemSizeW() + " W"),
                 "邮编：" + value(station.postcode(), "未知")
             ));
         });
     }
     private String value(String value, String fallback) { return value == null || value.isBlank() ? fallback : value; }
+    private String value(Object value, String fallback) { return value == null ? fallback : String.valueOf(value); }
 }
 
 @Component
@@ -107,12 +110,13 @@ class PvOutputStatusHistoryTool extends AbstractAgentTool {
         return guard(() -> {
             Long stationId = longArg(arguments, "stationId", true);
             List<PvOutputStatusDTO> result = stationService.history(stationId, parse(stringArg(arguments, "startTime", null)), parse(stringArg(arguments, "endTime", null)));
-            return ToolExecutionResult.success(displayName(), result, "已获取公开电站历史状态，共 " + result.size() + " 条", result.stream().limit(5).map(item -> item.sampleTime() + "：" + item.powerGenerationW() + " W").toList());
+            return ToolExecutionResult.success(displayName(), result, "已获取公开电站历史状态，共 " + result.size() + " 条", result.stream().limit(5).map(item -> value(item.sampleTime()) + "：" + value(item.powerGenerationW()) + " W").toList());
         });
     }
     private LocalDateTime parse(String value) {
         return value == null || value.isBlank() ? null : LocalDateTime.parse(value, FORMATTER);
     }
+    private String value(Object value) { return value == null ? "未知" : String.valueOf(value); }
 }
 
 @Component
@@ -138,7 +142,7 @@ class PvOutputWeatherCurrentTool extends AbstractAgentTool {
     }
     private void requireCoordinates(ExternalPvStationDO station) {
         if (station.getLatitude() == null || station.getLongitude() == null) {
-            throw new com.example.pvplatform.common.exception.BusinessException(400, "该公开电站未配置经纬度，无法获取天气");
+            throw new BusinessException(400, "该公开电站未配置经纬度，无法获取天气");
         }
     }
 }
@@ -166,7 +170,7 @@ class PvOutputWeatherForecastTool extends AbstractAgentTool {
     }
     private void requireCoordinates(ExternalPvStationDO station) {
         if (station.getLatitude() == null || station.getLongitude() == null) {
-            throw new com.example.pvplatform.common.exception.BusinessException(400, "该公开电站未配置经纬度，无法获取天气");
+            throw new BusinessException(400, "该公开电站未配置经纬度，无法获取天气");
         }
     }
 }
