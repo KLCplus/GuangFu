@@ -31,6 +31,11 @@ public class NewsController {
         return Result.success(newsService.list(pageNum, pageSize, type, keyword));
     }
 
+    @GetMapping("/api/news/category-counts")
+    public Result<?> categoryCounts() {
+        return Result.success(newsService.categoryCounts());
+    }
+
     @GetMapping("/api/news/{newsId}")
     public Result<?> detail(@PathVariable Long newsId) {
         return Result.success(newsService.detail(newsId));

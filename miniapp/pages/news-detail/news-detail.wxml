@@ -6,7 +6,9 @@
     <view wx:if="{{news.warningRegion || news.warningAgency || news.warningLevel}}" class="warning-panel"><text wx:if="{{news.warningLevel}}">{{news.warningLevel}}</text><text wx:if="{{news.warningRegion}}">地区：{{news.warningRegion}}</text><text wx:if="{{news.warningAgency}}">发布机构：{{news.warningAgency}}</text><text wx:if="{{news.effectiveText}}">生效：{{news.effectiveText}}</text><text wx:if="{{news.expiresText}}">失效：{{news.expiresText}}</text></view>
     <image wx:if="{{news.coverUrl}}" class="article-cover" src="{{news.coverUrl}}" mode="aspectFill" />
     <text wx:if="{{news.summary}}" class="article-summary">{{news.summary}}</text>
-    <view class="article-body"><text wx:for="{{news.paragraphs}}" wx:key="*this">{{item}}</text><text wx:if="{{!news.paragraphs.length}}" class="muted">正文暂未补充</text></view>
+    <scroll-view wx:if="{{news.richContent}}" class="article-body" scroll-x enhanced show-scrollbar="{{false}}"><rich-text class="article-rich" nodes="{{news.richContent}}" /></scroll-view>
+    <view wx:else class="article-empty">正文暂不可用，请通过原文入口查看。</view>
+    <view wx:if="{{news.attachmentUrl}}" class="attachment-card"><view><text>文章附件 · {{news.attachmentType || '文件'}}</text><text>{{news.attachmentName || '查看附件'}}</text></view><button bindtap="copyAttachment">复制附件链接</button></view>
     <button wx:if="{{news.sourceUrl}}" class="original-button" bindtap="copyOriginal">复制原文链接</button>
   </view>
 </view>

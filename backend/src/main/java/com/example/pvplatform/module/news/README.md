@@ -2,8 +2,8 @@
 
 ## 内容边界
 
-- `news` 保存公开新闻、公开公告和外部采集内容。匿名用户只能读取已发布、面向全部用户的内容。
-- `user_notification` 保存当前用户的站内通知及已读状态，所有通知接口必须登录。
+- `news` 保存资讯中心的公开资讯、公开公告和外部采集内容。匿名用户只能读取已发布、面向全部用户的内容。
+- `user_notification` 保存当前用户的消息及已读状态，所有消息接口必须登录。
 - 公开分类为 `WEATHER_ALERT`、`DISASTER`、`POLICY`、`INDUSTRY`、`ENTERPRISE`、`PLATFORM`。
 - `MODEL_UPDATE`、`ALERT`、`SYSTEM_NOTICE` 属于站内通知类型，不进入公开新闻列表。
 - 旧 `NEWS`、`NOTICE`、`INDUSTRY_NEWS` 数据通过查询兼容和增量 SQL 映射保留。
@@ -13,9 +13,12 @@
 - 公开新闻分页、关键词/分类筛选和详情；草稿、下线内容及非公开目标不可匿名读取。
 - 管理端创建、编辑、发布、下线、删除、封面/正文图片上传及发布时生成用户通知。
 - 站内通知分页、未读筛选、类型筛选、未读数、单条已读和全部已读。
-- 外部内容字段、来源归因、原文链接、发布时间、抓取时间、外部唯一标识及预警扩展字段。
+- 外部内容字段、来源归因、原文链接、发布时间、抓取时间、外部唯一标识、主要附件及预警扩展字段。
+- 外部正文使用安全 HTML 白名单保留段落、标题、列表、引用和原生表格；PDF、Word、Excel 不提取扁平正文，只保存安全附件链接。
 - MEM、NEA、LONGI 采集器按来源隔离；单源失败不影响其他来源，重复同步使用外部标识和唯一索引去重。
 - QWeather 预警复用既有 JWT 客户端，按启用电站坐标查询并按官方预警 ID 更新。
+- 应急管理部和国家能源局使用经过 SHA-256 指纹校验的项目级 CFCA EV ROOT；只扩展指定政府来源的信任链，不修改 JVM 全局 truststore，不关闭证书或主机名校验。
+- 启动时幂等补充 4 条明确标注为“光伏智云平台”的平台运维资讯，可用 `NEWS_PLATFORM_SEED_ENABLED=false` 关闭。
 - 可配置定时同步和管理员手动同步入口。
 
 ## 同步配置
@@ -37,20 +40,21 @@ NEWS_SYNC_WEATHER_ENABLED=true
 ## 主要接口
 
 - `GET /api/news`、`GET /api/news/{newsId}`：公开读取。
+- `GET /api/news/category-counts`：公开分类真实数量。
 - `/api/admin/news/**`：管理员内容管理和手动同步。
 - `/api/notifications/**`：当前登录用户的站内通知。
 
 ## 数据库
 
-- 增量脚本：`src/main/resources/sql/news_source_migration.sql`。
+- 增量脚本：`src/main/resources/sql/news_source_migration.sql`、`src/main/resources/sql/news_attachment_migration.sql`。
 - 相关表：`news`、`user_notification`、`sys_user`、`sys_user_role`、`sys_role`。
 - 启动迁移器会为旧库补齐来源和预警字段；不会重写已执行的旧 SQL。
 
 ## 当前限制
 
 - 外部网页解析依赖对方页面结构和目标 JVM 的 TLS 证书链，启用前必须真实验证。
-- 外部正文仅保存清洗后的摘要/片段，不复制完整文章和图片。
-- QWeather 只有在配置有效且电站附近存在生效预警时才会写入数据。
+- 外部正文只保存正文容器中经过白名单清洗的内容，不复制图片、脚本、样式、导航、广告或页脚。
+- 当前 QWeather 实时天气权限正常，但预警接口对 8 个电站坐标返回 HTTP 403；同步结果为 `PERMISSION_DENIED`，不会误写成真实空预警或生成假预警。
 - 没有审核流、定时发布、撤回原因和版本历史。
 - 通知创建依赖新闻发布流程或服务内部调用，没有独立后台群发页面。
 

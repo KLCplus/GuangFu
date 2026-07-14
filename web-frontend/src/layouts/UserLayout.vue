@@ -21,7 +21,7 @@ const menus = [
   { path: '/api/billing', label: '余额与流水', icon: Document },
   { path: '/api/usage', label: '使用统计', icon: DataAnalysis },
   { path: '/reports', label: 'Agent', icon: DataAnalysis },
-  { path: '/news', label: '新闻通知', icon: Document },
+  { path: '/news', label: '资讯与消息', icon: Document },
   { path: '/profile', label: '我的', icon: User }
 ]
 

@@ -7,15 +7,16 @@ import com.example.pvplatform.persistence.mapper.NewsMapper;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
+import org.jsoup.safety.Safelist;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.stereotype.Service;
 
 import java.net.URI;
+import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
-import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
@@ -32,16 +33,30 @@ import java.util.regex.Pattern;
 public class ExternalNewsSyncService {
     private static final Logger log = LoggerFactory.getLogger(ExternalNewsSyncService.class);
     private static final Pattern DATE = Pattern.compile("(20\\d{2})[-./年](\\d{1,2})[-./月](\\d{1,2})");
+    private static final Pattern DATE_TIME = Pattern.compile("(20\\d{2})[-./年](\\d{1,2})[-./月](\\d{1,2})(?:日)?(?:\\s+(\\d{1,2}):(\\d{2}))?");
     private static final Set<String> DISASTER_WORDS = Set.of("灾害", "地质", "滑坡", "泥石流", "山洪", "洪涝", "暴雨", "强降雨", "台风", "大风", "强对流", "高温", "干旱", "防汛", "抗旱", "应急响应", "风险");
     private static final Set<String> ENERGY_WORDS = Set.of("光伏", "太阳能", "新能源", "可再生能源", "并网", "消纳", "储能", "绿电", "绿证", "电站");
     private static final Set<String> ENTERPRISE_WORDS = Set.of("光伏", "组件", "电站", "储能", "运维", "数字化", "数字能源", "逆变器");
+    private static final String REMOVABLE_CONTENT = "script,style,iframe,nav,footer,form,button,input,select,textarea,.share,.related,.recommend,.advertisement,.ads,.copyright";
+    private static final String ATTACHMENT_SELECTOR = "a[href$='.pdf'],a[href*='.pdf?'],a[href$='.doc'],a[href*='.doc?'],a[href$='.docx'],a[href*='.docx?'],a[href$='.xls'],a[href*='.xls?'],a[href$='.xlsx'],a[href*='.xlsx?']";
+    private static final Safelist ARTICLE_SAFELIST = new Safelist()
+        .addTags("p", "br", "h1", "h2", "h3", "h4", "ul", "ol", "li", "strong", "em", "blockquote",
+            "table", "thead", "tbody", "tr", "th", "td", "a")
+        .addAttributes("a", "href", "title")
+        .addAttributes("th", "rowspan", "colspan")
+        .addAttributes("td", "rowspan", "colspan")
+        .addProtocols("a", "href", "http", "https")
+        .addEnforcedAttribute("a", "target", "_blank")
+        .addEnforcedAttribute("a", "rel", "noopener noreferrer");
 
     private final NewsMapper mapper;
     private final NewsSyncProperties properties;
+    private final NewsTlsSupport tlsSupport;
 
-    public ExternalNewsSyncService(NewsMapper mapper, NewsSyncProperties properties) {
+    public ExternalNewsSyncService(NewsMapper mapper, NewsSyncProperties properties, NewsTlsSupport tlsSupport) {
         this.mapper = mapper;
         this.properties = properties;
+        this.tlsSupport = tlsSupport;
     }
 
     public Map<String, SyncStats> syncConfiguredSources() {
@@ -65,7 +80,7 @@ public class ExternalNewsSyncService {
     public SyncStats syncMem() {
         return syncWeb("MEM", "GOVERNMENT_SITE", "中华人民共和国应急管理部",
             "https://www.mem.gov.cn/xw/yjglbgzdt/", "DISASTER", DISASTER_WORDS,
-            "a[href*=/xw/yjglbgzdt/]", List.of("#UCAP-CONTENT", ".TRS_Editor", ".article-content", ".content"));
+            "a[href$='.shtml']", List.of("#UCAP-CONTENT", ".TRS_Editor", ".article-content", ".content"));
     }
 
     @CacheEvict(cacheNames = {"news:public-list", "news:detail"}, allEntries = true)
@@ -97,19 +112,19 @@ public class ExternalNewsSyncService {
                     stats.skipped++;
                     continue;
                 }
-                String context = link.parent() == null ? title : link.parent().text();
-                candidates.putIfAbsent(url, new Candidate(title, url, parseDate(context)));
+                String context = nearestDatedContext(link);
+                candidates.putIfAbsent(url, new Candidate(title, url, parsePublishedAt(context)));
                 if (candidates.size() >= Math.max(1, properties.getMaxItemsPerSource())) break;
             }
             stats.parsed = candidates.size();
             for (Candidate candidate : candidates.values()) {
                 try {
                     Document detail = fetch(candidate.url());
-                    String body = extractBody(detail, bodySelectors);
-                    if (body.isBlank()) { stats.skipped++; continue; }
+                    ExtractedContent extracted = extractContent(detail, bodySelectors);
+                    if (extracted.body().isBlank()) { stats.skipped++; continue; }
                     Candidate enriched = enrichCandidate(candidate, detail);
                     String category = "NEA".equals(code) && isPolicy(enriched.title()) ? "POLICY" : defaultCategory;
-                    upsert(stats, code, sourceType, sourceName, category, enriched, body);
+                    upsert(stats, code, sourceType, sourceName, category, enriched, extracted);
                 } catch (Exception exception) {
                     stats.failed++;
                     log.warn("新闻详情同步失败 source={} url={} reason={}", code, candidate.url(), exception.getMessage());
@@ -126,27 +141,38 @@ public class ExternalNewsSyncService {
     }
 
     private void upsert(MutableStats stats, String code, String sourceType, String sourceName,
-                        String category, Candidate candidate, String body) {
+                        String category, Candidate candidate, ExtractedContent extracted) {
         String externalId = sha256(candidate.url());
         NewsDO existing = mapper.selectOne(Wrappers.<NewsDO>lambdaQuery()
             .eq(NewsDO::getSourceType, sourceType).eq(NewsDO::getExternalId, externalId).last("LIMIT 1"));
-        LocalDateTime published = candidate.date() == null ? LocalDateTime.now() : candidate.date().atStartOfDay();
-        String content = abbreviate(body, 2400);
-        String summary = abbreviate(content, 260);
+        LocalDateTime published = candidate.publishedAt() == null ? LocalDateTime.now() : candidate.publishedAt();
+        String content = extracted.body();
+        String summary = abbreviate(Jsoup.parseBodyFragment(content).text(), 260);
+        Attachment attachment = extracted.attachment();
         if (existing != null) {
-            if (candidate.title().equals(existing.getTitle()) && content.equals(existing.getContent())) {
+            boolean samePublishedAt = candidate.publishedAt() == null || published.equals(existing.getSourcePublishedAt());
+            boolean sameAttachment = java.util.Objects.equals(value(attachment, Attachment::name), existing.getAttachmentName())
+                && java.util.Objects.equals(value(attachment, Attachment::type), existing.getAttachmentType())
+                && java.util.Objects.equals(value(attachment, Attachment::url), existing.getAttachmentUrl());
+            if (candidate.title().equals(existing.getTitle()) && content.equals(existing.getContent()) && samePublishedAt && sameAttachment) {
                 existing.setFetchedAt(LocalDateTime.now());
                 mapper.updateById(existing);
                 stats.duplicate++;
                 return;
             }
             existing.setTitle(candidate.title()); existing.setSummary(summary); existing.setContent(content);
+            existing.setAttachmentName(value(attachment, Attachment::name));
+            existing.setAttachmentType(value(attachment, Attachment::type));
+            existing.setAttachmentUrl(value(attachment, Attachment::url));
             existing.setCategory(category); existing.setSourcePublishedAt(published); existing.setPublishedAt(published);
             existing.setFetchedAt(LocalDateTime.now()); existing.setUpdatedAt(LocalDateTime.now());
             mapper.updateById(existing); stats.updated++; return;
         }
         NewsDO row = new NewsDO();
         row.setTitle(candidate.title()); row.setSummary(summary); row.setContent(content);
+        row.setAttachmentName(value(attachment, Attachment::name));
+        row.setAttachmentType(value(attachment, Attachment::type));
+        row.setAttachmentUrl(value(attachment, Attachment::url));
         row.setNewsType("NEWS"); row.setCategory(category); row.setContentType("EXTERNAL_NEWS");
         row.setSourceType(sourceType); row.setSourceName(sourceName); row.setSourceUrl(candidate.url());
         row.setExternalId(externalId); row.setSourcePublishedAt(published); row.setFetchedAt(LocalDateTime.now());
@@ -156,37 +182,71 @@ public class ExternalNewsSyncService {
     }
 
     private Document fetch(String url) throws java.io.IOException {
-        return Jsoup.connect(url).userAgent(properties.getUserAgent())
+        return tlsSupport.apply(Jsoup.connect(url), url)
+            .userAgent(properties.getUserAgent())
             .timeout(Math.max(properties.getConnectTimeoutMs(), properties.getReadTimeoutMs()))
             .followRedirects(true).maxBodySize(2_000_000).get();
     }
 
-    private String extractBody(Document document, List<String> selectors) {
+    private ExtractedContent extractContent(Document document, List<String> selectors) {
         for (String selector : selectors) {
             Element element = document.selectFirst(selector);
             if (element != null) {
-                element.select("script,style,iframe,nav,footer,form,.share,.related,.recommend").remove();
-                String text = clean(element.text());
-                if (text.length() >= 30) return text;
+                Element article = element.clone();
+                article.select(REMOVABLE_CONTENT).remove();
+                Attachment attachment = findAttachment(article, document);
+                article.select(ATTACHMENT_SELECTOR).remove();
+                String html = Jsoup.clean(article.html(), document.baseUri(), ARTICLE_SAFELIST);
+                if (Jsoup.parseBodyFragment(html).text().length() >= 30) return new ExtractedContent(html, attachment);
             }
         }
-        return "";
+        return new ExtractedContent("", findAttachment(document, document));
+    }
+
+    private Attachment findAttachment(Element primary, Document document) {
+        Element link = primary.selectFirst(ATTACHMENT_SELECTOR);
+        if (link == null && primary != document) link = document.selectFirst(ATTACHMENT_SELECTOR);
+        if (link == null) return null;
+        String url = normalizeUrl(link.absUrl("href"));
+        if (url == null) return null;
+        String type = attachmentType(url, link.text());
+        if (type == null) return null;
+        String name = clean(link.text());
+        if (name.isBlank()) {
+            String path = URI.create(url).getPath();
+            String file = path == null ? "" : path.substring(path.lastIndexOf('/') + 1);
+            name = URLDecoder.decode(file, StandardCharsets.UTF_8);
+        }
+        if (name.isBlank()) name = "文章附件." + type.toLowerCase(Locale.ROOT);
+        return new Attachment(abbreviate(name, 255), type, url);
+    }
+
+    private String attachmentType(String url, String label) {
+        String value = (url + " " + (label == null ? "" : label)).toLowerCase(Locale.ROOT);
+        for (String extension : List.of("PDF", "DOCX", "DOC", "XLSX", "XLS")) {
+            if (value.matches(".*\\." + extension.toLowerCase(Locale.ROOT) + "(?:[?#].*)?(?:\\s.*)?$")) return extension;
+        }
+        return null;
+    }
+
+    private <T> String value(T value, java.util.function.Function<T, String> getter) {
+        return value == null ? null : getter.apply(value);
     }
 
     private Candidate enrichCandidate(Candidate candidate, Document detail) {
         Element heading = detail.selectFirst("h1");
         String title = heading == null ? candidate.title() : clean(heading.text());
-        LocalDate date = candidate.date();
+        LocalDateTime publishedAt = candidate.publishedAt();
         if (heading != null && heading.parent() != null) {
-            LocalDate detailDate = parseDate(heading.parent().text());
-            if (detailDate != null) date = detailDate;
+            LocalDateTime detailTime = parsePublishedAt(heading.parent().text());
+            if (detailTime != null) publishedAt = detailTime;
         }
         Element time = detail.selectFirst("time,.date,.time,.publish-time,.article-date");
         if (time != null) {
-            LocalDate detailDate = parseDate(time.text());
-            if (detailDate != null) date = detailDate;
+            LocalDateTime detailTime = parsePublishedAt(time.text());
+            if (detailTime != null) publishedAt = detailTime;
         }
-        return new Candidate(title.isBlank() ? candidate.title() : title, candidate.url(), date);
+        return new Candidate(title.isBlank() ? candidate.title() : title, candidate.url(), publishedAt);
     }
 
     private void repairLegacyLongTitles(MutableStats stats, String sourceType, String sourceName) {
@@ -216,6 +276,16 @@ public class ExternalNewsSyncService {
     }
 
     private boolean containsAny(String value, Set<String> words) { return words.stream().anyMatch(value::contains); }
+    private String nearestDatedContext(Element link) {
+        Element current = link;
+        String fallback = link.text();
+        for (int depth = 0; depth < 5 && current != null; depth++, current = current.parent()) {
+            String text = clean(current.text());
+            if (!text.isBlank()) fallback = text;
+            if (parsePublishedAt(text) != null) return text;
+        }
+        return fallback;
+    }
     private String extractTitle(Element link) {
         String title = clean(link.attr("title"));
         if (!title.isBlank()) return title;
@@ -235,18 +305,24 @@ public class ExternalNewsSyncService {
         try { if (value == null || value.isBlank()) return null; URI uri = URI.create(value).normalize(); return ("https".equals(uri.getScheme()) || "http".equals(uri.getScheme())) ? uri.toString() : null; }
         catch (Exception ignored) { return null; }
     }
-    private LocalDate parseDate(String value) {
-        Matcher matcher = DATE.matcher(value == null ? "" : value);
+    private LocalDateTime parsePublishedAt(String value) {
+        Matcher matcher = DATE_TIME.matcher(value == null ? "" : value);
         if (!matcher.find()) return null;
-        try { return LocalDate.of(Integer.parseInt(matcher.group(1)), Integer.parseInt(matcher.group(2)), Integer.parseInt(matcher.group(3))); }
-        catch (Exception ignored) { return null; }
+        try {
+            int hour = matcher.group(4) == null ? 0 : Integer.parseInt(matcher.group(4));
+            int minute = matcher.group(5) == null ? 0 : Integer.parseInt(matcher.group(5));
+            return LocalDateTime.of(Integer.parseInt(matcher.group(1)), Integer.parseInt(matcher.group(2)),
+                Integer.parseInt(matcher.group(3)), hour, minute);
+        } catch (Exception ignored) { return null; }
     }
     private String sha256(String value) {
         try { return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(value.getBytes(StandardCharsets.UTF_8))); }
         catch (Exception exception) { throw new IllegalStateException(exception); }
     }
 
-    private record Candidate(String title, String url, LocalDate date) {}
+    private record Candidate(String title, String url, LocalDateTime publishedAt) {}
+    private record Attachment(String name, String type, String url) {}
+    private record ExtractedContent(String body, Attachment attachment) {}
     public record SyncStats(int parsed, int inserted, int updated, int duplicate, int skipped, int failed) {}
     private interface SyncCall { SyncStats run(); }
     private static final class MutableStats {

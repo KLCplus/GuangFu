@@ -123,6 +123,8 @@ weather:
   jwt-ttl-seconds: ${WEATHER_JWT_TTL_SECONDS:1800}
 
 news:
+  platform-seed:
+    enabled: ${NEWS_PLATFORM_SEED_ENABLED:true}
   sync:
     enabled: ${NEWS_SYNC_ENABLED:false}
     web-cron: ${NEWS_SYNC_WEB_CRON:0 20 */6 * * *}

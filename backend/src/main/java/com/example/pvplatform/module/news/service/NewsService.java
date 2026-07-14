@@ -30,6 +30,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.Set;
 import java.io.ByteArrayInputStream;
 import java.security.MessageDigest;
@@ -86,7 +88,7 @@ public class NewsService {
             if (CATEGORIES.contains(type)) {
                 if ("PLATFORM".equals(type)) {
                     query.and(q -> q.eq(NewsDO::getCategory, "PLATFORM")
-                        .or().and(old -> old.isNull(NewsDO::getCategory)
+                        .or(old -> old.isNull(NewsDO::getCategory)
                             .in(NewsDO::getNewsType, "NEWS", "NOTICE", "SYSTEM_NOTICE")));
                 } else {
                     query.eq(NewsDO::getCategory, type);
@@ -102,6 +104,29 @@ public class NewsService {
     /** 保持既有内部调用兼容；公开接口可额外传 keyword。 */
     public PageResult<NewsVO> list(int pageNum, int pageSize, String type) {
         return list(pageNum, pageSize, type, null);
+    }
+
+    public Map<String, Long> categoryCounts() {
+        Map<String, Long> counts = new LinkedHashMap<>();
+        long total = 0;
+        for (String category : List.of("WEATHER_ALERT", "DISASTER", "POLICY", "INDUSTRY", "ENTERPRISE", "PLATFORM")) {
+            var query = Wrappers.<NewsDO>lambdaQuery()
+                .eq(NewsDO::getStatus, "PUBLISHED")
+                .le(NewsDO::getPublishedAt, LocalDateTime.now())
+                .notIn(NewsDO::getNewsType, "MODEL_UPDATE", "ALERT", "SYSTEM_NOTICE")
+                .eq(NewsDO::getTargetRole, "ALL");
+            if ("PLATFORM".equals(category)) {
+                query.and(q -> q.eq(NewsDO::getCategory, "PLATFORM")
+                    .or(old -> old.isNull(NewsDO::getCategory).in(NewsDO::getNewsType, "NEWS", "NOTICE")));
+            } else {
+                query.eq(NewsDO::getCategory, category);
+            }
+            long count = newsMapper.selectCount(query);
+            counts.put(category, count);
+            total += count;
+        }
+        counts.put("ALL", total);
+        return counts;
     }
 
     public PageResult<NewsVO> adminList(int pageNum, int pageSize, String status, String type) {
@@ -302,6 +327,7 @@ public class NewsService {
         return new NewsVO(news.getNewsId(), news.getTitle(), news.getSummary(), news.getContent(),
             news.getCoverUrl(), news.getNewsType(), normalizeCategory(news.getCategory(), news.getNewsType()),
             news.getContentType(), news.getSourceType(), news.getSourceName(), news.getSourceUrl(),
+            news.getAttachmentName(), news.getAttachmentType(), news.getAttachmentUrl(),
             news.getExternalId(), news.getSourcePublishedAt(), news.getFetchedAt(),
             Integer.valueOf(1).equals(news.getExternalContent()), news.getWarningLevel(), news.getWarningRegion(),
             news.getWarningAgency(), news.getEffectiveAt(), news.getExpiresAt(), news.getTargetRole(), news.getStatus(),

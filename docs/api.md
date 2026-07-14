@@ -48,10 +48,13 @@ yyyy-MM-dd HH:mm:ss
 
 ```http
 GET /api/news?pageNum=1&pageSize=10&type=WEATHER_ALERT&keyword=光伏
+GET /api/news/category-counts
 GET /api/news/{newsId}
 ```
 
 `type` 可用值：`WEATHER_ALERT`、`DISASTER`、`POLICY`、`INDUSTRY`、`ENTERPRISE`、`PLATFORM`。旧新闻和公告由后端兼容映射，不会作为站内通知混入公开列表。
+
+`category-counts` 返回各公开分类及 `ALL` 的真实已发布数量，PC 侧栏用它显示空分类为 `0`，不使用固定展示值。
 
 站内通知必须携带登录 Token：
 

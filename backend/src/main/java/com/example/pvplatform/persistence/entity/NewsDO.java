@@ -24,6 +24,9 @@ public class NewsDO {
     private String sourceType;
     private String sourceName;
     private String sourceUrl;
+    private String attachmentName;
+    private String attachmentType;
+    private String attachmentUrl;
     private String externalId;
     private LocalDateTime sourcePublishedAt;
     private LocalDateTime fetchedAt;

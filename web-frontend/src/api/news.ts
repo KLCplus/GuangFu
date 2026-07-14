@@ -29,6 +29,9 @@ export interface News {
   sourceType?: string
   sourceName?: string
   sourceUrl?: string
+  attachmentName?: string
+  attachmentType?: string
+  attachmentUrl?: string
   sourcePublishedAt?: DateTimeString
   fetchedAt?: DateTimeString
   externalContent?: boolean
@@ -59,6 +62,7 @@ export interface CreateNewsResult {
 }
 
 export const getNewsList = (params?: NewsQuery) => request.get<PageResult<News>>('/news', { params })
+export const getNewsCategoryCounts = () => request.get<Record<string, number>>('/news/category-counts')
 export const getNews = (newsId: number) => request.get<News>(`/news/${newsId}`)
 export const getAdminNewsList = (params?: AdminNewsQuery) => request.get<PageResult<News>>('/admin/news', { params })
 export const createNews = (data: NewsPayload) => request.post<CreateNewsResult>('/admin/news', data)

@@ -2,8 +2,8 @@
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { ArrowRight, Bell, Check, Cpu, Document, Refresh, Search, Warning } from '@element-plus/icons-vue'
-import { getNewsList } from '../api/news'
+import { ArrowRight, Bell, Check, Cpu, Document, Reading, Refresh, Search, Warning } from '@element-plus/icons-vue'
+import { getNewsCategoryCounts, getNewsList } from '../api/news'
 import type { News, NewsType } from '../api/news'
 import { getNotifications, getUnreadCount, markAllNotificationsRead, markNotificationRead } from '../api/notification'
 import type { Notification } from '../api/notification'
@@ -26,6 +26,7 @@ const pageSize = ref(10)
 const newsItems = ref<News[]>([])
 const notificationItems = ref<Notification[]>([])
 const newsTotal = ref<number | null>(null)
+const categoryCounts = ref<Record<string, number>>({})
 const notificationTotal = ref<number | null>(null)
 const unreadCount = ref<number | null>(null)
 const newsLoading = ref(false)
@@ -37,6 +38,7 @@ const actionLoadingId = ref<number | null>(null)
 const allReadLoading = ref(false)
 const isLoggedIn = computed(() => Boolean(localStorage.getItem('token')))
 let searchTimer: number | undefined
+let categoryCountsLoaded = false
 
 const categories: Array<{ label: string; value: NewsTypeFilter; icon: typeof Document }> = [
   { label: '全部', value: 'ALL', icon: Document },
@@ -45,11 +47,11 @@ const categories: Array<{ label: string; value: NewsTypeFilter; icon: typeof Doc
   { label: '政策标准', value: 'POLICY', icon: Document },
   { label: '行业动态', value: 'INDUSTRY', icon: Document },
   { label: '企业资讯', value: 'ENTERPRISE', icon: Document },
-  { label: '平台资讯', value: 'PLATFORM', icon: Bell }
+  { label: '运维指南', value: 'PLATFORM', icon: Reading }
 ]
 const notificationTypes: Array<{ label: string; value: NotificationTypeFilter; icon: typeof Document }> = [
   { label: '全部类型', value: 'ALL', icon: Bell },
-  { label: '公告通知', value: 'NOTICE', icon: Bell },
+  { label: '公告提醒', value: 'NOTICE', icon: Bell },
   { label: '模型更新', value: 'MODEL_UPDATE', icon: Cpu },
   { label: '异常提醒', value: 'ALERT', icon: Warning },
   { label: '系统通知', value: 'SYSTEM', icon: Bell }
@@ -151,8 +153,19 @@ function scheduleSearch() {
 }
 
 async function refreshActive() {
-  if (activeTab.value === 'news') await fetchNews()
+  if (activeTab.value === 'news') await Promise.all([fetchNews(), fetchCategoryCounts()])
   else await fetchNotifications()
+}
+
+async function fetchCategoryCounts() {
+  if (categoryCountsLoaded) return
+  try {
+    categoryCounts.value = await getNewsCategoryCounts()
+    categoryCountsLoaded = true
+  } catch (error) {
+    console.error('新闻分类数量加载失败', error)
+    categoryCounts.value = {}
+  }
 }
 
 async function fetchNews() {
@@ -196,10 +209,10 @@ async function fetchNotifications() {
     notificationItems.value = result.records
     notificationTotal.value = result.total
   } catch (error) {
-    console.error('通知数据加载失败', error)
+    console.error('消息数据加载失败', error)
     notificationItems.value = []
     notificationTotal.value = null
-    notificationError.value = '通知数据加载失败，请检查服务状态后重试。'
+    notificationError.value = '消息数据加载失败，请检查服务状态后重试。'
   } finally {
     notificationLoading.value = false
   }
@@ -212,13 +225,14 @@ async function fetchUnreadCount() {
     const result = await getUnreadCount()
     unreadCount.value = result.count ?? result.unreadCount ?? 0
   } catch (error) {
-    console.error('未读通知数加载失败', error)
+    console.error('未读消息数加载失败', error)
     unreadCount.value = null
-    unreadError.value = '未读通知数加载失败'
+    unreadError.value = '未读消息数加载失败'
   }
 }
 
 function refresh() {
+  if (activeTab.value === 'news') categoryCountsLoaded = false
   void refreshActive()
   if (isLoggedIn.value) void fetchUnreadCount()
 }
@@ -241,18 +255,22 @@ async function openNews(item: News) {
 }
 
 async function readNotification(item: Notification) {
-  if (item.readStatus === 1 || actionLoadingId.value !== null) return
-  actionLoadingId.value = item.notificationId
-  try {
-    await markNotificationRead(item.notificationId)
-    item.readStatus = 1
-    unreadCount.value = Math.max(0, (unreadCount.value ?? 0) - 1)
-  } catch (error) {
-    console.error('通知标记已读失败', error)
-    ElMessage.error('通知标记已读失败，请重试。')
-  } finally {
-    actionLoadingId.value = null
+  if (item.readStatus === 0) {
+    if (actionLoadingId.value !== null) return
+    actionLoadingId.value = item.notificationId
+    try {
+      await markNotificationRead(item.notificationId)
+      item.readStatus = 1
+      unreadCount.value = Math.max(0, (unreadCount.value ?? 0) - 1)
+    } catch (error) {
+      console.error('消息标记已读失败', error)
+      ElMessage.error('消息标记已读失败，请重试。')
+      return
+    } finally {
+      actionLoadingId.value = null
+    }
   }
+  if (item.relatedType === 'NEWS' && item.relatedId) await router.push(`/news/${item.relatedId}`)
 }
 
 async function readAllNotifications() {
@@ -266,10 +284,10 @@ async function readAllNotifications() {
       notificationPage.value = 1
       updateRoute(true)
     }
-    ElMessage.success('全部通知已标记为已读')
+    ElMessage.success('全部消息已标记为已读')
   } catch (error) {
-    console.error('全部通知标记已读失败', error)
-    ElMessage.error('全部通知标记已读失败，请重试。')
+    console.error('全部消息标记已读失败', error)
+    ElMessage.error('全部消息标记已读失败，请重试。')
   } finally {
     allReadLoading.value = false
   }
@@ -283,13 +301,13 @@ function clearNewsFilters() {
 }
 
 function newsTypeLabel(type?: string) {
-  const labels: Record<string, string> = { WEATHER_ALERT: '气象预警', DISASTER: '灾害动态', POLICY: '政策标准', INDUSTRY: '行业动态', ENTERPRISE: '企业资讯', PLATFORM: '平台资讯', NEWS: '平台新闻', NOTICE: '平台公告' }
-  return labels[type ?? ''] ?? type ?? '新闻'
+  const labels: Record<string, string> = { WEATHER_ALERT: '气象预警', DISASTER: '灾害动态', POLICY: '政策标准', INDUSTRY: '行业动态', ENTERPRISE: '企业资讯', PLATFORM: '运维指南', NEWS: '公开资讯', NOTICE: '平台公告' }
+  return labels[type ?? ''] ?? type ?? '资讯'
 }
 
 function notificationTypeLabel(type?: string) {
-  const labels: Record<string, string> = { NOTICE: '公告通知', NEWS: '公告通知', MODEL_UPDATE: '模型更新', ALERT: '异常提醒', SYSTEM: '系统通知', SYSTEM_NOTICE: '系统通知' }
-  return labels[type ?? ''] ?? type ?? '站内通知'
+  const labels: Record<string, string> = { NOTICE: '公告提醒', NEWS: '公告提醒', MODEL_UPDATE: '模型更新', ALERT: '异常提醒', SYSTEM: '系统通知', SYSTEM_NOTICE: '系统通知' }
+  return labels[type ?? ''] ?? type ?? '站内消息'
 }
 
 function newsTypeTag(type?: string) {
@@ -362,10 +380,10 @@ function dayLabel(value?: string) {
   <section class="notification-center">
     <header class="page-header">
       <div>
-        <h1>新闻通知</h1>
+        <h1>资讯与消息</h1>
       </div>
       <div class="header-actions">
-        <span class="compact-stats">新闻 {{ newsTotal ?? '—' }}<template v-if="isLoggedIn"> · 未读通知 {{ unreadCount ?? '—' }}</template></span>
+        <span class="compact-stats">资讯 {{ newsTotal ?? '—' }}<template v-if="isLoggedIn"> · 未读消息 {{ unreadCount ?? '—' }}</template></span>
         <el-button :loading="newsLoading || notificationLoading" :icon="Refresh" @click="refresh">刷新</el-button>
         <el-button v-if="activeTab === 'notifications'" type="primary" plain :icon="Check" :disabled="!canMarkAllRead" :loading="allReadLoading" @click="readAllNotifications">全部已读</el-button>
       </div>
@@ -374,32 +392,32 @@ function dayLabel(value?: string) {
     <div class="inbox-layout">
       <aside class="filter-sidebar" aria-label="新闻通知筛选">
         <div v-if="activeTab === 'notifications'" class="sidebar-section">
-          <p class="sidebar-title">收件箱</p>
+          <p class="sidebar-title">消息中心</p>
           <button class="filter-item" :class="{ active: activeTab === 'notifications' && notificationFilter === 'ALL' }" @click="chooseNotificationFilter('ALL')">
-            <el-icon><Bell /></el-icon><span>全部通知</span><b>{{ notificationTotal ?? '—' }}</b>
+            <el-icon><Bell /></el-icon><span>全部消息</span><b>{{ notificationTotal ?? '—' }}</b>
           </button>
           <button class="filter-item" :class="{ active: activeTab === 'notifications' && notificationFilter === 'UNREAD' }" @click="chooseNotificationFilter('UNREAD')">
-            <el-icon><Bell /></el-icon><span>未读通知</span><b>{{ unreadCount ?? '—' }}</b>
+            <el-icon><Bell /></el-icon><span>未读消息</span><b>{{ unreadCount ?? '—' }}</b>
           </button>
         </div>
         <div v-if="activeTab === 'notifications'" class="sidebar-section">
-          <p class="sidebar-title">通知类型</p>
+          <p class="sidebar-title">消息类型</p>
           <button v-for="item in notificationTypes" :key="item.value" class="filter-item" :class="{ active: notificationType === item.value }" @click="chooseNotificationType(item.value)">
             <el-icon><component :is="item.icon" /></el-icon><span>{{ item.label }}</span>
           </button>
         </div>
         <div v-else class="sidebar-section">
-          <p class="sidebar-title">新闻分类</p>
+          <p class="sidebar-title">资讯分类</p>
           <button v-for="category in categories" :key="category.value" class="filter-item" :class="{ active: activeTab === 'news' && newsType === category.value }" @click="chooseNewsType(category.value)">
-            <el-icon><component :is="category.icon" /></el-icon><span>{{ category.label }}</span>
+            <el-icon><component :is="category.icon" /></el-icon><span>{{ category.label }}</span><b>{{ categoryCounts[category.value] ?? '—' }}</b>
           </button>
         </div>
       </aside>
 
       <main class="inbox-main">
         <nav class="content-tabs" aria-label="内容类型">
-          <button :class="{ active: activeTab === 'news' }" @click="selectTab('news')">新闻与公告</button>
-          <button :class="{ active: activeTab === 'notifications' }" @click="selectTab('notifications')">站内通知</button>
+          <button :class="{ active: activeTab === 'news' }" @click="selectTab('news')">资讯中心</button>
+          <button :class="{ active: activeTab === 'notifications' }" @click="selectTab('notifications')">消息中心</button>
         </nav>
 
         <div class="toolbar">
@@ -417,11 +435,11 @@ function dayLabel(value?: string) {
         </div>
 
         <section v-if="activeTab === 'news'" class="list-shell">
-          <div v-if="newsError" class="state-box error-state"><strong>新闻数据加载失败</strong><span>请检查服务状态后重试。</span><el-button type="primary" @click="fetchNews">重新加载</el-button></div>
+          <div v-if="newsError" class="state-box error-state"><strong>资讯数据加载失败</strong><span>请检查服务状态后重试。</span><el-button type="primary" @click="fetchNews">重新加载</el-button></div>
           <template v-else-if="newsLoading">
             <div v-for="index in 5" :key="index" class="skeleton-row"><el-skeleton animated><template #template><el-skeleton-item variant="circle" /><div><el-skeleton-item variant="h3" style="width: 46%" /><el-skeleton-item variant="text" style="width: 78%; margin-top: 10px" /></div></template></el-skeleton></div>
           </template>
-          <div v-else-if="newsItems.length === 0" class="state-box"><strong>暂无新闻内容</strong><span>当前筛选条件下没有可展示的新闻。</span><el-button text type="primary" @click="clearNewsFilters">清除筛选</el-button></div>
+          <div v-else-if="newsItems.length === 0" class="state-box"><strong>{{ newsType === 'WEATHER_ALERT' ? '当前暂无可展示的气象预警' : '暂无资讯内容' }}</strong><span>{{ newsType === 'WEATHER_ALERT' ? '预警数据服务暂未开通，其他天气数据不受影响。' : '当前筛选条件下没有可展示的资讯。' }}</span><el-button text type="primary" @click="clearNewsFilters">清除筛选</el-button></div>
           <template v-else>
             <section v-for="group in newsGroups" :key="group.label" class="date-group">
               <h2>{{ group.label }}</h2>
@@ -436,12 +454,12 @@ function dayLabel(value?: string) {
         </section>
 
         <section v-else class="list-shell">
-          <div v-if="!isLoggedIn" class="state-box login-state"><strong>登录后查看站内通知</strong><span>站内通知只包含与你账号相关的公告提醒、模型更新和异常消息。</span><el-button type="primary" @click="router.push('/login')">前往登录</el-button></div>
-          <div v-else-if="notificationError" class="state-box error-state"><strong>通知数据加载失败</strong><span>请检查服务状态后重试。</span><el-button type="primary" @click="fetchNotifications">重新加载</el-button></div>
+          <div v-if="!isLoggedIn" class="state-box login-state"><strong>登录后查看消息中心</strong><span>消息中心只包含与你账号相关的公告提醒、模型更新、异常提醒和系统通知。</span><el-button type="primary" @click="router.push('/login')">前往登录</el-button></div>
+          <div v-else-if="notificationError" class="state-box error-state"><strong>消息数据加载失败</strong><span>请检查服务状态后重试。</span><el-button type="primary" @click="fetchNotifications">重新加载</el-button></div>
           <template v-else-if="notificationLoading">
             <div v-for="index in 5" :key="index" class="skeleton-row"><el-skeleton animated><template #template><el-skeleton-item variant="circle" /><div><el-skeleton-item variant="h3" style="width: 46%" /><el-skeleton-item variant="text" style="width: 78%; margin-top: 10px" /></div></template></el-skeleton></div>
           </template>
-          <div v-else-if="notificationItems.length === 0" class="state-box"><strong>{{ notificationFilter === 'UNREAD' ? '没有未读通知' : '暂无通知' }}</strong><span>{{ notificationFilter === 'UNREAD' ? '你已经处理完所有通知。' : '新的站内通知将在这里显示。' }}</span><el-button text type="primary" @click="refresh">刷新</el-button></div>
+          <div v-else-if="notificationItems.length === 0" class="state-box"><strong>{{ notificationFilter === 'UNREAD' ? '没有未读消息' : '暂无消息' }}</strong><span>{{ notificationFilter === 'UNREAD' ? '你已经处理完所有消息。' : '新的站内消息将在这里显示。' }}</span><el-button text type="primary" @click="refresh">刷新</el-button></div>
           <template v-else>
             <section v-for="group in notificationGroups" :key="group.label" class="date-group">
               <h2>{{ group.label }}</h2>

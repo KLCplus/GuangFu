@@ -6,10 +6,10 @@ const TYPES = [
   { label: '全部', value: 'ALL' }, { label: '气象预警', value: 'WEATHER_ALERT' },
   { label: '灾害动态', value: 'DISASTER' }, { label: '政策标准', value: 'POLICY' },
   { label: '行业动态', value: 'INDUSTRY' }, { label: '企业资讯', value: 'ENTERPRISE' },
-  { label: '平台资讯', value: 'PLATFORM' }
+  { label: '运维指南', value: 'PLATFORM' }
 ]
 const NOTIFICATION_TYPES = [
-  { label: '全部类型', value: 'ALL' }, { label: '公告通知', value: 'NOTICE' },
+  { label: '全部类型', value: 'ALL' }, { label: '公告提醒', value: 'NOTICE' },
   { label: '模型更新', value: 'MODEL_UPDATE' }, { label: '异常提醒', value: 'ALERT' },
   { label: '系统通知', value: 'SYSTEM' }
 ]
@@ -83,7 +83,7 @@ Page({
     const type = item.category || item.newsType
     return { ...item, typeLabel: this.typeLabel(type), timeText: relativeDate(item.sourcePublishedAt || item.publishedAt || item.createdAt), summaryText: item.summary || String(item.content || '').slice(0, 80) || '暂无摘要', alert: type === 'WEATHER_ALERT', sourceText: item.sourceName || '光伏智云平台' }
   },
-  typeLabel(type) { return ({ WEATHER_ALERT: '气象预警', DISASTER: '灾害动态', POLICY: '政策标准', INDUSTRY: '行业动态', ENTERPRISE: '企业资讯', PLATFORM: '平台资讯', NEWS: '平台新闻', NOTICE: '平台公告' })[type] || type || '资讯' },
+  typeLabel(type) { return ({ WEATHER_ALERT: '气象预警', DISASTER: '灾害动态', POLICY: '政策标准', INDUSTRY: '行业动态', ENTERPRISE: '企业资讯', PLATFORM: '运维指南', NEWS: '公开资讯', NOTICE: '平台公告' })[type] || type || '资讯' },
   openNews(event) { wx.navigateTo({ url: `/pages/news-detail/news-detail?id=${event.currentTarget.dataset.id}` }) },
 
   async loadNotifications() {
@@ -95,14 +95,14 @@ Page({
     ])
     const update = { loading: false }
     if (listResult.status === 'fulfilled') update.notifications = (listResult.value.records || []).map((item) => ({ ...item, unread: Number(item.readStatus) === 0, timeText: relativeDate(item.createdAt), typeLabel: this.notificationTypeLabel(item.notificationType) }))
-    else { update.notifications = []; update.notificationError = errorMessage(listResult.reason, '站内通知加载失败') }
+    else { update.notifications = []; update.notificationError = errorMessage(listResult.reason, '站内消息加载失败') }
     if (countResult.status === 'fulfilled') update.unreadCount = Number(countResult.value.count != null ? countResult.value.count : countResult.value.unreadCount || 0)
     this.setData(update)
   },
 
   toggleUnread() { this.setData({ unreadOnly: !this.data.unreadOnly }); this.loadNotifications() },
   chooseNotificationType(event) { this.setData({ activeNotificationType: event.currentTarget.dataset.value }); this.loadNotifications() },
-  notificationTypeLabel(type) { return ({ NOTICE: '公告通知', NEWS: '公告通知', MODEL_UPDATE: '模型更新', ALERT: '异常提醒', SYSTEM: '系统通知', SYSTEM_NOTICE: '系统通知' })[type] || type || '站内通知' },
+  notificationTypeLabel(type) { return ({ NOTICE: '公告提醒', NEWS: '公告提醒', MODEL_UPDATE: '模型更新', ALERT: '异常提醒', SYSTEM: '系统通知', SYSTEM_NOTICE: '系统通知' })[type] || type || '站内消息' },
   async readNotification(event) {
     const id = Number(event.currentTarget.dataset.id)
     const target = this.data.notifications.find((item) => item.notificationId === id)
@@ -122,7 +122,7 @@ Page({
     try {
       await newsApi.markAllRead()
       this.setData({ notifications: this.data.notifications.map((item) => ({ ...item, unread: false, readStatus: 1 })), unreadCount: 0 })
-      wx.showToast({ title: '已全部读过', icon: 'success' })
+      wx.showToast({ title: '消息已全部读过', icon: 'success' })
     } catch (error) { wx.showToast({ title: errorMessage(error, '操作失败'), icon: 'none' }) }
   }
 })

@@ -113,6 +113,7 @@ function toPayload(f: NewsRow): NewsPayload {
     content: f.content,
     coverUrl: f.coverUrl || undefined,
     newsType: f.newsType,
+    category: f.category,
     targetRole: f.targetRole
   }
 }
@@ -247,8 +248,13 @@ function statusTag(status: NewsStatus) {
 }
 
 function typeLabel(type: NewsType) {
-  const map: Record<string, string> = { MODEL_UPDATE: '模型更新', SYSTEM_NOTICE: '系统通知', INDUSTRY_NEWS: '行业资讯' }
+  const map: Record<string, string> = { NEWS: '公开资讯', NOTICE: '公开公告', MODEL_UPDATE: '模型更新', ALERT: '异常提醒', SYSTEM_NOTICE: '系统通知', INDUSTRY_NEWS: '行业资讯' }
   return map[type] || type
+}
+
+function categoryLabel(category?: string) {
+  const map: Record<string, string> = { WEATHER_ALERT: '气象预警', DISASTER: '灾害动态', POLICY: '政策标准', INDUSTRY: '行业动态', ENTERPRISE: '企业资讯', PLATFORM: '运维指南' }
+  return map[category || ''] || category || '-'
 }
 
 function roleLabel(role: NewsTargetRole) {
@@ -276,7 +282,7 @@ onMounted(() => {
   <div class="page-shell">
     <div class="page-title">
       <div>
-        <h2>新闻管理</h2>
+        <h2>资讯管理</h2>
         <p>查看脚本采集的光伏行业资讯；需要修正采集结果时，可手动补录或编辑。</p>
       </div>
       <el-tag type="info" effect="plain">内容来源：采集脚本</el-tag>
@@ -319,6 +325,7 @@ onMounted(() => {
       <el-table v-loading="loading" :data="pagedRows" stripe size="default" style="width:100%">
         <el-table-column prop="newsId" label="ID" width="60" />
         <el-table-column prop="title" label="标题" min-width="180" show-overflow-tooltip />
+        <el-table-column label="分类" width="110"><template #default="{ row }">{{ categoryLabel(row.category) }}</template></el-table-column>
         <el-table-column label="来源" width="110">
           <template #default>
             <el-tag size="small" type="info" effect="plain">自动采集</el-tag>
@@ -374,7 +381,7 @@ onMounted(() => {
     <!-- 新建/编辑对话框 -->
     <el-dialog
       v-model="dialogVisible"
-      :title="mode === 'create' ? '新建新闻' : '编辑新闻'"
+      :title="mode === 'create' ? '新建资讯' : '编辑资讯'"
       width="680px"
       :close-on-click-modal="false"
       destroy-on-close
@@ -408,25 +415,38 @@ onMounted(() => {
         </el-form-item>
         <el-row :gutter="16">
           <el-col :span="12">
-            <el-form-item label="新闻类型">
+            <el-form-item label="内容类型">
               <el-select v-model="form.newsType" style="width:100%">
+                <el-option label="公开资讯" value="NEWS" />
+                <el-option label="公开公告" value="NOTICE" />
                 <el-option label="模型更新" value="MODEL_UPDATE" />
+                <el-option label="异常提醒" value="ALERT" />
                 <el-option label="系统通知" value="SYSTEM_NOTICE" />
                 <el-option label="行业资讯" value="INDUSTRY_NEWS" />
               </el-select>
             </el-form-item>
           </el-col>
           <el-col :span="12">
-            <el-form-item label="目标角色">
-              <el-select v-model="form.targetRole" style="width:100%">
-                <el-option label="全部用户" value="ALL" />
-                <el-option label="普通用户" value="USER" />
-                <el-option label="API 用户" value="API_USER" />
-                <el-option label="管理员" value="ADMIN" />
+            <el-form-item label="资讯分类">
+              <el-select v-model="form.category" style="width:100%">
+                <el-option label="气象预警" value="WEATHER_ALERT" />
+                <el-option label="灾害动态" value="DISASTER" />
+                <el-option label="政策标准" value="POLICY" />
+                <el-option label="行业动态" value="INDUSTRY" />
+                <el-option label="企业资讯" value="ENTERPRISE" />
+                <el-option label="运维指南" value="PLATFORM" />
               </el-select>
             </el-form-item>
           </el-col>
         </el-row>
+        <el-form-item label="目标用户">
+          <el-select v-model="form.targetRole" style="width:100%">
+            <el-option label="全部用户" value="ALL" />
+            <el-option label="普通用户" value="USER" />
+            <el-option label="API 用户" value="API_USER" />
+            <el-option label="管理员" value="ADMIN" />
+          </el-select>
+        </el-form-item>
         <el-form-item label="封面图片">
           <el-upload :show-file-list="false" accept="image/jpeg,image/png,image/webp" :http-request="uploadCoverFile">
             <el-button :disabled="!editingId">上传 OSS 封面</el-button>

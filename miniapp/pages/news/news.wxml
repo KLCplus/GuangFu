@@ -1,24 +1,24 @@
 <view class="page news-page">
-  <view class="news-head"><view><text class="news-kicker">SIGNAL &amp; NOTICE</text><text class="news-title">资讯中心</text></view><view class="unread-badge" wx:if="{{unreadCount}}">{{unreadCount > 99 ? '99+' : unreadCount}}</view></view>
-  <view class="tab-switch"><view class="{{activeTab === 'news' ? 'active' : ''}}" data-tab="news" bindtap="switchTab">新闻资讯</view><view class="{{activeTab === 'notice' ? 'active' : ''}}" data-tab="notice" bindtap="switchTab">站内通知<text wx:if="{{unreadCount}}">{{unreadCount}}</text></view></view>
+  <view class="news-head"><view><text class="news-kicker">INFORMATION &amp; MESSAGE</text><text class="news-title">资讯与消息</text></view><view class="unread-badge" wx:if="{{unreadCount}}">{{unreadCount > 99 ? '99+' : unreadCount}}</view></view>
+  <view class="tab-switch"><view class="{{activeTab === 'news' ? 'active' : ''}}" data-tab="news" bindtap="switchTab">资讯中心</view><view class="{{activeTab === 'notice' ? 'active' : ''}}" data-tab="notice" bindtap="switchTab">消息中心<text wx:if="{{unreadCount}}">{{unreadCount}}</text></view></view>
 
   <block wx:if="{{activeTab === 'news'}}">
     <view class="search-box"><text>⌕</text><input value="{{keyword}}" placeholder="搜索标题、摘要或正文" bindinput="onSearch" /></view>
     <scroll-view class="type-strip" scroll-x enhanced show-scrollbar="{{false}}"><view class="type-items"><text class="type-chip {{activeType === item.value ? 'active' : ''}}" wx:for="{{types}}" wx:key="value" data-value="{{item.value}}" bindtap="chooseType">{{item.label}}</text></view></scroll-view>
     <view wx:if="{{loading}}" class="news-list"><view class="card news-skeleton" wx:for="{{[1,2,3]}}" wx:key="*this"><view class="skeleton sk-label"></view><view class="skeleton sk-title"></view><view class="skeleton sk-copy"></view></view></view>
     <view wx:elif="{{error}}" class="card state-card"><view class="state-mark">!</view><view class="state-title">资讯加载失败</view><view class="state-copy">{{error}}</view><button class="button-quiet" bindtap="loadNews" data-reset="true">重新加载</button></view>
-    <view wx:elif="{{!visibleNews.length}}" class="card state-card"><view class="state-mark">空</view><view class="state-title">暂无匹配资讯</view><view class="state-copy">接口已正常返回，当前分类或搜索没有内容。</view></view>
+    <view wx:elif="{{!visibleNews.length}}" class="card state-card"><view class="state-mark">空</view><view class="state-title">{{activeType === 'WEATHER_ALERT' ? '当前暂无可展示的气象预警' : '暂无匹配资讯'}}</view><view class="state-copy">{{activeType === 'WEATHER_ALERT' ? '预警数据服务暂未开通，其他天气数据不受影响。' : '接口已正常返回，当前分类或搜索没有内容。'}}</view></view>
     <view wx:else class="news-list"><view class="card news-card {{item.alert ? 'is-alert' : ''}}" wx:for="{{visibleNews}}" wx:key="newsId" data-id="{{item.newsId}}" bindtap="openNews"><view class="news-meta"><text class="news-type">{{item.typeLabel}}</text><text>{{item.timeText}}</text></view><text class="item-title">{{item.title}}</text><text class="item-summary">{{item.summaryText}}</text><view class="source-row"><text>{{item.sourceText}}</text><text wx:if="{{item.warningLevel}}">{{item.warningLevel}}</text></view><view class="read-row"><text>阅读全文</text><text>→</text></view></view><view class="load-more" wx:if="{{hasMore}}">{{loadingMore ? '正在加载…' : '继续上拉加载'}}</view><view class="load-more" wx:else>已显示全部 {{total}} 条</view></view>
   </block>
 
   <block wx:else>
-    <view wx:if="{{!loggedIn}}" class="card state-card notice-login"><view class="state-mark">信</view><view class="state-title">登录后查看站内通知</view><view class="state-copy">通知按当前平台账号隔离，新闻仍可在另一标签查看。</view><button class="button-primary" bindtap="goLogin">连接平台账号</button></view>
+    <view wx:if="{{!loggedIn}}" class="card state-card notice-login"><view class="state-mark">信</view><view class="state-title">登录后查看消息中心</view><view class="state-copy">站内消息按当前平台账号隔离，公开资讯仍可在另一标签查看。</view><button class="button-primary" bindtap="goLogin">连接平台账号</button></view>
     <block wx:else>
-      <view class="notice-tools"><text class="filter-pill {{unreadOnly ? 'active' : ''}}" bindtap="toggleUnread">{{unreadOnly ? '仅看未读' : '全部通知'}}</text><text wx:if="{{unreadCount}}" bindtap="readAll">全部已读</text></view>
+      <view class="notice-tools"><text class="filter-pill {{unreadOnly ? 'active' : ''}}" bindtap="toggleUnread">{{unreadOnly ? '仅看未读' : '全部消息'}}</text><text wx:if="{{unreadCount}}" bindtap="readAll">全部已读</text></view>
       <scroll-view class="type-strip notice-type-strip" scroll-x enhanced show-scrollbar="{{false}}"><view class="type-items"><text class="type-chip {{activeNotificationType === item.value ? 'active' : ''}}" wx:for="{{notificationTypes}}" wx:key="value" data-value="{{item.value}}" bindtap="chooseNotificationType">{{item.label}}</text></view></scroll-view>
-      <view wx:if="{{loading}}" class="card state-card"><view class="state-copy">正在加载通知…</view></view>
-      <view wx:elif="{{notificationError}}" class="card state-card"><view class="state-mark">!</view><view class="state-title">通知加载失败</view><view class="state-copy">{{notificationError}}</view><button class="button-quiet" bindtap="loadNotifications">重新加载</button></view>
-      <view wx:elif="{{!notifications.length}}" class="card state-card"><view class="state-mark">✓</view><view class="state-title">当前没有通知</view><view class="state-copy">这里会展示系统消息和与你相关的站内提醒。</view></view>
+      <view wx:if="{{loading}}" class="card state-card"><view class="state-copy">正在加载消息…</view></view>
+      <view wx:elif="{{notificationError}}" class="card state-card"><view class="state-mark">!</view><view class="state-title">消息加载失败</view><view class="state-copy">{{notificationError}}</view><button class="button-quiet" bindtap="loadNotifications">重新加载</button></view>
+      <view wx:elif="{{!notifications.length}}" class="card state-card"><view class="state-mark">✓</view><view class="state-title">当前没有消息</view><view class="state-copy">这里会展示系统通知和与你相关的站内提醒。</view></view>
       <view wx:else class="card notice-list"><view class="notice-item" wx:for="{{notifications}}" wx:key="notificationId" data-id="{{item.notificationId}}" bindtap="readNotification"><view class="notice-dot {{item.unread ? 'unread' : ''}}"></view><view class="notice-main"><view><text class="notice-title">{{item.title}}</text><text>{{item.timeText}}</text></view><text class="notice-kind">{{item.typeLabel}}</text><text class="notice-content">{{item.content}}</text><text class="notice-state">{{item.unread ? '点击标为已读' : '已读'}}</text></view></view></view>
     </block>
   </block>

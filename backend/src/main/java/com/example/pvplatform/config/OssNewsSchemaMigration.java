@@ -7,9 +7,11 @@ import org.springframework.boot.ApplicationRunner;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
+import org.springframework.core.annotation.Order;
 
 /** Additive migration for installations created before OSS-backed files existed. */
 @Component
+@Order(50)
 @ConditionalOnProperty(prefix = "database.migration.oss-news", name = "enabled", havingValue = "true", matchIfMissing = true)
 public class OssNewsSchemaMigration implements ApplicationRunner {
     private static final Logger log = LoggerFactory.getLogger(OssNewsSchemaMigration.class);

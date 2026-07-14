@@ -15,7 +15,9 @@ const relatedNews = ref<News[]>([])
 
 const newsId = computed(() => Number(route.params.newsId))
 
-const safeContent = computed(() => news.value?.content ?? '')
+const safeContent = computed(() => renderStoredContent(news.value?.content ?? ''))
+const sourceUrl = computed(() => safeHttpUrl(news.value?.sourceUrl))
+const attachmentUrl = computed(() => safeHttpUrl(news.value?.attachmentUrl))
 
 onMounted(() => {
   void fetchDetail()
@@ -68,6 +70,26 @@ function goBack() {
   void router.push('/news')
 }
 
+function safeHttpUrl(value?: string) {
+  if (!value) return ''
+  try {
+    const url = new URL(value, window.location.origin)
+    return url.protocol === 'http:' || url.protocol === 'https:' ? url.href : ''
+  } catch {
+    return ''
+  }
+}
+
+function renderStoredContent(content: string) {
+  if (!content) return ''
+  if (/<(?:p|br|h[1-4]|ul|ol|li|blockquote|table|strong|em|a)\b/i.test(content)) return content
+  return content.split(/\n{2,}/).map((paragraph) => `<p>${escapeHtml(paragraph).replace(/\n/g, '<br>')}</p>`).join('')
+}
+
+function escapeHtml(value: string) {
+  return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;')
+}
+
 function newsTypeLabel(type?: string) {
   const labels: Record<string, string> = {
     WEATHER_ALERT: '气象预警',
@@ -75,13 +97,13 @@ function newsTypeLabel(type?: string) {
     POLICY: '政策标准',
     INDUSTRY: '行业动态',
     ENTERPRISE: '企业资讯',
-    PLATFORM: '平台资讯',
-    NEWS: '新闻',
+    PLATFORM: '运维指南',
+    NEWS: '资讯',
     NOTICE: '公告',
     MODEL_UPDATE: '模型更新',
     ALERT: '异常提醒'
   }
-  return labels[type ?? ''] ?? type ?? '新闻'
+  return labels[type ?? ''] ?? type ?? '资讯'
 }
 
 function newsTypeTag(type?: string) {
@@ -100,7 +122,7 @@ function publishTime(item?: News | null) {
 <template>
   <section class="news-detail-page">
     <div class="page-heading">
-      <el-button @click="goBack">返回新闻列表</el-button>
+      <el-button @click="goBack">返回资讯中心</el-button>
     </div>
 
     <el-alert v-if="loadError" :title="loadError" type="error" show-icon :closable="false">
@@ -121,12 +143,22 @@ function publishTime(item?: News | null) {
             <span v-if="news.warningRegion">地区：{{ news.warningRegion }}</span>
             <span v-if="news.warningAgency">发布机构：{{ news.warningAgency }}</span>
           </div>
-          <el-button v-if="news.sourceUrl" tag="a" :href="news.sourceUrl" target="_blank" rel="noopener noreferrer" type="primary" plain>查看原文</el-button>
+          <el-button v-if="sourceUrl" tag="a" :href="sourceUrl" target="_blank" rel="noopener noreferrer" type="primary" plain>查看原文</el-button>
         </header>
 
         <img v-if="news.coverUrl" class="cover-image" :src="news.coverUrl" alt="新闻封面" />
 
-        <div class="article-content" v-html="safeContent" />
+        <div v-if="safeContent" class="article-content" v-html="safeContent" />
+        <div v-else class="content-state">正文暂不可用，请通过原文入口查看。</div>
+
+        <section v-if="attachmentUrl" class="attachment-panel">
+          <div>
+            <span class="attachment-label">文章附件</span>
+            <strong>{{ news.attachmentName || '查看附件' }}</strong>
+            <small>{{ news.attachmentType || '文件' }}</small>
+          </div>
+          <el-button tag="a" :href="attachmentUrl" target="_blank" rel="noopener noreferrer" type="primary" plain>查看附件</el-button>
+        </section>
       </article>
 
       <el-empty v-else-if="!loading && !loadError" description="新闻不存在" />
@@ -135,12 +167,12 @@ function publishTime(item?: News | null) {
         <section class="panel related-panel">
           <div class="panel-head">
             <div>
-              <h2>更多新闻</h2>
+              <h2>更多资讯</h2>
               <p>来自 GET /api/news。</p>
             </div>
           </div>
           <div v-loading="relatedLoading" class="related-list">
-            <el-empty v-if="!relatedLoading && relatedNews.length === 0" description="暂无更多新闻" />
+            <el-empty v-if="!relatedLoading && relatedNews.length === 0" description="暂无更多资讯" />
             <button v-for="item in relatedNews" :key="item.newsId" class="related-item" @click="openRelated(item)">
               <span>{{ newsTypeLabel(item.category || item.newsType) }}</span>
               <strong>{{ item.title }}</strong>
@@ -152,7 +184,7 @@ function publishTime(item?: News | null) {
         <section class="panel placeholder-panel">
           <h2>内容说明</h2>
           <p>
-            外部资讯仅保留清洗后的摘要或正文片段，并标明来源。站内通知与公开内容分别存储和读取。
+            外部资讯仅保留安全清洗后的正文，并标明来源。站内消息与公开内容分别存储和读取。
           </p>
         </section>
       </aside>
@@ -241,14 +273,38 @@ function publishTime(item?: News | null) {
 
 .article-content {
   padding-top: 20px;
-}
-
-.article-content p {
-  margin: 0 0 16px;
+  overflow-wrap: anywhere;
   color: #172033;
   font-size: 16px;
   line-height: 1.9;
 }
+
+.article-content :deep(p) {
+  margin: 0 0 16px;
+}
+
+.article-content :deep(h1),
+.article-content :deep(h2),
+.article-content :deep(h3),
+.article-content :deep(h4) { margin: 28px 0 12px; color: #10274c; line-height: 1.45; }
+.article-content :deep(h1) { font-size: 24px; }
+.article-content :deep(h2) { font-size: 21px; }
+.article-content :deep(h3) { font-size: 18px; }
+.article-content :deep(h4) { font-size: 16px; }
+.article-content :deep(ul), .article-content :deep(ol) { margin: 0 0 18px; padding-left: 28px; }
+.article-content :deep(li + li) { margin-top: 7px; }
+.article-content :deep(blockquote) { margin: 20px 0; padding: 12px 16px; border-left: 4px solid #7bb2df; background: #f3f8fc; color: #53657a; }
+.article-content :deep(table) { width: max-content; min-width: 100%; border-collapse: collapse; }
+.article-content :deep(thead) { background: #edf5fb; }
+.article-content :deep(th), .article-content :deep(td) { min-width: 100px; padding: 10px 12px; border: 1px solid #d9e3ec; text-align: left; vertical-align: top; }
+.article-content :deep(a) { color: #1769aa; overflow-wrap: anywhere; }
+.article-content :deep(table) { display: block; max-width: 100%; overflow-x: auto; }
+
+.content-state { margin-top: 20px; padding: 18px; border-radius: 8px; background: #f8fafc; color: #64748b; text-align: center; }
+.attachment-panel { display: flex; align-items: center; justify-content: space-between; gap: 18px; margin-top: 24px; padding: 16px; border-radius: 8px; background: #f3f8fc; }
+.attachment-panel > div { display: grid; min-width: 0; gap: 4px; }
+.attachment-panel strong { overflow-wrap: anywhere; color: #173a60; }
+.attachment-panel small, .attachment-label { color: #718096; font-size: 12px; }
 
 .side-stack {
   display: grid;
