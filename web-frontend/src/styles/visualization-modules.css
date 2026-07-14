@@ -196,7 +196,7 @@
 .visual-app-shell .visual-module-page .model-card:hover { border-color: rgba(82, 232, 255, 0.48); transform: translateY(-2px); box-shadow: 0 12px 28px rgba(0, 10, 34, 0.38), inset 0 1px rgba(82, 232, 255, 0.2); }
 .visual-app-shell .visual-module-page .model-icon,
 .visual-app-shell .visual-module-page .detail-icon { border-color: rgba(82, 232, 255, 0.24); border-radius: 0; background: rgba(24, 106, 180, 0.14); }
-.marketplace-detail-drawer { color: #c6e6ed; background: linear-gradient(180deg, #082349, #04172f) !important; }
+body:has(.visual-app-shell) .marketplace-detail-drawer { color: #c6e6ed; background: linear-gradient(180deg, #082349, #04172f) !important; }
 
 /* API service */
 .visual-app-shell .visual-module-page .summary-grid,
