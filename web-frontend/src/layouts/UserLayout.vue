@@ -50,7 +50,7 @@ function logout() {
   <div class="app-layout user-layout">
     <aside class="app-sidebar">
       <router-link class="app-logo" to="/dashboard" aria-label="光伏智云首页">
-        <img class="brand-icon" src="https://api.iconify.design/solar:sun-2-linear.svg?color=%23202124" alt="" aria-hidden="true" />
+        <img class="brand-icon" src="/images/logo.png" alt="" aria-hidden="true" />
         <span class="brand-lockup"><span class="brand-wordmark">GuangFu</span><span class="brand-cn">光伏智云</span></span>
       </router-link>
       <el-menu :default-active="activePath" :default-openeds="[...(modelGroupOpen ? ['model-group'] : []), ...(apiGroupOpen ? ['api-group'] : [])]" router class="app-menu">

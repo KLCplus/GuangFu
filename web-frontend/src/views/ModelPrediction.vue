@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
+import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { getModels } from '../api/model'
 import { createPrediction, getPredictionResults } from '../api/prediction'
@@ -40,6 +41,9 @@ const categories: ModelCategoryOption[] = [
   { value: 'cloud-sequence', label: '云图时空模型' },
   { value: 'multimodal', label: '多模态融合模型' }
 ]
+
+const route = useRoute()
+const isVisualizationTheme = computed(() => route.path.startsWith('/visualization-ui/'))
 
 const fallbackModels: UsableModel[] = [
   { modelId: 1001, modelName: 'PatchTST 功率预测', modelCode: 'patchtst_power', category: 'power-sequence' },
@@ -207,7 +211,7 @@ async function runPrediction() {
     return
   }
   if (!selectedApiKeyId.value) {
-    ElMessage.warning("请先选择 API Key；没有可用 Key 时请前往 API 平台创建并充值")
+    ElMessage.warning('当前账户没有可用的 API Key，请先前往 API 平台创建')
     return
   }
   if (!dataFile.value) {
@@ -298,11 +302,14 @@ function formatDateTime(date: Date) {
 </script>
 
 <template>
-  <section class="page-shell model-page" v-loading="loading">
-    <div class="page-heading">
+  <section
+    class="page-shell model-page"
+    :class="{ 'model-workbench': isVisualizationTheme }"
+    v-loading="loading"
+  >
+    <div v-if="!isVisualizationTheme" class="page-heading">
       <h1>模型预测</h1>
     </div>
-
     <section class="page-section control-panel">
       <div class="control-grid">
         <div class="control-group">
@@ -324,12 +331,7 @@ function formatDateTime(date: Date) {
               </el-select>
             </el-form-item>
 
-            <el-form-item label="计费 API Key">
-              <el-select v-model="selectedApiKeyId" class="full-control" placeholder="选择本次调用使用的 Key">
-                <el-option v-for="key in apiKeys" :key="key.apiKeyId" :label="key.keyName + String.fromCharCode(32,183,32) + (key.apiKeyPrefix || String.fromCharCode(75,101,121,32,35) + key.apiKeyId)" :value="key.apiKeyId" />
-              </el-select>
-              <p class="key-billing-hint">成功预测后按账户额度扣费，并写入所选 Key 的使用统计。</p>
-            </el-form-item>
+
           </div>
         </div>
 
@@ -646,5 +648,309 @@ function formatDateTime(date: Date) {
   .result-actions {
     justify-content: flex-start;
   }
+}
+
+/* Prediction workbench — deliberately denser than the generic module cards. */
+.model-workbench {
+  --mp-ink: #071a34;
+  --mp-panel: rgba(9, 35, 67, 0.86);
+  --mp-panel-strong: #0b284b;
+  --mp-line: rgba(114, 202, 239, 0.22);
+  --mp-cyan: #6ee7f5;
+  --mp-sun: #ffca66;
+  gap: 18px;
+  max-width: 1680px;
+  margin: 0 auto;
+}
+
+.model-workbench .page-heading {
+  position: relative;
+  min-height: 84px;
+  padding: 14px 4px 14px 76px;
+  display: flex;
+  align-items: center;
+}
+
+.model-workbench .page-heading::before {
+  content: "AI";
+  position: absolute;
+  left: 0;
+  top: 10px;
+  width: 54px;
+  height: 54px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(110, 231, 245, 0.5);
+  background: linear-gradient(145deg, rgba(110, 231, 245, 0.14), rgba(7, 26, 52, 0.25));
+  color: var(--mp-cyan);
+  font: 700 15px/1 "Arial Narrow", "Microsoft YaHei", sans-serif;
+  letter-spacing: 0.18em;
+  box-shadow: inset 0 0 24px rgba(110, 231, 245, 0.08);
+  clip-path: polygon(0 0, 82% 0, 100% 18%, 100% 100%, 18% 100%, 0 82%);
+}
+
+.model-workbench .page-heading h1 {
+  margin: 0;
+  font-size: clamp(26px, 2vw, 36px);
+  font-weight: 650;
+  letter-spacing: 0.04em;
+}
+
+.model-workbench .page-heading::after {
+  content: "组合数据源与预测模型，生成未来功率曲线";
+  position: absolute;
+  left: 78px;
+  bottom: 5px;
+  color: rgba(178, 205, 229, 0.68);
+  font-size: 13px;
+  letter-spacing: 0.04em;
+}
+
+.model-workbench .page-section {
+  border: 1px solid var(--mp-line);
+  border-radius: 12px;
+  background: linear-gradient(135deg, rgba(10, 38, 72, 0.94), rgba(6, 25, 50, 0.9));
+  box-shadow: 0 22px 50px rgba(1, 11, 27, 0.18), inset 0 1px rgba(255, 255, 255, 0.025);
+}
+
+.model-workbench .control-panel {
+  position: relative;
+  padding: 0;
+  overflow: visible;
+}
+
+.model-workbench .control-grid {
+  grid-template-columns: 1.08fr 0.92fr;
+  gap: 0;
+}
+
+.model-workbench .control-group {
+  position: relative;
+  overflow: visible;
+  padding: 52px 30px 28px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.model-workbench .control-group + .control-group {
+  border-left: 1px solid var(--mp-line);
+}
+
+.model-workbench .control-group::before {
+  position: absolute;
+  left: 30px;
+  top: 20px;
+  color: var(--mp-cyan);
+  font: 700 11px/1 "Arial Narrow", sans-serif;
+  letter-spacing: 0.16em;
+}
+
+.model-workbench .control-group:first-child::before { content: "01  选择预测引擎"; }
+.model-workbench .control-group:last-child::before { content: "02  接入输入数据"; }
+
+.model-workbench .model-picker {
+  grid-template-columns: minmax(160px, 0.72fr) minmax(260px, 1.28fr);
+  gap: 16px;
+}
+
+.model-workbench :deep(.el-form-item__label),
+.model-workbench .file-label {
+  height: auto;
+  margin-bottom: 9px;
+  color: rgba(185, 211, 233, 0.72);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: 0.06em;
+}
+
+.model-workbench :deep(.el-select__wrapper) {
+  min-height: 46px;
+  border: 1px solid rgba(105, 177, 218, 0.26);
+  border-radius: 7px;
+  background: rgba(4, 22, 45, 0.66);
+  box-shadow: none;
+}
+
+.model-workbench :deep(.el-select__wrapper:hover),
+.model-workbench :deep(.el-select__wrapper.is-focused) {
+  border-color: rgba(110, 231, 245, 0.7);
+  box-shadow: 0 0 0 3px rgba(110, 231, 245, 0.08);
+}
+
+.model-workbench :deep(.el-select__selected-item) { color: #e9f7ff; }
+
+.model-workbench .input-row { gap: 14px; }
+
+.model-workbench .file-control {
+  position: relative;
+  min-height: 86px;
+  padding: 16px 16px 16px 54px;
+  border: 1px dashed rgba(110, 231, 245, 0.34);
+  border-radius: 8px;
+  background: rgba(5, 25, 50, 0.56);
+  transition: border-color 160ms ease, background 160ms ease, transform 160ms ease;
+}
+
+.model-workbench .file-control::before {
+  content: "+";
+  position: absolute;
+  left: 16px;
+  top: 50%;
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(110, 231, 245, 0.55);
+  border-radius: 50%;
+  color: var(--mp-cyan);
+  font: 300 20px/1 sans-serif;
+  transform: translateY(-50%);
+}
+
+.model-workbench .file-control:hover {
+  border-color: var(--mp-cyan);
+  background: rgba(21, 67, 98, 0.46);
+  transform: translateY(-2px);
+}
+
+.model-workbench .file-control strong { color: #e7f5ff; font-size: 13px; }
+
+.model-workbench .result-section { padding: 26px 30px 30px; }
+
+.model-workbench .panel-head {
+  align-items: center;
+  margin-bottom: 22px;
+  padding-bottom: 18px;
+  border-bottom: 1px solid var(--mp-line);
+}
+
+.model-workbench .panel-head h3 {
+  font-size: 20px;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+}
+
+.model-workbench .panel-head h3::before {
+  content: "03";
+  margin-right: 12px;
+  color: var(--mp-cyan);
+  font: 700 11px/1 "Arial Narrow", sans-serif;
+  letter-spacing: 0.12em;
+}
+
+.model-workbench :deep(.el-button--primary) {
+  min-width: 132px;
+  height: 44px;
+  border: 0;
+  border-radius: 6px;
+  background: linear-gradient(135deg, #39b9dd, #62dce9);
+  color: #061d35;
+  font-weight: 800;
+  box-shadow: 0 8px 22px rgba(64, 205, 229, 0.22);
+}
+
+.model-workbench :deep(.el-button--primary:hover) {
+  background: linear-gradient(135deg, #61d7ed, #87edf3);
+  transform: translateY(-1px);
+}
+
+.model-workbench .result-layout {
+  grid-template-columns: minmax(0, 1fr) 210px;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.model-workbench .result-chart {
+  position: relative;
+  min-height: 300px;
+  overflow: hidden;
+  border-color: rgba(110, 231, 245, 0.18);
+  border-radius: 10px;
+  background-color: rgba(4, 22, 44, 0.72);
+  background-image: linear-gradient(rgba(100, 184, 218, 0.055) 1px, transparent 1px), linear-gradient(90deg, rgba(100, 184, 218, 0.055) 1px, transparent 1px);
+  background-size: 100% 25%, 12.5% 100%;
+}
+
+.model-workbench .result-chart::before {
+  content: "FUTURE OUTPUT · kW";
+  position: absolute;
+  left: 18px;
+  top: 16px;
+  color: rgba(150, 194, 220, 0.5);
+  font: 700 10px/1 "Arial Narrow", sans-serif;
+  letter-spacing: 0.14em;
+}
+
+.model-workbench .result-chart svg { height: 300px; }
+.model-workbench .chart-axis { stroke: rgba(178, 213, 232, 0.34); }
+.model-workbench .chart-line { stroke: var(--mp-cyan); stroke-width: 3.5; filter: drop-shadow(0 0 7px rgba(110, 231, 245, 0.34)); }
+.model-workbench .chart-point { fill: var(--mp-ink); stroke: var(--mp-cyan); stroke-width: 2.5; }
+
+.model-workbench .result-summary { gap: 16px; }
+
+.model-workbench .result-summary span {
+  position: relative;
+  min-height: 142px;
+  padding: 22px;
+  overflow: hidden;
+  border: 1px solid rgba(110, 231, 245, 0.18);
+  border-radius: 10px;
+  background: linear-gradient(145deg, rgba(17, 55, 88, 0.82), rgba(7, 28, 54, 0.88));
+  color: rgba(179, 207, 227, 0.65);
+  font-size: 13px;
+}
+
+.model-workbench .result-summary span::after {
+  content: "";
+  position: absolute;
+  right: -25px;
+  bottom: -25px;
+  width: 80px;
+  height: 80px;
+  border: 1px solid rgba(110, 231, 245, 0.12);
+  border-radius: 50%;
+}
+
+.model-workbench .result-summary b {
+  margin-top: 20px;
+  color: #f3fbff;
+  font: 650 26px/1.1 "Arial Narrow", "Microsoft YaHei", sans-serif;
+}
+
+.model-workbench :deep(.el-table) {
+  --el-table-bg-color: transparent;
+  --el-table-tr-bg-color: transparent;
+  --el-table-header-bg-color: rgba(7, 29, 56, 0.92);
+  --el-table-row-hover-bg-color: rgba(43, 105, 137, 0.18);
+  --el-table-border-color: rgba(110, 190, 225, 0.13);
+  --el-table-text-color: rgba(220, 238, 249, 0.82);
+  --el-table-header-text-color: rgba(160, 199, 223, 0.72);
+  overflow: hidden;
+  border: 1px solid rgba(110, 190, 225, 0.13);
+  border-radius: 9px;
+}
+
+@media (max-width: 1180px) {
+  .model-workbench .control-grid { grid-template-columns: 1fr; }
+  .model-workbench .control-group + .control-group { border-left: 0; border-top: 1px solid var(--mp-line); }
+  .model-workbench .result-layout { grid-template-columns: 1fr; }
+  .model-workbench .result-summary { grid-template-columns: repeat(2, 1fr); }
+}
+
+@media (max-width: 760px) {
+  .model-workbench .page-heading { padding-left: 64px; }
+  .model-workbench .page-heading::after { left: 66px; font-size: 11px; }
+  .model-workbench .control-group { padding: 50px 18px 22px; }
+  .model-workbench .control-group::before { left: 18px; }
+  .model-workbench .result-section { padding: 20px 16px; }
+  .model-workbench .result-summary { grid-template-columns: 1fr; }
+  .model-workbench .result-summary span { min-height: 110px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .model-workbench .file-control,
+  .model-workbench :deep(.el-button--primary) { transition: none; }
 }
 </style>

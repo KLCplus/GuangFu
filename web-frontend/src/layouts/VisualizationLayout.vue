@@ -1,17 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import {
-  Bell,
-  Cloudy,
-  Cpu,
-  DataAnalysis,
-  Document,
-  Grid,
-  House,
-  Sunny,
-  User
-} from '@element-plus/icons-vue'
+import { ArrowLeftBold, ArrowRightBold, House, Management } from '@element-plus/icons-vue'
 import { useUserStore } from '../store/user'
 import ThemeToggle from '../components/ThemeToggle.vue'
 
@@ -20,6 +10,7 @@ const router = useRouter()
 const userStore = useUserStore()
 const currentTime = ref('')
 const currentDate = ref('')
+const sidebarCollapsed = ref(false)
 let clockTimer: number | undefined
 
 const navGroups = [
@@ -27,37 +18,37 @@ const navGroups = [
     label: '运行监控',
     code: 'OPERATIONS',
     items: [
-      { path: '/visualization-ui/cockpit', label: '能源驾驶舱', code: 'PV', icon: DataAnalysis },
-      { path: '/visualization-ui/pvoutput', label: '公开电站', code: 'OP', icon: Sunny },
-      { path: '/visualization-ui/weather', label: '气象监测', code: 'WX', icon: Cloudy }
+      { path: '/visualization-ui/cockpit', label: '智控中心', code: 'PV', icon: '/images/overview.png' },
+      { path: '/visualization-ui/pvoutput', label: '公开电站', code: 'OP', icon: '/images/station.png' },
+      { path: '/visualization-ui/weather', label: '气象监测', code: 'WX', icon: '/images/weather.png' }
     ]
   },
   {
     label: '智能预测',
     code: 'FORECAST',
     items: [
-      { path: '/visualization-ui/models/use', label: '模型应用', code: 'AI', icon: Cpu },
-      { path: '/visualization-ui/cloud-forecast', label: '云图预测', code: 'CLD', icon: Cloudy },
-      { path: '/visualization-ui/marketplace', label: '模型广场', code: 'MKT', icon: Grid }
+      { path: '/visualization-ui/models/use', label: '模型应用', code: 'AI', icon: '/images/model.png' },
+      { path: '/visualization-ui/cloud-forecast', label: '云图预测', code: 'CLD', icon: '/images/clouds_prediction.png' },
+      { path: '/visualization-ui/marketplace', label: '模型广场', code: 'MKT', icon: '/images/models.png' }
     ]
   },
   {
     label: '开放服务',
     code: 'OPEN SERVICE',
     items: [
-      { path: '/visualization-ui/api/overview', label: 'API 概览', code: 'API', icon: Document },
-      { path: '/visualization-ui/api/keys', label: 'API Keys', code: 'KEY', icon: Document },
-      { path: '/visualization-ui/api/billing', label: '余额与流水', code: 'WAL', icon: Document },
-      { path: '/visualization-ui/api/usage', label: '使用统计', code: 'USE', icon: DataAnalysis }
+      { path: '/visualization-ui/api/overview', label: 'API 概览', code: 'API', icon: '/images/api.png' },
+      { path: '/visualization-ui/api/keys', label: 'API Keys', code: 'KEY', icon: '/images/keys.png' },
+      { path: '/visualization-ui/api/billing', label: '余额与流水', code: 'WAL', icon: '/images/balance.png' },
+      { path: '/visualization-ui/api/usage', label: '使用统计', code: 'USE', icon: '/images/use_statistics.png' }
     ]
   },
   {
     label: '数据与协作',
     code: 'DATA CENTER',
     items: [
-      { path: '/visualization-ui/reports', label: 'Agent 分析', code: 'AGT', icon: DataAnalysis },
-      { path: '/visualization-ui/news', label: '新闻通知', code: 'NEWS', icon: Bell },
-      { path: '/visualization-ui/profile', label: '个人中心', code: 'ID', icon: User }
+      { path: '/visualization-ui/reports', label: 'Agent 分析', code: 'AGT', icon: '/images/agent.png' },
+      { path: '/visualization-ui/news', label: '新闻通知', code: 'NEWS', icon: '/images/news.png' },
+      { path: '/visualization-ui/profile', label: '个人中心', code: 'ID', icon: '/images/my.png' }
     ]
   }
 ]
@@ -102,7 +93,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="visual-app-shell">
+  <div class="visual-app-shell" :class="{ 'is-sidebar-collapsed': sidebarCollapsed }">
     <div class="visual-shell-atmosphere" aria-hidden="true">
       <i class="visual-shell-orbit orbit-a"></i>
       <i class="visual-shell-orbit orbit-b"></i>
@@ -110,30 +101,32 @@ onBeforeUnmount(() => {
     </div>
 
     <aside class="visual-sidebar">
-      <router-link class="visual-brand" to="/visualization-ui/cockpit" aria-label="进入能源驾驶舱">
+      <router-link class="visual-brand" to="/visualization-ui/cockpit" aria-label="进入光伏智控中心">
         <span class="visual-brand-core" aria-hidden="true">
-          <el-icon><Sunny /></el-icon>
+          <img src="/images/logo.png" alt="" />
           <i></i>
         </span>
         <span class="visual-brand-copy">
-          <small>PHOTOVOLTAIC ENERGY OS</small>
           <strong>光伏智云</strong>
-          <em>GUANGFU CONTROL</em>
         </span>
       </router-link>
+      <button
+        type="button"
+        class="visual-sidebar-toggle"
+        :aria-label="sidebarCollapsed ? '展开侧栏' : '收起侧栏'"
+        :title="sidebarCollapsed ? '展开侧栏' : '收起侧栏'"
+        @click="sidebarCollapsed = !sidebarCollapsed"
+      >
+        <el-icon><component :is="sidebarCollapsed ? ArrowRightBold : ArrowLeftBold" /></el-icon>
+      </button>
 
-      <div class="visual-system-state">
-        <span><i></i> SYSTEM ONLINE</span>
-        <b>GF / 01</b>
-      </div>
       <div class="visual-console-scope">
         <span>用户运行端</span>
-        <small>USER CONSOLE</small>
       </div>
 
       <nav class="visual-nav" aria-label="可视化模式导航">
         <section v-for="group in navGroups" :key="group.code" class="visual-nav-group">
-          <p><span>{{ group.label }}</span><small>{{ group.code }}</small></p>
+          <p><span>{{ group.label }}</span></p>
           <router-link
             v-for="item in group.items"
             :key="item.path"
@@ -142,9 +135,8 @@ onBeforeUnmount(() => {
             :class="{ active: isActive(item.path) }"
           >
             <span class="nav-energy-node"><i></i></span>
-            <el-icon><component :is="item.icon" /></el-icon>
+            <img class="visual-nav-icon" :src="item.icon" alt="" aria-hidden="true" />
             <span>{{ item.label }}</span>
-            <small>{{ item.code }}</small>
           </router-link>
         </section>
       </nav>
@@ -155,15 +147,13 @@ onBeforeUnmount(() => {
           v-if="userStore.hasRole('ADMIN')"
           type="button"
           class="visual-admin-entry"
+          title="进入管理端"
+          aria-label="进入管理端"
           @click="router.push('/visualization-admin/users-apis')"
         >
+          <el-icon aria-hidden="true"><Management /></el-icon>
           <span>进入管理端</span>
-          <small>ADMIN CONSOLE ↗</small>
         </button>
-        <div class="visual-channel-state">
-          <span><i></i>能源数据通道</span>
-          <strong>实时</strong>
-        </div>
         <div class="visual-user">
           <el-avatar :size="34" :src="userStore.userInfo.avatarUrl">{{ displayName.charAt(0) }}</el-avatar>
           <span><strong>{{ displayName }}</strong><small>{{ userStore.hasRole('ADMIN') ? '系统管理员' : '运行用户' }}</small></span>
@@ -185,18 +175,12 @@ onBeforeUnmount(() => {
           <span><i></i>数据链路正常</span>
           <div><strong>{{ currentTime }}</strong><small>{{ currentDate }}</small></div>
         </div>
-        <ThemeToggle />
       </header>
 
       <main class="visual-content">
         <router-view />
       </main>
 
-      <footer v-if="!isCockpit" class="visual-shell-footer">
-        <span>GUANGFU DIGITAL ENERGY PLATFORM</span>
-        <span><i></i> SERVICE STATUS · NORMAL</span>
-        <span>DATA UPDATE · REAL-TIME</span>
-      </footer>
     </section>
   </div>
 </template>

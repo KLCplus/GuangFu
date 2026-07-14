@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { Monitor } from '@element-plus/icons-vue'
 
 const route = useRoute()
 const router = useRouter()
 
-const visual = computed(() => route.path.startsWith('/visualization-ui'))
+const visual = computed(() => route.path.startsWith('/visualization-ui') || route.path.startsWith('/visualization-admin'))
 
 const pairs: Record<string, string> = {
   '/dashboard': '/visualization-ui/cockpit',
@@ -18,7 +19,12 @@ const pairs: Record<string, string> = {
   '/api/usage': '/visualization-ui/api/usage',
   '/reports': '/visualization-ui/reports',
   '/news': '/visualization-ui/news',
-  '/profile': '/visualization-ui/profile'
+  '/profile': '/visualization-ui/profile',
+  '/admin/users-apis': '/visualization-admin/users-apis',
+  '/admin/pvoutput': '/visualization-admin/pvoutput',
+  '/admin/models': '/visualization-admin/models',
+  '/admin/news': '/visualization-admin/news',
+  '/admin/announcements': '/visualization-admin/announcements'
 }
 
 function toggle() {
@@ -34,14 +40,14 @@ function toggle() {
 </script>
 
 <template>
-  <button class="theme-toggle" type="button" :aria-label="visual ? '切换标准主题' : '切换可视化主题'" @click="toggle">
-    <span class="theme-toggle-dot" aria-hidden="true"></span>
-    {{ visual ? '标准主题' : '可视化主题' }}
+  <button class="theme-toggle" type="button" :aria-label="visual ? '切换标准主题' : '切换可视化主题'" :title="visual ? '切换标准主题' : '切换可视化主题'" @click="toggle">
+    <el-icon class="theme-toggle-icon" aria-hidden="true"><Monitor /></el-icon>
+    <span class="theme-toggle-label">{{ visual ? '标准主题' : '可视化主题' }}</span>
   </button>
 </template>
 
 <style scoped>
-.theme-toggle { display: inline-flex; align-items: center; gap: 7px; border: 1px solid currentColor; border-radius: 7px; padding: 6px 9px; background: transparent; color: inherit; font: inherit; font-size: 12px; cursor: pointer; opacity: .82; }
+.theme-toggle { display: inline-flex; align-items: center; justify-content: flex-start; gap: 7px; width: 100%; min-height: 34px; border: 1px solid currentColor; border-radius: 7px; padding: 6px 9px; background: transparent; color: inherit; font: inherit; font-size: 12px; cursor: pointer; opacity: .82; }
 .theme-toggle:hover { opacity: 1; }
-.theme-toggle-dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+.theme-toggle-icon { flex: 0 0 auto; font-size: 16px; }
 </style>

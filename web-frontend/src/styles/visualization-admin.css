@@ -26,7 +26,6 @@
 
 .visual-admin-shell .visual-brand-core i,
 .visual-admin-shell .visual-system-state i,
-.visual-admin-shell .visual-channel-state i,
 .visual-admin-shell .visual-clock > span i,
 .visual-admin-shell .visual-shell-footer i {
   background: var(--viz-admin);
@@ -64,10 +63,17 @@
   box-shadow: 0 0 10px var(--viz-admin);
 }
 
-.visual-admin-shell .visual-nav-item.active .el-icon {
-  color: var(--viz-admin);
-  filter: drop-shadow(0 0 5px rgba(255, 196, 92, 0.5));
+.visual-admin-shell .visual-nav-item.active .visual-nav-icon { filter: brightness(0) invert(1) drop-shadow(0 0 5px rgba(255, 196, 92, 0.65)); }
+
+.visual-admin-shell .visual-sidebar-toggle {
+  border-color: rgba(255, 196, 92, 0.55);
+  background: #2d251c;
+  box-shadow: 0 0 12px rgba(255, 196, 92, 0.22);
 }
+
+.visual-admin-shell .visual-sidebar-toggle:hover { border-color: var(--viz-admin); background: #49351d; }
+
+.visual-admin-shell .module-command-icon > img { filter: brightness(0) invert(1) drop-shadow(0 0 6px rgba(255, 196, 92, 0.55)); }
 
 .visual-admin-shell .visual-nav-item.active .nav-energy-node i {
   border-color: #fff4dc;
@@ -78,7 +84,8 @@
 .visual-user-entry {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-start;
+  gap: 8px;
   min-height: 34px;
   padding: 0 10px;
   border: 1px solid rgba(82, 232, 255, 0.2);
@@ -119,13 +126,11 @@
   background: radial-gradient(circle, rgba(151, 94, 23, 0.32), rgba(4, 27, 58, 0.78));
 }
 
-.visual-admin-shell .module-command-icon > i,
-.visual-admin-shell .module-telemetry em i {
+.visual-admin-shell .module-command-icon > i {
   background: var(--viz-admin);
   box-shadow: 0 0 8px var(--viz-admin);
 }
 
-.visual-admin-shell .module-telemetry em { color: var(--viz-admin); }
 .visual-admin-shell .module-heading-axis { background: linear-gradient(90deg, rgba(255, 196, 92, 0.54), rgba(82, 232, 255, 0.06) 42%, transparent); }
 .visual-admin-shell .module-heading-axis i { background: #fff2d3; box-shadow: 0 0 8px var(--viz-admin); }
 .visual-admin-shell .module-heading-axis b { border-top-color: rgba(255, 196, 92, 0.42); }

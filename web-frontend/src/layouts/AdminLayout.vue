@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useUserStore } from '../store/user'
+import ThemeToggle from '../components/ThemeToggle.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -33,7 +34,7 @@ function logout() {
     <aside class="admin-sidebar">
       <router-link class="admin-brand" to="/admin/users-apis">
         <span class="admin-brand-mark">
-          PV
+          <img class="admin-brand-logo" src="/images/logo.png" alt="" aria-hidden="true" />
         </span>
         <div class="admin-brand-text">
           <span class="admin-brand-title">光伏平台</span>
@@ -55,6 +56,7 @@ function logout() {
       </el-menu>
 
       <div class="admin-sidebar-footer">
+        <ThemeToggle class="admin-theme-toggle" />
         <el-button text class="back-to-user" @click="router.push('/dashboard')">
           返回用户端
         </el-button>
@@ -83,7 +85,7 @@ function logout() {
 <style scoped>
 .admin-shell {
   display: grid;
-  grid-template-columns: 176px minmax(0, 1fr);
+  grid-template-columns: var(--layout-sidebar-width) minmax(0, 1fr);
   min-height: 100vh;
   background: #f0f2f5;
   overflow-x: hidden;
@@ -118,10 +120,15 @@ function logout() {
   height: 36px;
   flex: 0 0 36px;
   border-radius: 8px;
-  background: var(--color-primary);
-  color: #ffffff;
-  font-weight: 800;
-  font-size: 14px;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.admin-brand-logo {
+  display: block;
+  width: 27px;
+  height: 27px;
+  object-fit: contain;
+  filter: brightness(0) invert(1);
 }
 
 .admin-brand-text {
@@ -172,6 +179,15 @@ function logout() {
   gap: 6px;
   padding-top: 12px;
   border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.admin-theme-toggle {
+  color: rgba(255, 255, 255, 0.65);
+}
+
+.admin-theme-toggle:hover {
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.08);
 }
 
 .back-to-user {

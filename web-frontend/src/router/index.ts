@@ -25,7 +25,7 @@ const routes: RouteRecordRaw[] = [
     path: '/visualization',
     name: 'Visualization',
     component: () => import('../views/Visualization.vue'),
-    meta: { requiresAuth: true, title: '光伏能源运行驾驶舱' }
+    meta: { requiresAuth: true, title: '光伏智控中心' }
   },
   {
     path: '/visualization-ui',
@@ -37,7 +37,7 @@ const routes: RouteRecordRaw[] = [
         path: 'cockpit',
         name: 'VisualizationCockpit',
         component: () => import('../views/VisualizationCockpit.vue'),
-        meta: { title: '光伏能源运行驾驶舱' }
+        meta: { title: '光伏智控中心' }
       },
       {
         path: 'pvoutput',

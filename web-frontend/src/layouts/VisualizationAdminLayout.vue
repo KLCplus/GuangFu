@@ -1,14 +1,16 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { Bell, Cpu, Document, House, Key, Sunny, Tools } from '@element-plus/icons-vue'
+import { ArrowLeftBold, ArrowRightBold, House, User } from '@element-plus/icons-vue'
 import { useUserStore } from '../store/user'
+import ThemeToggle from '../components/ThemeToggle.vue'
 
 const route = useRoute()
 const router = useRouter()
 const userStore = useUserStore()
 const currentTime = ref('')
 const currentDate = ref('')
+const sidebarCollapsed = ref(false)
 let clockTimer: number | undefined
 
 const navGroups = [
@@ -16,17 +18,17 @@ const navGroups = [
     label: '平台资源',
     code: 'PLATFORM ASSETS',
     items: [
-      { path: '/visualization-admin/users-apis', label: '用户与 API', code: 'IAM', icon: Key },
-      { path: '/visualization-admin/pvoutput', label: '数据源管理', code: 'SRC', icon: Sunny },
-      { path: '/visualization-admin/models', label: '模型管理', code: 'MDL', icon: Cpu }
+      { path: '/visualization-admin/users-apis', label: '用户与 API', code: 'IAM', icon: '/images/keys.png' },
+      { path: '/visualization-admin/pvoutput', label: '数据源管理', code: 'SRC', icon: '/images/pvout_source.png' },
+      { path: '/visualization-admin/models', label: '模型管理', code: 'MDL', icon: '/images/models.png' }
     ]
   },
   {
     label: '内容运营',
     code: 'CONTENT OPS',
     items: [
-      { path: '/visualization-admin/news', label: '新闻管理', code: 'NEWS', icon: Bell },
-      { path: '/visualization-admin/announcements', label: '公告管理', code: 'NTF', icon: Document }
+      { path: '/visualization-admin/news', label: '新闻管理', code: 'NEWS', icon: '/images/news.png' },
+      { path: '/visualization-admin/announcements', label: '公告管理', code: 'NTF', icon: '/images/announcement.png' }
     ]
   }
 ]
@@ -70,7 +72,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="visual-app-shell visual-admin-shell">
+  <div class="visual-app-shell visual-admin-shell" :class="{ 'is-sidebar-collapsed': sidebarCollapsed }">
     <div class="visual-shell-atmosphere" aria-hidden="true">
       <i class="visual-shell-orbit orbit-a"></i>
       <i class="visual-shell-orbit orbit-b"></i>
@@ -80,28 +82,30 @@ onBeforeUnmount(() => {
     <aside class="visual-sidebar">
       <router-link class="visual-brand" to="/visualization-admin/users-apis" aria-label="进入平台管理控制台">
         <span class="visual-brand-core" aria-hidden="true">
-          <el-icon><Tools /></el-icon>
+          <img src="/images/logo.png" alt="" />
           <i></i>
         </span>
         <span class="visual-brand-copy">
-          <small>PHOTOVOLTAIC ADMIN OS</small>
           <strong>光伏管控</strong>
-          <em>GUANGFU ADMIN</em>
         </span>
       </router-link>
+      <button
+        type="button"
+        class="visual-sidebar-toggle"
+        :aria-label="sidebarCollapsed ? '展开侧栏' : '收起侧栏'"
+        :title="sidebarCollapsed ? '展开侧栏' : '收起侧栏'"
+        @click="sidebarCollapsed = !sidebarCollapsed"
+      >
+        <el-icon><component :is="sidebarCollapsed ? ArrowRightBold : ArrowLeftBold" /></el-icon>
+      </button>
 
-      <div class="visual-system-state">
-        <span><i></i> ADMIN CHANNEL</span>
-        <b>GF / A1</b>
-      </div>
       <div class="visual-console-scope">
         <span>平台管理端</span>
-        <small>ADMIN CONSOLE</small>
       </div>
 
       <nav class="visual-nav" aria-label="可视化管理端导航">
         <section v-for="group in navGroups" :key="group.code" class="visual-nav-group">
-          <p><span>{{ group.label }}</span><small>{{ group.code }}</small></p>
+          <p><span>{{ group.label }}</span></p>
           <router-link
             v-for="item in group.items"
             :key="item.path"
@@ -110,22 +114,18 @@ onBeforeUnmount(() => {
             :class="{ active: isActive(item.path) }"
           >
             <span class="nav-energy-node"><i></i></span>
-            <el-icon><component :is="item.icon" /></el-icon>
+            <img class="visual-nav-icon" :src="item.icon" alt="" aria-hidden="true" />
             <span>{{ item.label }}</span>
-            <small>{{ item.code }}</small>
           </router-link>
         </section>
       </nav>
 
       <footer class="visual-sidebar-footer">
-        <button type="button" class="visual-user-entry" @click="router.push('/visualization-ui/cockpit')">
+        <ThemeToggle />
+        <button type="button" class="visual-user-entry" title="返回用户端" aria-label="返回用户端" @click="router.push('/visualization-ui/cockpit')">
+          <el-icon aria-hidden="true"><User /></el-icon>
           <span>返回用户运行端</span>
-          <small>USER CONSOLE ↗</small>
         </button>
-        <div class="visual-channel-state">
-          <span><i></i>管理权限通道</span>
-          <strong>已授权</strong>
-        </div>
         <div class="visual-user">
           <el-avatar :size="34" :src="userStore.userInfo.avatarUrl">{{ displayName.charAt(0) }}</el-avatar>
           <span><strong>{{ displayName }}</strong><small>系统管理员</small></span>
@@ -153,11 +153,6 @@ onBeforeUnmount(() => {
         <router-view />
       </main>
 
-      <footer class="visual-shell-footer">
-        <span>GUANGFU PLATFORM ADMINISTRATION</span>
-        <span><i></i> AUTHORITY STATUS · VERIFIED</span>
-        <span>CONTROL CHANNEL · SECURE</span>
-      </footer>
     </section>
   </div>
 </template>
