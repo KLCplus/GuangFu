@@ -10,6 +10,9 @@
 - Redis 已作为可选缓存/分布式状态层接入，本地开发可使用内存降级。
 - PC 用户端已接入看板聚合、模型广场、API 管理、云图预测代理、新闻通知、我的页面等接口；模型服务可按需单独启动。
 - 管理端用户、新闻、电站、模型、API Key 等接口已具备联调条件。
+- Agent 已统一迁移到 Spring AI Alibaba ReactAgent：所有已启用业务工具会注册为模型 ToolCallback，写操作继续经过权限和人工确认。
+- Web 同时提供标准业务主题和可视化能源驾驶舱主题，可通过页面内“主题切换”按钮在对应业务页面间切换。
+- 数据库初始化和历史增量结构已收束到唯一入口 `backend/src/main/resources/sql/init.sql`；本地真实配置统一使用根目录 `.env`。
 
 ## 技术栈
 
@@ -159,6 +162,14 @@ http://localhost:5173
 - 数据库说明：[docs/database.md](docs/database.md)
 - DeepSeek 分析报告配置：[docs/deepseek_integration.md](docs/deepseek_integration.md)
 - PC 用户端阶段进度：[docs/hanxxi-pc-user-work-summary.md](docs/hanxxi-pc-user-work-summary.md)
+- Agent 与项目收束说明：[docs/PROJECT_FINALIZATION.md](docs/PROJECT_FINALIZATION.md)
+- Alibaba Agent 迁移报告：[docs/agent-alibaba-migration-report.md](docs/agent-alibaba-migration-report.md)
+
+## Agent 与主题
+
+Agent 页面入口为 `/reports`，使用 Spring AI Alibaba ReactAgent，支持会话管理、SSE 流式输出、工具调用、权限确认、结构化结果、报告生成、签名、复制和聊天记录导出。工具清单可通过 `GET /api/agent/tools` 查看。
+
+登录后可在标准用户布局和可视化布局之间切换。标准页面使用 `/dashboard`、`/reports` 等路径；可视化页面使用 `/visualization-ui/cockpit`、`/visualization-ui/reports` 等对应路径，切换按钮会保留当前业务模块。
 
 ## 联调前置条件
 

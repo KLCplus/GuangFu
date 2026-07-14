@@ -13,6 +13,7 @@ import {
   User
 } from '@element-plus/icons-vue'
 import { useUserStore } from '../store/user'
+import ThemeToggle from '../components/ThemeToggle.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -149,6 +150,7 @@ onBeforeUnmount(() => {
       </nav>
 
       <footer class="visual-sidebar-footer">
+        <ThemeToggle />
         <button
           v-if="userStore.hasRole('ADMIN')"
           type="button"
@@ -183,6 +185,7 @@ onBeforeUnmount(() => {
           <span><i></i>数据链路正常</span>
           <div><strong>{{ currentTime }}</strong><small>{{ currentDate }}</small></div>
         </div>
+        <ThemeToggle />
       </header>
 
       <main class="visual-content">

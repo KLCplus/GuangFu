@@ -160,11 +160,6 @@ ENV
   default_env_value PVOUTPUT_INITIAL_DELAY_MS "30000"
   default_env_value PVOUTPUT_SYNC_INTERVAL_MS "600000"
   default_env_value ANALYSIS_LLM_ENABLED "true"
-  default_env_value AGENT_RUNTIME_MODE "migrated"
-  default_env_value AGENT_RUNTIME_PORT "9101"
-  default_env_value AGENT_RUNTIME_HOST "127.0.0.1"
-  default_env_value AGENT_RUNTIME_URL "http://127.0.0.1:9101"
-  default_env_value AGENT_INTERNAL_TOKEN "local-agent-runtime-token"
   default_env_value OAUTH_GITHUB_ENABLED "false"
   default_env_value MAIL_ENABLED "false"
   upsert_env_value SECURITY_DEBUG_OPEN "true"
@@ -458,10 +453,7 @@ start_frontend() {
 }
 
 should_start_agent_runtime() {
-  [[ "$frontend_only" == "1" ]] && return 1
-  [[ "$agent_runtime_mode" == "on" ]] && return 0
-  [[ "$agent_runtime_mode" == "off" ]] && return 1
-  [[ "$(read_env_value AGENT_RUNTIME_MODE)" == "migrated" ]]
+  return 1
 }
 
 start_agent_runtime() {

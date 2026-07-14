@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useUserStore } from '../store/user'
+import ThemeToggle from '../components/ThemeToggle.vue'
 import { DataAnalysis, Cpu, Cloudy, Document, Menu, Setting, User, Tools } from '@element-plus/icons-vue'
 
 const route = useRoute()
@@ -77,6 +78,7 @@ function logout() {
         </el-menu-item>
       </el-menu>
       <div class="app-sidebar-footer">
+        <ThemeToggle class="sidebar-theme-toggle" />
         <el-button
           v-if="userStore.hasRole('ADMIN')"
           text

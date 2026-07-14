@@ -11,6 +11,8 @@
 - QWeather JWT 天气 Provider 已接入，支持数据库缓存和失败降级。
 - Redis 是可选增强：本地可降级到内存，部署/多实例建议启用 Redis。
 - 前端接口以 [../docs/back_front_api.md](../docs/back_front_api.md) 为准。
+- Agent 运行时已统一使用 Spring AI Alibaba ReactAgent，旧 legacy/migrated runtime 入口已移除。
+- 所有已启用 Agent 工具会注册给模型；写工具仍由权限校验和审批记录保护。
 
 ## 目录结构
 
@@ -41,6 +43,8 @@ backend/
 - 根目录 `start-local.sh`：设置本地默认值后读取根目录 `.env`，并启动 Maven。
 
 不要把 env 文件放进 `src/main/java`。
+
+数据库只维护 `src/main/resources/sql/init.sql` 一个初始化入口；Agent 表、运行事件、API 统计、新闻、OSS 和模型元数据结构均已集中其中。
 
 ## 启动
 
@@ -129,6 +133,9 @@ http://localhost:8080/weather-debug.html
 - 前端接口：[../docs/back_front_api.md](../docs/back_front_api.md)
 - 模型服务接口：[../docs/module_back_api.md](../docs/module_back_api.md)
 - Swagger UI：`http://localhost:8080/swagger-ui.html`
+- Agent 工具清单：`GET /api/agent/tools`
+- Agent 流式入口：`POST /api/agent/chat/stream`
+- Agent 收束说明：[../docs/PROJECT_FINALIZATION.md](../docs/PROJECT_FINALIZATION.md)
 
 ## 提交前检查
 
