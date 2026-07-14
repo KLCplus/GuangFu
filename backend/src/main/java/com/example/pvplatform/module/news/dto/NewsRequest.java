@@ -9,5 +9,6 @@ public record NewsRequest(
     @Size(max = 2_000_000) String content,
     @Size(max = 512) String coverUrl,
     @NotBlank String newsType,
+    String category,
     @NotBlank String targetRole
 ) {}

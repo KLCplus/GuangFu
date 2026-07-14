@@ -5,6 +5,7 @@ import com.example.pvplatform.module.model.dto.CreateModelRequest;
 import com.example.pvplatform.module.model.dto.UpdateModelRequest;
 import com.example.pvplatform.module.model.vo.ModelDetailVO;
 import com.example.pvplatform.module.model.vo.ModelListItemVO;
+import com.example.pvplatform.module.model.vo.MiniappModelVO;
 import com.example.pvplatform.persistence.entity.ModelInfoDO;
 import com.example.pvplatform.persistence.mapper.ModelInfoMapper;
 import com.example.pvplatform.security.SecurityUser;
@@ -167,6 +168,40 @@ class ModelServiceTest {
         ModelDetailVO detail = modelService.detail(testModelId);
         assertEquals("test_model", detail.modelCode());
         assertEquals("OFFLINE", detail.status());
+    }
+
+    @Test
+    void miniappPublicListShouldOnlyContainOnlineVisibleModels() {
+        ModelInfoDO online = new ModelInfoDO();
+        online.setModelCode("miniapp_online");
+        online.setModelName("小程序公开模型");
+        online.setModelType("NUMERIC");
+        online.setModelVersion("v1.0");
+        online.setServiceModelName("internal_service_name");
+        online.setApiPath("/internal/predict");
+        online.setInputSchema("{\"secret\":true}");
+        online.setStatus("ONLINE");
+        online.setDescription("详细描述");
+        online.setShortDescription("公开简介");
+        online.setMarketplaceVisible(true);
+        online.setTags("[\"光伏\",\"短期预测\"]");
+        online.setCreatedAt(java.time.LocalDateTime.now());
+        online.setUpdatedAt(java.time.LocalDateTime.now());
+        modelInfoMapper.insert(online);
+
+        List<MiniappModelVO> models = modelService.miniappPublicList(null);
+
+        assertEquals(1, models.size());
+        assertEquals("小程序公开模型", models.getFirst().modelName());
+        assertEquals("公开简介", models.getFirst().shortDescription());
+        assertFalse(models.stream().anyMatch(model -> model.modelId().equals(testModelId)));
+    }
+
+    @Test
+    void miniappPublicDetailShouldHideOfflineModel() {
+        BusinessException ex = assertThrows(BusinessException.class,
+            () -> modelService.miniappPublicDetail(testModelId));
+        assertEquals(404, ex.getCode());
     }
 
     @Test

@@ -26,6 +26,7 @@ interface NewsRow {
   content: string
   coverUrl: string
   newsType: NewsType
+  category?: string
   targetRole: NewsTargetRole
   status: NewsStatus
   publishedAt: string
@@ -64,6 +65,7 @@ const emptyForm = (): NewsRow => ({
   content: '',
   coverUrl: '',
   newsType: 'NEWS',
+  category: 'PLATFORM',
   targetRole: 'ALL',
   status: 'DRAFT',
   publishedAt: '',
@@ -110,8 +112,8 @@ function toPayload(f: NewsRow): NewsPayload {
     summary: f.summary,
     content: f.content,
     coverUrl: f.coverUrl || undefined,
-    newsType: 'NEWS',
-    targetRole: 'ALL'
+    newsType: f.newsType,
+    targetRole: f.targetRole
   }
 }
 
@@ -242,6 +244,16 @@ function statusLabel(status: NewsStatus) {
 function statusTag(status: NewsStatus) {
   const map: Record<string, string> = { DRAFT: 'warning', PUBLISHED: 'success', OFFLINE: 'info' }
   return map[status] || 'info'
+}
+
+function typeLabel(type: NewsType) {
+  const map: Record<string, string> = { MODEL_UPDATE: '模型更新', SYSTEM_NOTICE: '系统通知', INDUSTRY_NEWS: '行业资讯' }
+  return map[type] || type
+}
+
+function roleLabel(role: NewsTargetRole) {
+  const map: Record<string, string> = { ALL: '全部用户', USER: '普通用户', API_USER: 'API 用户', ADMIN: '管理员' }
+  return map[role] || role
 }
 
 function timeText(row: NewsRow) {
@@ -394,7 +406,27 @@ onMounted(() => {
             <el-button size="small">上传并插入正文图片</el-button>
           </el-upload>
         </el-form-item>
-        <div class="news-source-note">手动补录的内容也会作为行业新闻展示给全部用户。</div>
+        <el-row :gutter="16">
+          <el-col :span="12">
+            <el-form-item label="新闻类型">
+              <el-select v-model="form.newsType" style="width:100%">
+                <el-option label="模型更新" value="MODEL_UPDATE" />
+                <el-option label="系统通知" value="SYSTEM_NOTICE" />
+                <el-option label="行业资讯" value="INDUSTRY_NEWS" />
+              </el-select>
+            </el-form-item>
+          </el-col>
+          <el-col :span="12">
+            <el-form-item label="目标角色">
+              <el-select v-model="form.targetRole" style="width:100%">
+                <el-option label="全部用户" value="ALL" />
+                <el-option label="普通用户" value="USER" />
+                <el-option label="API 用户" value="API_USER" />
+                <el-option label="管理员" value="ADMIN" />
+              </el-select>
+            </el-form-item>
+          </el-col>
+        </el-row>
         <el-form-item label="封面图片">
           <el-upload :show-file-list="false" accept="image/jpeg,image/png,image/webp" :http-request="uploadCoverFile">
             <el-button :disabled="!editingId">上传 OSS 封面</el-button>

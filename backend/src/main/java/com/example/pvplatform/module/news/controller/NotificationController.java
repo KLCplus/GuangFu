@@ -18,8 +18,9 @@ public class NotificationController {
     @GetMapping
     public Result<?> list(@RequestParam(defaultValue = "1") int pageNum,
                           @RequestParam(defaultValue = "10") int pageSize,
-                          @RequestParam(required = false) Integer readStatus) {
-        return Result.success(notificationService.list(pageNum, pageSize, readStatus));
+                          @RequestParam(required = false) Integer readStatus,
+                          @RequestParam(required = false) String type) {
+        return Result.success(notificationService.list(pageNum, pageSize, readStatus, type));
     }
 
     @GetMapping("/unread-count")

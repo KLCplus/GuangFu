@@ -3,6 +3,8 @@ package com.example.pvplatform.module.news.controller;
 import com.example.pvplatform.common.Result;
 import com.example.pvplatform.module.news.dto.NewsRequest;
 import com.example.pvplatform.module.news.service.NewsService;
+import com.example.pvplatform.module.news.service.ExternalNewsSyncService;
+import com.example.pvplatform.module.news.service.WeatherWarningSyncService;
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.*;
 
@@ -12,9 +14,13 @@ import org.springframework.web.multipart.MultipartFile;
 @RestController
 public class NewsController {
     private final NewsService newsService;
+    private final ExternalNewsSyncService syncService;
+    private final WeatherWarningSyncService weatherSyncService;
 
-    public NewsController(NewsService newsService) {
+    public NewsController(NewsService newsService, ExternalNewsSyncService syncService, WeatherWarningSyncService weatherSyncService) {
         this.newsService = newsService;
+        this.syncService = syncService;
+        this.weatherSyncService = weatherSyncService;
     }
 
     @GetMapping("/api/news")
@@ -82,5 +88,14 @@ public class NewsController {
     public Result<?> delete(@PathVariable Long newsId) {
         newsService.delete(newsId);
         return Result.success();
+    }
+
+    @PostMapping("/api/admin/news/sync")
+    public Result<?> sync(@RequestParam(required = false) String source) {
+        if (source != null && "QWEATHER".equalsIgnoreCase(source)) {
+            return Result.success(Map.of("QWEATHER", weatherSyncService.sync()));
+        }
+        return Result.success(source == null || source.isBlank()
+            ? syncService.syncConfiguredSources() : Map.of(source.toUpperCase(), syncService.syncSource(source)));
     }
 }

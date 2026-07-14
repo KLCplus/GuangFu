@@ -1,0 +1,32 @@
+<view class="page account-page">
+  <view wx:if="{{loading && !profile}}" class="card state-card"><view class="skeleton profile-skeleton"></view></view>
+  <view wx:elif="{{error && !profile}}" class="card state-card"><view class="state-mark">!</view><view class="state-title">个人资料加载失败</view><view class="state-copy">{{error}}</view><button class="button-quiet" bindtap="loadProfile">重新加载</button></view>
+  <block wx:elif="{{profile}}">
+    <view class="avatar-card">
+      <view class="avatar-large">
+        <image wx:if="{{profile.avatarUrl && !avatarFailed}}" src="{{profile.avatarUrl}}" mode="aspectFill" binderror="onAvatarError" />
+        <text wx:else>{{profile.avatarText}}</text>
+      </view>
+      <view class="avatar-copy"><text>{{profile.displayName}}</text><text>JPG、PNG 或 WebP，最大 2MB</text></view>
+      <button class="button-quiet avatar-button" loading="{{avatarSaving}}" disabled="{{avatarSaving}}" bindtap="chooseAvatar">更换</button>
+    </view>
+    <view wx:if="{{profile.avatarUrl}}" class="avatar-delete" bindtap="deleteAvatar">删除当前头像</view>
+
+    <view class="section-head"><text class="section-title">基本信息</text></view>
+    <view class="card form-card">
+      <view class="readonly-row"><text>用户名</text><text>{{profile.username}}</text></view>
+      <text class="field-label">昵称</text>
+      <input class="field-input" value="{{form.nickname}}" maxlength="32" placeholder="请输入昵称" bindinput="onNickname" />
+      <text class="field-label">邮箱</text>
+      <input class="field-input" value="{{form.email}}" maxlength="80" placeholder="未填写" bindinput="onEmail" />
+      <text class="field-hint">当前接口直接保存资料，不包含邮箱验证码流程。</text>
+      <text class="field-label">手机号</text>
+      <input class="field-input" value="{{form.phone}}" maxlength="20" placeholder="未填写" type="text" bindinput="onPhone" />
+      <text class="field-hint">当前接口直接保存资料，不包含短信验证流程。</text>
+      <text class="field-label">性别</text>
+      <picker mode="selector" range="{{genderOptions}}" value="{{form.gender}}" bindchange="onGender"><view class="picker-field">{{genderOptions[form.gender]}}<text>⌄</text></view></picker>
+      <button class="button-primary save-button" loading="{{saving}}" disabled="{{saving || avatarSaving}}" bindtap="save">{{saving ? '正在保存' : '保存资料'}}</button>
+    </view>
+    <view class="read-note">用户名为平台登录标识，当前接口不支持修改。</view>
+  </block>
+</view>

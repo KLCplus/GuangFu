@@ -96,7 +96,7 @@ class PhaseFourServiceTest {
     @Test
     void newsStartsAsDraftAndPublishingCreatesNotification() {
         Long newsId = newsService.create(new NewsRequest("模型更新", "摘要", "正文", null,
-            "MODEL_UPDATE", "ALL"));
+            "MODEL_UPDATE", "PLATFORM", "ALL"));
         assertEquals("DRAFT", newsMapper.selectById(newsId).getStatus());
 
         newsService.publish(newsId);
@@ -107,7 +107,8 @@ class PhaseFourServiceTest {
                 .eq(UserNotificationDO::getUserId, userId)
                 .eq(UserNotificationDO::getRelatedId, newsId));
         assertEquals(1, notifications);
-        assertEquals(1, newsService.list(1, 10, "MODEL_UPDATE").records().size());
+        // 模型更新只生成用户通知，不再混入公开新闻列表。
+        assertEquals(0, newsService.list(1, 10, "MODEL_UPDATE").records().size());
     }
 
     private void insertPv(Long stationId, LocalDateTime time, String power, String irradiance) {

@@ -1,0 +1,23 @@
+<view class="page security-page">
+  <view class="security-intro"><text>账户安全</text><text>修改密码后，现有登录令牌会失效。</text></view>
+
+  <view wx:if="{{loading}}" class="card status-card"><view class="skeleton status-skeleton"></view></view>
+  <view wx:elif="{{error}}" class="card state-card"><view class="state-mark">!</view><view class="state-title">安全信息加载失败</view><view class="state-copy">{{error}}</view><button class="button-quiet" bindtap="loadProfile">重新加载</button></view>
+  <view wx:elif="{{profile}}" class="card status-card">
+    <view class="binding-row"><view><text>邮箱状态</text><text>{{profile.email || '未填写邮箱'}}</text></view><text class="binding-tag {{profile.email ? 'bound' : ''}}">{{profile.email ? '已绑定' : '未绑定'}}</text></view>
+    <view class="binding-row"><view><text>手机状态</text><text>{{profile.phone || '未填写手机号'}}</text></view><text class="binding-tag {{profile.phone ? 'bound' : ''}}">{{profile.phone ? '已绑定' : '未绑定'}}</text></view>
+    <view class="binding-note">当前后端未提供独立验证码绑定流程，此处仅展示资料中的联系方式状态。</view>
+  </view>
+
+  <view class="section-head"><text class="section-title">修改密码</text></view>
+  <view class="card password-card">
+    <text class="field-label">原密码</text>
+    <input class="field-input" password value="{{form.oldPassword}}" placeholder="请输入原密码" bindinput="onOldPassword" />
+    <text class="field-label">新密码</text>
+    <input class="field-input" password value="{{form.newPassword}}" maxlength="64" placeholder="8–64 位" bindinput="onNewPassword" />
+    <text class="field-label">确认新密码</text>
+    <input class="field-input" password value="{{form.confirmPassword}}" maxlength="64" placeholder="再次输入新密码" bindinput="onConfirmPassword" confirm-type="done" bindconfirm="changePassword" />
+    <button class="button-primary password-button" loading="{{saving}}" disabled="{{saving}}" bindtap="changePassword">{{saving ? '正在修改' : '修改密码'}}</button>
+  </view>
+  <view class="security-footnote">密码不会写入本地存储，也不会输出到日志。</view>
+</view>

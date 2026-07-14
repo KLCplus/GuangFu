@@ -1,12 +1,10 @@
 <view class="page model-page">
-  <view class="model-intro"><text class="intro-kicker">MODEL CATALOG</text><text class="intro-title">找到适合光伏场景的模型</text><text class="intro-copy">列表、标签与状态均来自平台模型接口</text></view>
-  <view wx:if="{{!loggedIn}}" class="card state-card"><view class="state-mark">模</view><view class="state-title">登录后浏览模型广场</view><view class="state-copy">当前后端要求访问模型接口时携带平台登录令牌。</view><button class="button-primary" bindtap="goLogin">连接平台账号</button></view>
-  <block wx:else>
+  <view class="model-intro"><text class="intro-kicker">MODEL CATALOG</text><text class="intro-title">找到适合光伏场景的模型</text><text class="intro-copy">{{loggedIn ? '已连接平台账号，可查看完整模型目录' : '当前展示已上线模型，连接账号后查看完整目录与配置'}}</text></view>
   <view class="search-row">
     <view class="search-box"><text>⌕</text><input value="{{keyword}}" placeholder="搜索模型、标签或机构" bindinput="onSearch" /></view>
-    <view class="filter-button {{status !== 'ALL' ? 'active' : ''}}" bindtap="toggleFilter">筛选<text wx:if="{{status !== 'ALL'}}">1</text></view>
+    <view wx:if="{{loggedIn}}" class="filter-button {{status !== 'ALL' ? 'active' : ''}}" bindtap="toggleFilter">筛选<text wx:if="{{status !== 'ALL'}}">1</text></view>
   </view>
-  <view wx:if="{{filterOpen}}" class="card filter-popover">
+  <view wx:if="{{filterOpen && loggedIn}}" class="card filter-popover">
     <text class="filter-label">可用状态</text>
     <view class="filter-options"><text class="{{status === 'ALL' ? 'selected' : ''}}" data-value="ALL" bindtap="chooseStatus">全部</text><text class="{{status === 'ONLINE' ? 'selected' : ''}}" data-value="ONLINE" bindtap="chooseStatus">已上线</text><text class="{{status === 'TESTING' ? 'selected' : ''}}" data-value="TESTING" bindtap="chooseStatus">测试中</text><text class="{{status === 'OFFLINE' ? 'selected' : ''}}" data-value="OFFLINE" bindtap="chooseStatus">仅展示</text></view>
   </view>
@@ -22,5 +20,4 @@
       <text class="arrow">›</text>
     </view>
   </view>
-  </block>
 </view>

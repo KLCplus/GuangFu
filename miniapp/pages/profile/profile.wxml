@@ -1,15 +1,48 @@
 <view class="page profile-page">
-  <view class="profile-hero">
-    <view class="avatar">{{user ? user.avatarText : '光'}}</view>
-    <view wx:if="{{loggedIn && user}}" class="identity"><text>{{user.displayName}}</text><text>@{{user.username}}</text></view>
-    <view wx:else class="identity"><text>尚未连接账号</text><text>连接后可查看个人调用数据</text></view>
+  <view wx:if="{{!loggedIn}}" class="guest-shell">
+    <view class="guest-orbit"><view></view><text>光</text></view>
+    <text class="guest-title">管理你的平台账户</text>
+    <text class="guest-copy">登录后查看资料、余额、API Key 与模型权益。</text>
+    <button class="button-primary guest-button" bindtap="goLogin">连接平台账号</button>
+    <text class="guest-note">使用现有用户名和密码，小程序不会保存密码。</text>
   </view>
-  <view wx:if="{{!loggedIn}}" class="card connect-card"><text class="connect-title">连接现有平台账号</text><text class="connect-copy">使用统一登录接口，不创建或保存测试身份。</text><button class="button-primary" bindtap="goLogin">去连接</button></view>
+
   <block wx:else>
-    <view wx:if="{{error}}" class="card profile-error"><text>{{error}}</text><text bindtap="loadProfile">重试</text></view>
-    <view class="card info-card"><view><text>账号状态</text><text class="success">已连接</text></view><view><text>角色</text><text>{{user ? user.roleText : '普通用户'}}</text></view><view><text>服务地址</text><text class="base-url">{{apiBaseUrl}}</text></view></view>
-    <view class="card roadmap-card" bindtap="showRoadmap"><view><text>个人中心</text><text>资料与安全功能等待 PC 端方案定稿</text></view><text>›</text></view>
-    <button class="logout-button" bindtap="logout">断开平台账号</button>
+    <view class="identity-card" bindtap="goProfile">
+      <view class="sun-track"><view></view><view></view><view></view></view>
+      <view class="identity-main">
+        <view class="avatar-shell">
+          <image wx:if="{{user && user.avatarUrl && !avatarFailed}}" src="{{user.avatarUrl}}" mode="aspectFill" binderror="onAvatarError" />
+          <text wx:else>{{user ? user.avatarText : '光'}}</text>
+        </view>
+        <view class="identity-copy">
+          <text class="identity-name">{{user ? user.displayName : '正在读取账户'}}</text>
+          <text class="identity-secondary">{{user ? user.secondaryText : '请稍候'}}</text>
+          <view wx:if="{{user}}" class="identity-tags">
+            <text class="status-pill {{user.statusNormal ? 'normal' : 'limited'}}">{{user.statusText}}</text>
+            <text class="status-pill email">{{user.emailStatus}}</text>
+          </view>
+        </view>
+        <text class="identity-arrow">›</text>
+      </view>
+      <view wx:if="{{profileError}}" class="inline-error"><text>{{profileError}}</text><text catchtap="loadAccount">重试</text></view>
+    </view>
+
+    <view class="metrics-card">
+      <view bindtap="goWallet"><text class="metric-value">{{metrics.balance}}</text><text class="metric-label">可用余额</text><text wx:if="{{metricErrors.balance}}" class="metric-error">加载失败</text></view>
+      <view bindtap="goEntitlements"><text class="metric-value">{{metrics.keyCount}}</text><text class="metric-label">API Key</text><text wx:if="{{metricErrors.keys}}" class="metric-error">加载失败</text></view>
+      <view bindtap="goEntitlements"><text class="metric-value">{{metrics.entitlementCount}}</text><text class="metric-label">API 权益</text><text wx:if="{{metricErrors.entitlements}}" class="metric-error">加载失败</text></view>
+    </view>
+
+    <view class="section-head"><text class="section-title">账户功能</text><text wx:if="{{loading}}" class="loading-text">正在同步</text></view>
+    <view class="menu-card">
+      <view class="menu-row" bindtap="goProfile"><text class="menu-mark blue">资</text><view><text>个人资料</text><text>头像、昵称与联系方式</text></view><text class="menu-arrow">›</text></view>
+      <view class="menu-row" bindtap="goSecurity"><text class="menu-mark green">安</text><view><text>安全与登录</text><text>修改密码与绑定状态</text></view><text class="menu-arrow">›</text></view>
+      <view class="menu-row" bindtap="goWallet"><text class="menu-mark amber">钱</text><view><text>钱包与消费</text><text>余额与最近资金变动</text></view><text class="menu-arrow">›</text></view>
+      <view class="menu-row" bindtap="goEntitlements"><text class="menu-mark violet">权</text><view><text>API 权益</text><text>Key 状态、额度与有效期</text></view><text class="menu-arrow">›</text></view>
+    </view>
+
+    <button class="logout-button" bindtap="logout">退出登录</button>
+    <view class="safe-space"></view>
   </block>
-  <view class="scope-note"><text>本期范围</text><text>保留基础账号状态与退出能力，不扩展个人资料、密码、人脸或第三方绑定。</text></view>
 </view>

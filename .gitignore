@@ -34,3 +34,17 @@ start-personal.sh
 *.log
 logs/
 .local/
+
+# Local secrets and environment
+.env
+.env.*
+!.env.example
+backend/.env
+backend/.env.*
+backend/secrets/*.pem
+backend/secrets/*.key
+backend/secrets/*.p8
+
+# Windows local launcher
+/start-local.ps1
+/start-local.cmd

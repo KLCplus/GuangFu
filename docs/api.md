@@ -41,3 +41,36 @@ X-API-KEY: <api-key>
 ```text
 yyyy-MM-dd HH:mm:ss
 ```
+
+## 新闻与站内通知
+
+公开新闻无需 Token，只返回已发布、面向全部用户的公开内容：
+
+```http
+GET /api/news?pageNum=1&pageSize=10&type=WEATHER_ALERT&keyword=光伏
+GET /api/news/{newsId}
+```
+
+`type` 可用值：`WEATHER_ALERT`、`DISASTER`、`POLICY`、`INDUSTRY`、`ENTERPRISE`、`PLATFORM`。旧新闻和公告由后端兼容映射，不会作为站内通知混入公开列表。
+
+站内通知必须携带登录 Token：
+
+```http
+GET /api/notifications?pageNum=1&pageSize=10&unread=true&type=MODEL_UPDATE
+GET /api/notifications/unread-count
+PUT /api/notifications/{notificationId}/read
+PUT /api/notifications/read-all
+```
+
+通知类型包括 `NOTICE`、`MODEL_UPDATE`、`ALERT`、`SYSTEM`。所有查询和已读操作只作用于当前用户。
+
+管理员可以管理内容并手动验证采集来源：
+
+```http
+POST /api/admin/news/sync?source=MEM
+POST /api/admin/news/sync?source=NEA
+POST /api/admin/news/sync?source=LONGI
+POST /api/admin/news/sync?source=QWEATHER
+```
+
+手动同步接口仅限管理员；定时同步默认关闭，具体开关和频率见 `application.yml` 的 `news.sync` 配置。

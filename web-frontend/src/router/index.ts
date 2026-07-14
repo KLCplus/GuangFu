@@ -18,6 +18,12 @@ const routes: RouteRecordRaw[] = [
     meta: { guestOnly: true, title: '欢迎' }
   },
   {
+    path: '/visualization',
+    name: 'Visualization',
+    component: () => import('../views/Visualization.vue'),
+    meta: { requiresAuth: true, title: '光伏能源运行驾驶舱' }
+  },
+  {
     path: '/',
     component: AuthLayout,
     meta: { guestOnly: true },

@@ -1,4 +1,4 @@
-const { modelApi } = require('../../utils/api')
+const { modelApi, miniappModelApi } = require('../../utils/api')
 const { errorMessage } = require('../../utils/format')
 
 Page({
@@ -17,16 +17,19 @@ Page({
 
   onShow() {
     const loggedIn = Boolean(wx.getStorageSync('token'))
-    this.setData({ loggedIn })
-    if (loggedIn && !this.data.models.length) this.loadModels()
-    if (!loggedIn) this.setData({ loading: false, error: '', models: [], visibleModels: [] })
+    const accountChanged = loggedIn !== this.data.loggedIn
+    this.setData(accountChanged
+      ? { loggedIn, activeType: 'ALL', status: 'ALL', filterOpen: false }
+      : { loggedIn })
+    this.loadModels()
   },
   onPullDownRefresh() { this.loadModels().finally(() => wx.stopPullDownRefresh()) },
 
   async loadModels() {
     this.setData({ loading: true, error: '' })
     try {
-      const models = (await modelApi.list() || []).map((item) => this.mapModel(item))
+      const api = this.data.loggedIn ? modelApi : miniappModelApi
+      const models = (await api.list() || []).map((item) => this.mapModel(item))
       const seen = new Set()
       const types = [{ label: '全部', value: 'ALL' }]
       models.forEach((item) => {

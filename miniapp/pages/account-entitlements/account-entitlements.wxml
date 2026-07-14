@@ -1,0 +1,33 @@
+<view class="page entitlement-page">
+  <view class="entitlement-intro"><text>API 访问概览</text><text>只展示脱敏 Key、模型权益和真实额度。</text></view>
+
+  <view class="stats-card">
+    <view><text>{{stats.keyCount}}</text><text>API Key</text></view>
+    <view><text>{{stats.enabledCount}}</text><text>已启用</text></view>
+    <view><text>{{stats.entitlementCount}}</text><text>模型权益</text></view>
+  </view>
+
+  <view class="section-head"><text class="section-title">API Key</text><text wx:if="{{loading}}" class="loading-caption">正在同步</text></view>
+  <view wx:if="{{errors.keys}}" class="section-error"><text>{{errors.keys}}</text><text bindtap="loadData">重试</text></view>
+  <view wx:elif="{{keys.length}}" class="key-list">
+    <view class="key-card" wx:for="{{keys}}" wx:key="apiKeyId">
+      <view class="key-head"><text>{{item.keyName || '未命名 Key'}}</text><text class="key-status {{item.active ? 'active' : ''}}">{{item.statusText}}</text></view>
+      <text class="masked-key">{{item.maskedKey}}</text>
+      <view class="key-meta"><text>有效期 {{item.expireText}}</text><text wx:if="{{item.dailyQuota != null}}">日额度 {{item.dailyQuota}}</text></view>
+    </view>
+  </view>
+  <view wx:elif="{{!loading}}" class="card empty-card"><text>暂无 API Key</text><text>本页只展示概要，可在“概览”页创建和管理 Key。</text></view>
+
+  <view class="section-head"><text class="section-title">模型权益</text></view>
+  <view wx:if="{{errors.entitlements}}" class="section-error"><text>{{errors.entitlements}}</text><text bindtap="loadData">重试</text></view>
+  <view wx:elif="{{entitlements.length}}" class="benefit-list">
+    <view class="benefit-card" wx:for="{{entitlements}}" wx:key="entitlementId">
+      <view class="benefit-head"><view><text>{{item.modelName || '未命名模型权益'}}</text><text>关联 Key：{{item.apiKeyName || '未关联'}}</text></view><text class="benefit-status {{item.active ? 'active' : ''}}">{{item.statusText}}</text></view>
+      <view class="quota-row"><text>调用额度</text><text>{{item.quotaText}}</text></view>
+      <view class="progress-track"><view style="width: {{item.progress}}%"></view></view>
+      <view class="benefit-foot"><text>已使用 {{item.progress}}%</text><text>有效期 {{item.expireText}}</text></view>
+    </view>
+  </view>
+  <view wx:elif="{{!loading}}" class="card empty-card"><text>暂无 API 权益</text><text>获得真实模型试用或权益后会显示在这里。</text></view>
+  <view class="safe-space"></view>
+</view>
