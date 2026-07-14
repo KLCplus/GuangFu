@@ -4,6 +4,64 @@
 
 适用范围：`web-frontend` 前端、`backend` Spring Boot 后端、`model-service` FastAPI 模型服务。
 
+## 0. 服务器迁移与配置收敛（上线前必读）
+
+### 0.1 本次迁移的边界
+
+本项目的生产调用链必须保持为：浏览器 -> 前端/Nginx -> Spring Boot -> FastAPI 模型服务 -> 模型权重。浏览器、小程序和开放 API 调用方**不得直接访问** FastAPI；鉴权、用户与电站权限、预测任务记录、调用日志和计费均由 Spring Boot 负责。
+
+当前根目录 `.env` 是唯一的本机真实配置入口，`start-local.sh` 已统一读取该文件。`backend/.env.local` 是历史兼容备份，不应再作为服务器或开发环境的第二配置源。部署时应以根 `.env` 的变量名为准，将值写入服务器的权限受控配置（如 systemd `EnvironmentFile`、CI/CD Secret 或容器 Secret），不要提交真实 `.env`、私钥、权重或数据库备份。
+
+`start-local.sh` 用于本地开发和初始化验证；它会管理本地进程并可执行数据库检查，不应直接作为生产守护进程。生产环境需要分别由 systemd、Docker Compose、Kubernetes 或现有发布平台托管前端、后端和模型服务，并提供日志、重启策略、健康检查和网络访问控制。
+
+### 0.2 模型同学合并前端改动的规则
+
+模型同学后续会合并并继续维护以下两个模型相关页面：
+
+| 场景 | 页面与文件 | 合并时必须保留的边界 |
+| --- | --- | --- |
+| 功率/多模态模型使用 | `/models/use`，`web-frontend/src/views/ModelPrediction.vue` | 只通过前端 API 封装请求 Spring Boot；请求字段、上传数据解析和错误展示要与后端 DTO/模型服务契约一起变更。 |
+| 云图预测 | `/cloud-forecast`，`web-frontend/src/views/CloudForecast.vue` | 保持“10 张输入云图 -> 后端 -> 10 张输出云图”的链路；不要改为从浏览器直连 FastAPI。 |
+
+合并顺序建议为：先同步主分支并处理这两个页面的冲突，再合并模型分支；随后由前端、后端、模型三方使用同一份请求/响应样例联调。不要在合并模型页面的同时重构路由、主题侧边栏、鉴权或通用请求层，以免扩大冲突范围。涉及接口字段、模型名称、输入帧数、图片尺寸、输出步数的改动，必须同一提交或同一发布批次同步更新：前端页面、前端 API 类型、Spring DTO/转发逻辑、`model_info` 元数据和 FastAPI 路由。
+
+### 0.3 配置责任与最小权限
+
+模型服务需要适配服务器配置，但不应把根 `.env` 中所有第三方密钥复制进模型进程。根 `.env` 是 Spring Boot 的完整业务配置；FastAPI 只接收其真正需要的模型运行配置和最小权限凭据。
+
+| 配置组 | 根 `.env` 变量 | 所属服务与迁移要求 |
+| --- | --- | --- |
+| 基础地址与模型链路 | `BACKEND_HOST`、`SERVER_PORT`、`FRONTEND_HOST`、`FRONTEND_PORT`、`MODEL_SERVICE_BASE_URL`、`MODEL_HOST`、`MODEL_PORT` | 后端以 `MODEL_SERVICE_BASE_URL` 访问 FastAPI。服务器上应改为内网 DNS/私网地址，不能保留 `localhost`（除非后端与模型服务同机）。模型服务监听地址和端口必须与该 URL 对齐。 |
+| 数据库 | `MYSQL_URL`、`MYSQL_USERNAME`、`MYSQL_PASSWORD`、`MYSQL_ROOT_PASSWORD`、`MYSQL_POOL_MAX_SIZE`、`MYSQL_POOL_MIN_IDLE` | 仅 Spring Boot/MySQL 初始化使用。模型服务不得直接连业务库；若未来确有需要，应创建只读或专用最小权限账号并单独评审。 |
+| 登录与会话 | `JWT_SECRET`、`JWT_ACCESS_TOKEN_EXPIRATION`、`JWT_REFRESH_TOKEN_EXPIRATION`、`OAUTH_GITHUB_*`、`OAUTH_CALLBACK_BASE_URL`、`OAUTH_BACKEND_CALLBACK_BASE_URL` | 仅前端地址、Spring Boot 和 OAuth 回调相关。上线前把回调地址改成 HTTPS 公网域名，并在 GitHub OAuth App 中登记完全一致的回调地址；模型服务不需要这些密钥。 |
+| 阿里云 OSS/人脸 | `OSS_*`、`ALIYUN_ACCESS_KEY_ID`、`ALIYUN_ACCESS_KEY_SECRET`、`ALIYUN_OSS_*`、`ALIYUN_FACE_*`、`FACE_*` | 默认由后端处理文件、头像、新闻附件和人脸能力。若模型服务必须从 OSS 取输入/写结果，应新建受限 RAM 策略、固定 bucket/prefix 和独立变量，不能复用全权限访问密钥。 |
+| 邮件 | `MAIL_*`、`VERIFY_CODE_*` | 仅后端发送验证码和业务邮件；模型服务不应持有 SMTP 密码。服务器需检查 25/465/587 出站策略及发件域 SPF/DKIM。 |
+| 外部业务能力 | `WEATHER_*`、`QWEATHER_*`、`PVOUTPUT_*`、`DEEPSEEK_*`、`ANALYSIS_LLM_*`、`AGENT_RUNTIME_*`、`AGENT_INTERNAL_TOKEN` | 分别由后端、Agent runtime 使用。模型服务只有在新增明确的直接依赖后才增加对应的专用配置，不得隐式读取或依赖无关密钥。 |
+| 缓存与本地存储 | `REDIS_*`、`CACHE_*`、`AVATAR_*`、`FACE_STORAGE_DIR`、`PV_IMPORT_*` | 后端使用。容器部署时应映射持久化卷，并把路径改为容器内固定目录。 |
+
+模型端需要完成的配置适配：将模型权重目录、设备选择（CPU/CUDA）、模型运行模式、允许的跨服务地址和可能的 OSS 输入/输出路径改为显式环境变量或部署参数；启动时打印**不含密钥**的生效配置、权重版本和设备信息。当前代码尚未实现 `MODEL_PREDICTOR_MODE`、权重路径和设备选择等统一环境变量时，不可只在服务器手改 Python 导入或硬编码路径；应由模型同学先实现并提交该配置契约，再部署。
+
+### 0.4 数据库建立、初始化与增量迁移
+
+数据库名为 `pv_platform`。全量基线是 `backend/src/main/resources/sql/init.sql`，它包含 `DROP TABLE`，因此只适用于全新、可清空的数据库。先备份生产库，再执行任何结构变更。
+
+新环境的推荐顺序：
+
+1. 创建 MySQL 8 实例、数据库和最小权限业务账号；在服务器受控配置中填入 `MYSQL_URL`、`MYSQL_USERNAME`、`MYSQL_PASSWORD`，`MYSQL_ROOT_PASSWORD` 仅供初始化管理员操作使用。
+2. 将当前发布版本的 `init.sql` 导入**空库**。开发/测试环境可使用 `./start-local.sh --init-db --force-db-reset`；生产环境应在维护窗口由 DBA/发布流程显式执行同一份脚本，切勿依赖应用启动自动建库。
+3. 对已有环境，不执行全量 `init.sql`。先备份，再按发布版本审查并执行对应的增量 SQL/应用内 additive migration；确认 `model_info`、`prediction_*`、`file_resource`、`news`、`api_*` 等表和索引已齐全。
+4. 启动后端后检查 `/swagger-ui.html`、模型列表和健康接口；再启动模型服务并完成真实样例预测；最后发布前端与 Nginx 反向代理。
+
+上线前至少验证一次恢复：从备份恢复到隔离库，应用同版本增量迁移，确认可以启动并读取模型与预测历史。迁移脚本、数据库备份和模型权重都应带版本号与校验值。
+
+### 0.5 发布顺序与验收
+
+1. 在预发布环境导入/迁移数据库，并校验根 `.env` 变量名完整、密钥来源受控、回调域名为 HTTPS。
+2. 部署模型服务及真实权重，访问 `/health`、`/model-api/models`、`/cloud-api/models`；确认权重哈希、CUDA/CPU 和内存满足要求。
+3. 配置 Spring Boot 的 `MODEL_SERVICE_BASE_URL` 指向模型服务内网地址，启动后以 30 个数值点/30 张图片验证功率预测，以 10 张真实云图验证云图预测。
+4. 构建并发布前端，Nginx 仅公开前端和 Spring Boot 所需路径；禁止将模型服务端口暴露到公网。分别回归 `/models/use`、`/cloud-forecast`、登录、OSS 上传、邮件验证码和 GitHub OAuth 回调。
+5. 保留回滚包：上一版前端/后端/模型镜像或制品、数据库备份、当前与上一版权重及其校验值。发生模型接口不兼容时，优先回滚同一发布批次的模型与后端，再处理前端展示。
+
 ## 1. 总体架构
 
 当前系统的模型相关调用链路是：

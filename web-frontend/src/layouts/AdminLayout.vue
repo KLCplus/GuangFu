@@ -34,7 +34,7 @@ function logout() {
     <aside class="admin-sidebar">
       <router-link class="admin-brand" to="/admin/users-apis">
         <span class="admin-brand-mark">
-          PV
+          <img class="admin-brand-logo" src="/images/logo.png" alt="" aria-hidden="true" />
         </span>
         <div class="admin-brand-text">
           <span class="admin-brand-title">光伏平台</span>
@@ -120,10 +120,15 @@ function logout() {
   height: 36px;
   flex: 0 0 36px;
   border-radius: 8px;
-  background: var(--color-primary);
-  color: #ffffff;
-  font-weight: 800;
-  font-size: 14px;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.admin-brand-logo {
+  display: block;
+  width: 27px;
+  height: 27px;
+  object-fit: contain;
+  filter: brightness(0) invert(1);
 }
 
 .admin-brand-text {
