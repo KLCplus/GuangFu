@@ -1,0 +1,84 @@
+.visual-news-detail-page {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+  min-height: calc(100vh - 126px);
+}
+
+.detail-intelligence-heading {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(280px, 1fr) minmax(430px, 0.75fr);
+  align-items: center;
+  gap: 26px;
+  min-height: 104px;
+  padding: 15px 20px 18px;
+  border: 1px solid var(--viz-line);
+  background: linear-gradient(115deg, rgba(26, 102, 174, 0.18), transparent 40%), rgba(5, 27, 57, 0.84);
+  box-shadow: inset 0 0 30px rgba(15, 89, 159, 0.08), 0 0 18px rgba(0, 12, 38, 0.36);
+}
+
+.detail-intelligence-heading::before,
+.detail-intelligence-heading::after { position: absolute; width: 20px; height: 20px; content: ""; }
+.detail-intelligence-heading::before { top: -1px; left: -1px; border-top: 2px solid var(--viz-cyan); border-left: 2px solid var(--viz-cyan); }
+.detail-intelligence-heading::after { right: -1px; bottom: -1px; border-right: 2px solid var(--viz-blue); border-bottom: 2px solid var(--viz-blue); }
+.detail-intelligence-heading > div > span { color: #3d87b5; font: 9px Bahnschrift, sans-serif; letter-spacing: 0.22em; }
+.detail-intelligence-heading h1 { margin: 7px 0 5px; color: #effcff; font-size: clamp(21px, 1.7vw, 29px); font-weight: 600; letter-spacing: 0.12em; text-shadow: 0 0 20px rgba(82, 232, 255, 0.24); }
+.detail-intelligence-heading p { margin: 0; color: #6898b0; font-size: 11px; }
+.detail-intelligence-heading dl { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin: 0; }
+.detail-intelligence-heading dl > div { padding: 9px; border: 1px solid rgba(82, 232, 255, 0.13); background: rgba(8, 45, 83, 0.32); }
+.detail-intelligence-heading dt { display: flex; align-items: center; gap: 6px; color: #5e91aa; font-size: 9px; }
+.detail-intelligence-heading dt .el-icon { color: #64bdd8; }
+.detail-intelligence-heading dd { display: flex; align-items: center; gap: 6px; margin: 7px 0 0; color: #bce8ef; font-size: 10px; }
+.detail-intelligence-heading dd i { width: 5px; height: 5px; border-radius: 50%; background: var(--viz-mint); box-shadow: 0 0 7px var(--viz-mint); }
+
+.detail-intelligence-panel {
+  position: relative;
+  min-width: 0;
+  padding: 15px;
+  border: 1px solid var(--viz-line);
+  background: linear-gradient(135deg, rgba(24, 88, 153, 0.09), transparent 26%), rgba(3, 19, 42, 0.88);
+  box-shadow: inset 0 0 32px rgba(15, 89, 159, 0.06), 0 0 18px rgba(0, 12, 38, 0.38);
+}
+
+.visual-app-shell .visual-news-detail-page .news-detail-page { gap: 14px; color: var(--viz-text); }
+.visual-app-shell .visual-news-detail-page .page-heading { justify-content: flex-start; }
+.visual-app-shell .visual-news-detail-page .panel { border-color: rgba(82, 232, 255, 0.22); border-radius: 0; background: linear-gradient(180deg, rgba(8, 35, 72, 0.88), rgba(4, 24, 50, 0.82)); box-shadow: inset 0 0 24px rgba(34, 120, 191, 0.05); }
+.visual-app-shell .visual-news-detail-page .article-head { border-color: var(--viz-line-soft); }
+.visual-app-shell .visual-news-detail-page .article-head h1 { color: #e5faff; font-size: clamp(24px, 2vw, 33px); font-weight: 600; letter-spacing: 0.02em; text-shadow: 0 0 18px rgba(82, 232, 255, 0.12); }
+.visual-app-shell .visual-news-detail-page .article-head p,
+.visual-app-shell .visual-news-detail-page .article-meta,
+.visual-app-shell .visual-news-detail-page .panel-head p,
+.visual-app-shell .visual-news-detail-page .placeholder-panel p,
+.visual-app-shell .visual-news-detail-page .related-item small { color: #678fa4; }
+.visual-app-shell .visual-news-detail-page .article-meta { font-size: 10px; }
+.visual-app-shell .visual-news-detail-page .cover-image { border: 1px solid rgba(82, 232, 255, 0.18); border-radius: 0; filter: saturate(0.86) contrast(1.04); }
+.visual-app-shell .visual-news-detail-page .article-content { color: #a9cfda; }
+.visual-app-shell .visual-news-detail-page .article-content p,
+.visual-app-shell .visual-news-detail-page .article-content li,
+.visual-app-shell .visual-news-detail-page .article-content blockquote { color: #9fc3cf; font-size: 14px; line-height: 1.9; }
+.visual-app-shell .visual-news-detail-page .article-content a { color: var(--viz-cyan); }
+.visual-app-shell .visual-news-detail-page .panel-head h2,
+.visual-app-shell .visual-news-detail-page .placeholder-panel h2 { color: #d7f5fa; font-weight: 500; }
+.visual-app-shell .visual-news-detail-page .related-item { border-color: rgba(82, 232, 255, 0.13); border-radius: 0; color: inherit; background: rgba(8, 45, 83, 0.32); }
+.visual-app-shell .visual-news-detail-page .related-item:hover { border-color: rgba(82, 232, 255, 0.48); background: rgba(16, 75, 128, 0.34); box-shadow: inset 2px 0 var(--viz-cyan); }
+.visual-app-shell .visual-news-detail-page .related-item span { color: #62b7d1; font-size: 9px; }
+.visual-app-shell .visual-news-detail-page .related-item strong { color: #bfe3eb; font-size: 12px; font-weight: 500; }
+.visual-app-shell .visual-news-detail-page .el-button { border-color: rgba(82, 198, 255, 0.28); border-radius: 0; color: #86bfd4; background: rgba(7, 36, 70, 0.72); }
+.visual-app-shell .visual-news-detail-page .el-button:hover { border-color: var(--viz-cyan); color: #e7fdff; background: rgba(20, 91, 153, 0.45); }
+.visual-app-shell .visual-news-detail-page .el-tag { border-color: rgba(82, 232, 255, 0.25); border-radius: 0; color: #8edcf0; background: rgba(24, 106, 180, 0.15); }
+.visual-app-shell .visual-news-detail-page .el-alert { border: 1px solid rgba(255, 196, 92, 0.25); border-radius: 0; background: rgba(126, 77, 19, 0.18); }
+.visual-app-shell .visual-news-detail-page .el-loading-mask { background: rgba(3, 18, 39, 0.82); }
+
+@media (max-width: 1100px) {
+  .detail-intelligence-heading { grid-template-columns: 1fr; gap: 13px; }
+  .detail-intelligence-heading dl { max-width: 620px; }
+}
+
+@media (max-width: 700px) {
+  .visual-news-detail-page { min-height: 0; }
+  .detail-intelligence-heading { min-height: 0; padding: 14px; }
+  .detail-intelligence-heading dl { grid-template-columns: 1fr; }
+  .detail-intelligence-panel { padding: 10px; }
+  .visual-app-shell .visual-news-detail-page .article-head h1 { font-size: 22px; }
+}

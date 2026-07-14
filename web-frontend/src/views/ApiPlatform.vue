@@ -43,6 +43,16 @@ interface DistributionItem {
   value: number
 }
 
+const props = withDefaults(defineProps<{
+  routeBase?: string
+  marketplacePath?: string
+  visualTheme?: boolean
+}>(), {
+  routeBase: '/api',
+  marketplacePath: '/marketplace',
+  visualTheme: false
+})
+
 // ---- state ----
 
 const route = useRoute()
@@ -623,26 +633,50 @@ function renderCharts() {
   renderKeyChart()
 }
 
+function apiChartTheme() {
+  if (!props.visualTheme) {
+    return {
+      text: '#526278',
+      axis: '#d9e3ef',
+      split: '#edf2f7',
+      tooltipBackground: '#ffffff',
+      tooltipBorder: '#dce6f1',
+      tooltipText: '#10274c'
+    }
+  }
+  return {
+    text: '#79a8ba',
+    axis: 'rgba(82, 232, 255, 0.24)',
+    split: 'rgba(82, 232, 255, 0.1)',
+    tooltipBackground: '#071d3d',
+    tooltipBorder: 'rgba(82, 232, 255, 0.28)',
+    tooltipText: '#dff7ff'
+  }
+}
+
 function renderTrendChart() {
   if (!trendChartRef.value) return
   trendChart = trendChart ?? echarts.init(trendChartRef.value)
   const items = trendData.value
+  const theme = apiChartTheme()
   trendChart.setOption({
     animationDuration: 350,
-    color: ['#1d6fdc', '#e05a67'],
-    tooltip: { trigger: 'axis' },
-    legend: { top: 0, right: 0, data: ['成功', '失败'] },
+    color: props.visualTheme ? ['#52e8ff', '#ff7187'] : ['#1d6fdc', '#e05a67'],
+    tooltip: { trigger: 'axis', backgroundColor: theme.tooltipBackground, borderColor: theme.tooltipBorder, textStyle: { color: theme.tooltipText } },
+    legend: { top: 0, right: 0, data: ['成功', '失败'], textStyle: { color: theme.text } },
     grid: { left: 42, right: 18, top: 42, bottom: 30 },
     xAxis: {
       type: 'category',
       data: items.map((item) => item.date.length > 10 ? item.date.slice(5, 16) : item.date.slice(5)),
-      axisLine: { lineStyle: { color: '#d9e3ef' } },
-      axisTick: { show: false }
+      axisLine: { lineStyle: { color: theme.axis } },
+      axisTick: { show: false },
+      axisLabel: { color: theme.text }
     },
     yAxis: {
       type: 'value',
       minInterval: 1,
-      splitLine: { lineStyle: { color: '#edf2f7' } }
+      axisLabel: { color: theme.text },
+      splitLine: { lineStyle: { color: theme.split } }
     },
     series: [
       {
@@ -651,7 +685,7 @@ function renderTrendChart() {
         smooth: 0.3,
         symbol: 'circle',
         symbolSize: 7,
-        areaStyle: { color: 'rgba(29, 111, 220, 0.08)' },
+        areaStyle: { color: props.visualTheme ? 'rgba(82, 232, 255, 0.1)' : 'rgba(29, 111, 220, 0.08)' },
         data: items.map((item) => item.success)
       },
       {
@@ -669,11 +703,12 @@ function renderTrendChart() {
 function renderModelChart() {
   if (!modelChartRef.value) return
   modelChart = modelChart ?? echarts.init(modelChartRef.value)
+  const theme = apiChartTheme()
   modelChart.setOption({
     animationDuration: 350,
-    color: ['#1d6fdc', '#4ba3f2', '#58b89b', '#8069dd', '#e6a23c', '#e05a67'],
-    tooltip: { trigger: 'item', formatter: '{b}<br/>{c} 次（{d}%）' },
-    legend: { type: 'scroll', bottom: 0, left: 'center' },
+    color: props.visualTheme ? ['#52e8ff', '#3f91ff', '#42f5c2', '#a990ff', '#ffc45c', '#ff7187'] : ['#1d6fdc', '#4ba3f2', '#58b89b', '#8069dd', '#e6a23c', '#e05a67'],
+    tooltip: { trigger: 'item', formatter: '{b}<br/>{c} 次（{d}%）', backgroundColor: theme.tooltipBackground, borderColor: theme.tooltipBorder, textStyle: { color: theme.tooltipText } },
+    legend: { type: 'scroll', bottom: 0, left: 'center', textStyle: { color: theme.text }, pageTextStyle: { color: theme.text }, pageIconColor: theme.text, pageIconInactiveColor: '#365f73' },
     series: [{
       type: 'pie',
       radius: ['46%', '70%'],
@@ -690,22 +725,24 @@ function renderKeyChart() {
   if (!keyChartRef.value) return
   keyChart = keyChart ?? echarts.init(keyChartRef.value)
   const data = keyDistribution.value.slice(0, 8).reverse()
+  const theme = apiChartTheme()
   keyChart.setOption({
     animationDuration: 350,
-    color: ['#1d6fdc'],
-    tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
+    color: [props.visualTheme ? '#52e8ff' : '#1d6fdc'],
+    tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' }, backgroundColor: theme.tooltipBackground, borderColor: theme.tooltipBorder, textStyle: { color: theme.tooltipText } },
     grid: { left: 20, right: 18, top: 10, bottom: 20, containLabel: true },
     xAxis: {
       type: 'value',
       minInterval: 1,
-      splitLine: { lineStyle: { color: '#edf2f7' } }
+      axisLabel: { color: theme.text },
+      splitLine: { lineStyle: { color: theme.split } }
     },
     yAxis: {
       type: 'category',
       data: data.map((item) => item.name),
       axisLine: { show: false },
       axisTick: { show: false },
-      axisLabel: { width: 110, overflow: 'truncate' }
+      axisLabel: { width: 110, overflow: 'truncate', color: theme.text }
     },
     series: [{
       type: 'bar',
@@ -830,7 +867,7 @@ async function copyText(value: string) {
       <section class="model-panel">
         <div class="panel-heading">
           <div><h2>可调用模型</h2></div>
-          <div class="model-tools"><el-input v-model="modelSearch" clearable placeholder="搜索名称或模型 ID" /><el-button text type="primary" @click="$router.push('/marketplace')">查看全部模型</el-button></div>
+          <div class="model-tools"><el-input v-model="modelSearch" clearable placeholder="搜索名称或模型 ID" /><el-button text type="primary" @click="$router.push(props.marketplacePath)">查看全部模型</el-button></div>
         </div>
         <el-alert v-if="models.length === 0" title="暂无可调用模型或模型目录加载失败" type="info" :closable="false" />
         <div v-else class="model-grid">
@@ -843,7 +880,7 @@ async function copyText(value: string) {
         </div>
         <el-empty v-if="models.length > 0 && filteredModels.length === 0" description="没有匹配的模型" :image-size="64" />
       </section>
-      <section class="service-note"><div><h2>API 服务</h2></div><div class="service-links"><el-button text @click="$router.push('/api/keys')">管理 API Keys</el-button><el-button text @click="$router.push('/api/usage')">查看使用统计</el-button><el-button text @click="$router.push('/api/billing')">查看流水消费</el-button></div></section>
+      <section class="service-note"><div><h2>API 服务</h2></div><div class="service-links"><el-button text @click="$router.push(`${props.routeBase}/keys`)">管理 API Keys</el-button><el-button text @click="$router.push(`${props.routeBase}/usage`)">查看使用统计</el-button><el-button text @click="$router.push(`${props.routeBase}/billing`)">查看流水消费</el-button></div></section>
     </section>
     <section v-if="activePage === 'keys'" class="key-section">
       <div class="section-heading key-heading">

@@ -13,6 +13,12 @@ type NewsTypeFilter = 'ALL' | NewsType
 type NotificationFilter = 'ALL' | 'UNREAD'
 type NotificationTypeFilter = 'ALL' | 'NOTICE' | 'MODEL_UPDATE' | 'ALERT' | 'SYSTEM'
 
+const props = withDefaults(defineProps<{
+  basePath?: string
+}>(), {
+  basePath: '/news'
+})
+
 const route = useRoute()
 const router = useRouter()
 const activeTab = ref<ActiveTab>('news')
@@ -102,7 +108,7 @@ function updateRoute(replace = false) {
     if (notificationType.value !== 'ALL') query.notificationType = notificationType.value
     if (notificationPage.value > 1) query.notificationPage = String(notificationPage.value)
   }
-  void router[replace ? 'replace' : 'push']({ path: '/news', query })
+  void router[replace ? 'replace' : 'push']({ path: props.basePath, query })
 }
 
 function selectTab(tab: ActiveTab) {
@@ -251,7 +257,7 @@ function changePageSize(size: number) {
 }
 
 async function openNews(item: News) {
-  await router.push(`/news/${item.newsId}`)
+  await router.push(`${props.basePath}/${item.newsId}`)
 }
 
 async function readNotification(item: Notification) {

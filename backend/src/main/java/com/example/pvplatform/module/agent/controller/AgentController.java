@@ -3,11 +3,10 @@ package com.example.pvplatform.module.agent.controller;
 import com.example.pvplatform.common.Result;
 import com.example.pvplatform.module.agent.dto.AgentChatRequest;
 import com.example.pvplatform.module.agent.service.AgentMessageService;
-import com.example.pvplatform.module.agent.service.MigratedAgentRuntimeProxyService;
-import com.example.pvplatform.module.agent.service.AgentOrchestratorService;
+import com.example.pvplatform.module.agent.runtime.alibaba.AlibabaAgentRuntimeService;
+import com.example.pvplatform.module.agent.runtime.alibaba.event.AgentRunEventService;
 import com.example.pvplatform.module.agent.service.AgentSessionService;
 import com.example.pvplatform.module.agent.tool.AgentToolRegistry;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -23,20 +22,17 @@ public class AgentController {
     private final AgentSessionService sessionService;
     private final AgentMessageService messageService;
     private final AgentToolRegistry toolRegistry;
-    private final AgentOrchestratorService orchestratorService;
-    private final MigratedAgentRuntimeProxyService migratedRuntimeProxyService;
-
-    @Value("${agent.runtime.mode:${AGENT_RUNTIME_MODE:legacy}}")
-    private String runtimeMode;
+    private final AlibabaAgentRuntimeService runtime;
+    private final AgentRunEventService runEvents;
 
     public AgentController(AgentSessionService sessionService, AgentMessageService messageService,
-                           AgentToolRegistry toolRegistry, AgentOrchestratorService orchestratorService,
-                           MigratedAgentRuntimeProxyService migratedRuntimeProxyService) {
+                           AgentToolRegistry toolRegistry, AlibabaAgentRuntimeService runtime,
+                           AgentRunEventService runEvents) {
         this.sessionService = sessionService;
         this.messageService = messageService;
         this.toolRegistry = toolRegistry;
-        this.orchestratorService = orchestratorService;
-        this.migratedRuntimeProxyService = migratedRuntimeProxyService;
+        this.runtime = runtime;
+        this.runEvents = runEvents;
     }
 
     @PostMapping("/sessions")
@@ -68,6 +64,12 @@ public class AgentController {
     public Result<?> toolCalls(@PathVariable Long sessionId) {
         sessionService.requireOwned(sessionId);
         return Result.success(messageService.listToolCalls(sessionId));
+    }
+
+    @GetMapping("/sessions/{sessionId}/run-recovery")
+    public Result<?> runRecovery(@PathVariable Long sessionId) {
+        sessionService.requireOwned(sessionId);
+        return Result.success(runEvents.recovery(sessionId));
     }
 
     @PostMapping("/sessions/{sessionId}/archive")
@@ -113,11 +115,7 @@ public class AgentController {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
         CompletableFuture.runAsync(() -> {
             SecurityContextHolder.getContext().setAuthentication(authentication);
-            if ("migrated".equalsIgnoreCase(runtimeMode)) {
-                migratedRuntimeProxyService.chat(request, emitter);
-            } else {
-                orchestratorService.chat(request, emitter);
-            }
+            runtime.chat(request, emitter);
             SecurityContextHolder.clearContext();
         });
         return emitter;

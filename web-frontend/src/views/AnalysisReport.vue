@@ -92,6 +92,8 @@ const agentTools = ref<AgentToolInfo[]>([])
 const agentSessionId = ref<number | null>(null)
 const currentAssistantId = ref<number | null>(null)
 const leftCollapsed = ref(false)
+const rightCollapsed = ref(false)
+const rightTab = ref<'history' | 'task'>('history')
 const showArchived = ref(false)
 const showSlashMenu = ref(false)
 const slashActiveIndex = ref(0)
@@ -755,7 +757,7 @@ function handleAgentEvent(event: AgentSseEnvelope) {
     assistant.kind = assistant.approval?.status === 'PENDING' ? 'approval' : 'text'
     assistant.content = firstText(data.markdown, data.content) || assistant.content || '任务已完成'
     assistant.finalActions = true
-    upsertStep('final', '生成结论', 'success', '已完成')
+    upsertStep('final', '整理结构化输出', 'success', '已完成')
     currentAssistantId.value = null
     scrollToBottom()
     return
@@ -765,7 +767,7 @@ function handleAgentEvent(event: AgentSseEnvelope) {
     assistant.kind = 'text'
     assistant.content = firstText(data.answer, data.content) || assistant.content || '任务已完成'
     assistant.finalActions = true
-    upsertStep('final', '生成结论', 'success', '已完成')
+    upsertStep('final', '整理结构化输出', 'success', '已完成')
     currentAssistantId.value = null
     scrollToBottom()
     return
@@ -1158,6 +1160,21 @@ function printReport(message: ChatMessage) {
   win.document.close()
 }
 
+function exportConversation() {
+  const content = messages.value
+    .filter((message) => message.role !== 'system' && message.content)
+    .map((message) => `## ${message.role === 'user' ? username.value : '光伏智能体'} · ${message.time}\n\n${message.content}`)
+    .join('\n\n---\n\n')
+  if (!content) return
+  const blob = new Blob([`# 光伏平台聊天记录\n\n${content}`], { type: 'text/markdown;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const anchor = document.createElement('a')
+  anchor.href = url
+  anchor.download = `光伏聊天记录-${new Date().toISOString().slice(0, 10)}.md`
+  anchor.click()
+  URL.revokeObjectURL(url)
+}
+
 function continueWith(text: string) {
   composerText.value = text
   focusComposer()
@@ -1286,12 +1303,11 @@ onMounted(() => {
     <main class="chat-stage">
       <header class="stage-header">
         <div class="agent-title">
-          <span class="agent-mark">PV</span>
-          <div>
-            <h1>智能体工作台</h1>
-          </div>
+          <h1>分析对话</h1>
+          <span class="stage-subtitle">实时数据 · 工具执行 · 结构化输出</span>
         </div>
         <div class="header-actions">
+          <button class="header-action" type="button" @click="exportConversation">导出记录</button>
           <el-tag size="small" :type="connected ? 'success' : 'warning'" effect="plain">{{ connected ? '已连接' : '连接中' }}</el-tag>
           <el-dropdown trigger="click">
             <button class="user-chip" type="button">
@@ -1341,7 +1357,7 @@ onMounted(() => {
 
             <details v-if="message.steps?.length" class="run-card">
               <summary>
-                <span>执行轨迹</span>
+                <span>执行过程</span>
                 <em>{{ message.steps.length }} 个步骤</em>
               </summary>
               <div class="run-steps">
@@ -1409,10 +1425,10 @@ onMounted(() => {
             </div>
 
             <div v-if="message.finalActions && message.role === 'assistant'" class="final-actions">
-              <button class="primary-action" type="button" @click="continueWith('总结当前聊天内容并生成正式 Markdown 工作报告，包含电子签名栏')">生成报告</button>
+              <button class="primary-action" type="button" @click="continueWith('基于当前分析生成正式 Markdown 工作报告，包含数据、风险、建议和电子签名栏')">生成工作报告</button>
               <button v-if="isFormalReport(message)" type="button" @click="openSignatureDialog(message)">填写签名</button>
               <button v-if="isFormalReport(message)" type="button" @click="printReport(message)">打印报告</button>
-              <button type="button" @click="copyMessage(message)">复制结论</button>
+              <button type="button" @click="copyMessage(message)">复制输出</button>
               <button type="button" @click="continueWith('继续分析：')">继续追问</button>
             </div>
           </article>
@@ -1465,6 +1481,83 @@ onMounted(() => {
       </section>
     </main>
 
+    <aside class="context-rail" :class="{ collapsed: rightCollapsed }">
+      <button class="context-collapse" type="button" :aria-label="rightCollapsed ? '展开右侧面板' : '收起右侧面板'" @click="rightCollapsed = !rightCollapsed">
+        {{ rightCollapsed ? '‹' : '›' }}
+      </button>
+      <template v-if="!rightCollapsed">
+        <div class="context-head">
+          <div>
+            <strong>{{ rightTab === 'history' ? '会话历史' : '当前任务' }}</strong>
+            <small>{{ rightTab === 'history' ? '按最近使用时间排列' : '当前对话执行上下文' }}</small>
+          </div>
+          <button class="context-new" type="button" @click="createNewAgentSession">＋ 新建</button>
+        </div>
+        <div class="context-tabs" role="tablist">
+          <button type="button" :class="{ active: rightTab === 'history' }" @click="rightTab = 'history'">会话历史</button>
+          <button type="button" :class="{ active: rightTab === 'task' }" @click="rightTab = 'task'">当前任务</button>
+        </div>
+
+        <div v-if="rightTab === 'history'" class="context-list">
+          <div v-if="pinnedSessions.length" class="context-section-label">固定会话</div>
+          <button
+            v-for="session in pinnedSessions"
+            :key="`context-pin-${session.sessionId}`"
+            type="button"
+            class="context-session"
+            :class="{ active: session.sessionId === agentSessionId }"
+            @click="loadAgentMessages(session.sessionId)"
+          >
+            <span class="context-session-icon">□</span>
+            <span><strong>{{ sessionTitle(session) }}</strong><small>{{ sessionDescription(session) }}</small></span>
+          </button>
+          <div v-if="recentSessions.length" class="context-section-label">最近会话</div>
+          <button
+            v-for="session in recentSessions"
+            :key="`context-${session.sessionId}`"
+            type="button"
+            class="context-session"
+            :class="{ active: session.sessionId === agentSessionId }"
+            @click="loadAgentMessages(session.sessionId)"
+          >
+            <span class="context-session-icon">□</span>
+            <span><strong>{{ sessionTitle(session) }}</strong><small>{{ sessionDescription(session) }}</small></span>
+          </button>
+          <div v-if="!recentSessions.length" class="context-empty">暂无历史会话</div>
+          <div v-if="archivedSessions.length" class="context-section-label">已归档</div>
+          <button
+            v-for="session in archivedSessions"
+            :key="`context-archive-${session.sessionId}`"
+            type="button"
+            class="context-session archived-context"
+            :class="{ active: session.sessionId === agentSessionId }"
+            @click="loadAgentMessages(session.sessionId)"
+          >
+            <span class="context-session-icon">□</span>
+            <span><strong>{{ sessionTitle(session) }}</strong><small>{{ sessionDescription(session) }}</small></span>
+          </button>
+        </div>
+
+        <div v-else class="context-list task-list">
+          <div class="context-section-label">对话步骤</div>
+          <button v-for="question in questionAnchors" :key="`task-${question.id}`" type="button" class="task-item" :class="{ active: activeQuestionId === question.id }" @click="scrollToMessage(question.id)">
+            <span>{{ question.index }}</span><strong>{{ question.title }}</strong>
+          </button>
+          <div v-if="!questionAnchors.length" class="context-empty">发送消息后显示任务步骤</div>
+          <div class="context-section-label tool-label">本次调用工具</div>
+          <div v-if="activeAssistant()?.tools?.length" class="context-tools">
+            <span v-for="tool in activeAssistant()?.tools" :key="tool.id">{{ tool.title }}</span>
+          </div>
+          <div v-else class="context-empty">暂无工具调用</div>
+        </div>
+
+        <div class="context-footer">
+          <button type="button" @click="exportConversation">⇩ 导出聊天记录</button>
+          <button type="button" @click="agentSessionId && deleteAgentSession(agentSessionId)">⌫ 删除当前会话</button>
+        </div>
+      </template>
+    </aside>
+
     <el-dialog v-model="signatureDialogVisible" title="手写电子签名" width="560px" append-to-body @opened="resetSignatureCanvas">
       <div class="signature-role-tabs">
         <button type="button" :class="{ active: activeSignatureRole === 'author' }" @click="setSignatureRole('author')">编制人</button>
@@ -1507,7 +1600,7 @@ onMounted(() => {
   height: calc(100vh - 88px);
   min-height: 0;
   display: grid;
-  grid-template-columns: 252px minmax(0, 1fr);
+  grid-template-columns: 224px minmax(0, 1fr) 286px;
   overflow: hidden;
   border: 1px solid rgba(130, 150, 180, 0.18);
   border-radius: 14px;
@@ -1516,7 +1609,7 @@ onMounted(() => {
 }
 
 .agent-workbench.left-collapsed {
-  grid-template-columns: 58px minmax(0, 1fr);
+  grid-template-columns: 58px minmax(0, 1fr) 286px;
 }
 
 button {
@@ -1525,11 +1618,15 @@ button {
 
 .session-rail {
   min-width: 0;
+  position: relative;
+  z-index: 3;
+  overflow: visible;
   display: flex;
   flex-direction: column;
   padding: 12px 10px;
-  background: rgba(255, 255, 255, 0.78);
-  box-shadow: inset -1px 0 0 rgba(122, 139, 165, 0.16);
+  background: #0b1220;
+  color: #d8e0ed;
+  box-shadow: inset -1px 0 0 rgba(255, 255, 255, 0.08);
 }
 
 .rail-top,
@@ -1564,7 +1661,7 @@ button {
   height: 34px;
   border: 0;
   border-radius: 8px;
-  background: #172033;
+  background: #2f9fe8;
   color: #fff;
   cursor: pointer;
 }
@@ -1578,6 +1675,7 @@ button {
   flex: 1;
   overflow: auto;
   scrollbar-gutter: stable;
+  overscroll-behavior: contain;
 }
 
 .sessions::-webkit-scrollbar,
@@ -1624,13 +1722,13 @@ button {
   padding: 8px;
   background: transparent;
   text-align: left;
-  color: #22304a;
+  color: #c5cfdf;
   cursor: pointer;
 }
 
 .session-item:hover,
 .session-item.active {
-  background: rgba(29, 111, 220, 0.1);
+  background: rgba(70, 151, 220, 0.18);
 }
 
 .status-dot {
@@ -1686,6 +1784,7 @@ button {
   position: relative;
   min-width: 0;
   min-height: 0;
+  overflow: hidden;
   height: 100%;
   display: grid;
   grid-template-rows: auto minmax(0, 1fr) auto;
@@ -1697,7 +1796,7 @@ button {
 .stage-header {
   justify-content: space-between;
   gap: 16px;
-  padding: 14px 28px 12px;
+  padding: 14px 24px 12px;
   border-bottom: 1px solid rgba(130, 150, 180, 0.16);
   background: rgba(255, 255, 255, 0.72);
   backdrop-filter: blur(10px);
@@ -1708,6 +1807,26 @@ button {
   align-items: center;
   gap: 12px;
 }
+
+.agent-title h1 {
+  margin: 0;
+  font-size: 18px;
+  line-height: 1.3;
+  font-weight: 750;
+}
+
+.stage-subtitle { color: #8793a6; font-size: 12px; }
+
+.header-action {
+  border: 1px solid rgba(86, 112, 151, 0.2);
+  border-radius: 7px;
+  padding: 7px 10px;
+  background: #fff;
+  color: #52627b;
+  cursor: pointer;
+}
+
+.header-action:hover { color: #1d6fdc; border-color: rgba(29, 111, 220, 0.4); }
 
 .agent-mark,
 .avatar {
@@ -1722,13 +1841,6 @@ button {
   font-weight: 800;
   font-size: 13px;
   box-shadow: inset 0 1px 0 rgba(255,255,255,.8);
-}
-
-.agent-title h1 {
-  margin: 0;
-  font-size: var(--font-size-page-title);
-  line-height: var(--line-height-title);
-  letter-spacing: 0;
 }
 
 .header-actions {
@@ -1767,6 +1879,7 @@ button {
   padding: 28px 248px 28px 40px;
   scroll-behavior: smooth;
   overscroll-behavior: contain;
+  scrollbar-gutter: stable both-edges;
   scrollbar-gutter: stable;
 }
 
@@ -1877,7 +1990,8 @@ button {
   padding: 9px 11px;
   border: 1px solid rgba(130, 150, 180, 0.18);
   border-radius: 12px;
-  background: rgba(255, 255, 255, 0.96);
+  background: rgba(255, 255, 255, 0.58);
+  opacity: 0.78;
   box-shadow: 0 12px 34px rgba(70, 96, 140, 0.08);
 }
 
@@ -1921,7 +2035,7 @@ button {
   max-width: 560px;
   border: 1px solid rgba(130, 150, 180, 0.16);
   border-radius: 12px;
-  background: rgba(255, 255, 255, 0.72);
+  background: rgba(255, 255, 255, 0.62);
   overflow: hidden;
 }
 
@@ -2319,6 +2433,66 @@ button {
 }
 
 .question-rail {
+  display: none;
+}
+
+.context-rail {
+  position: relative;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  background: #fff;
+  border-left: 1px solid #e5e7eb;
+  color: #172033;
+}
+
+.context-rail.collapsed { width: 34px; }
+.context-collapse {
+  position: absolute;
+  top: 14px;
+  left: -13px;
+  z-index: 5;
+  width: 26px;
+  height: 26px;
+  border: 1px solid #e5e7eb;
+  border-radius: 50%;
+  background: #fff;
+  color: #667085;
+  cursor: pointer;
+}
+.context-head { display: flex; justify-content: space-between; gap: 8px; padding: 22px 18px 14px; border-bottom: 1px solid #eef0f3; }
+.context-head strong, .context-head small { display: block; }
+.context-head strong { font-size: 16px; }
+.context-head small { margin-top: 4px; color: #98a2b3; font-size: 11px; }
+.context-new { border: 0; border-radius: 6px; padding: 6px 8px; background: #e7f4fd; color: #1688c8; cursor: pointer; white-space: nowrap; }
+.context-tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 10px 14px 0; }
+.context-tabs button { border: 0; border-bottom: 2px solid transparent; padding: 8px 2px; background: transparent; color: #98a2b3; cursor: pointer; }
+.context-tabs button.active { border-bottom-color: #2f9fe8; color: #172033; font-weight: 700; }
+.context-list { min-height: 0; flex: 1; overflow: auto; padding: 12px 14px; }
+.context-section-label { margin: 8px 4px; color: #98a2b3; font-size: 11px; font-weight: 700; text-transform: uppercase; }
+.context-session { width: 100%; display: grid; grid-template-columns: 18px minmax(0, 1fr); gap: 8px; padding: 9px 8px; border: 0; border-radius: 6px; background: transparent; text-align: left; cursor: pointer; }
+.context-session:hover, .context-session.active { background: #f0f7fc; }
+.context-session strong, .context-session small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.context-session strong { color: #344054; font-size: 12px; }
+.context-session small { margin-top: 3px; color: #98a2b3; font-size: 11px; }
+.context-session-icon { color: #98a2b3; font-size: 17px; }
+.task-item { width: 100%; display: flex; gap: 9px; align-items: center; padding: 8px; border: 0; border-radius: 6px; background: transparent; text-align: left; color: #667085; cursor: pointer; }
+.task-item:hover, .task-item.active { background: #f0f7fc; color: #172033; }
+.task-item span { width: 18px; height: 18px; display: grid; place-items: center; border-radius: 50%; background: #edf2f7; font-size: 10px; }
+.tool-label { margin-top: 22px; }
+.context-tools { display: grid; gap: 6px; }
+.context-tools span { padding: 7px 8px; border: 1px solid #eef0f3; border-radius: 6px; color: #52627b; font-size: 11px; }
+.context-empty { padding: 26px 8px; color: #98a2b3; font-size: 12px; text-align: center; }
+.context-footer { display: grid; gap: 4px; padding: 12px 14px 16px; border-top: 1px solid #eef0f3; }
+.context-footer button { border: 0; padding: 7px 4px; background: transparent; color: #667085; text-align: left; font-size: 12px; cursor: pointer; }
+.context-footer button:hover { color: #1688c8; }
+
+/* Agent navigation lives in the right context rail; keep the conversation as the primary canvas. */
+.agent-workbench,
+.agent-workbench.left-collapsed { grid-template-columns: minmax(0, 1fr) 286px; }
+.agent-workbench > .session-rail { display: none; }
+
+.question-rail {
   position: absolute;
   top: 78px;
   right: 22px;
@@ -2569,6 +2743,10 @@ button {
     display: none;
   }
 
+  .context-rail {
+    display: none;
+  }
+
   .stage-header,
   .message-stream {
     padding-left: 16px;
@@ -2590,5 +2768,11 @@ button {
   .slash-menu small {
     display: none;
   }
+}
+
+@media (max-width: 1120px) and (min-width: 981px) {
+  .agent-workbench { grid-template-columns: 58px minmax(0, 1fr); }
+  .session-rail { overflow: visible; }
+  .context-rail { display: none; }
 }
 </style>

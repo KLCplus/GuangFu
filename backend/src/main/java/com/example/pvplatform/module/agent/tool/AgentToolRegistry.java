@@ -40,4 +40,8 @@ public class AgentToolRegistry {
                 tool.requiresApproval(), tool.enabled(), tool.description(), tool.inputSchema()))
             .toList();
     }
+
+    public List<String> enabledNames() {
+        return tools.values().stream().filter(AgentTool::enabled).map(AgentTool::name).sorted().toList();
+    }
 }

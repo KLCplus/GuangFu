@@ -71,6 +71,26 @@ spring:
           starttls:
             enable: false
           from: ${MAIL_FROM:}
+  ai:
+    model:
+      chat: deepseek
+    deepseek:
+      api-key: ${DEEPSEEK_API_KEY:}
+      base-url: ${DEEPSEEK_BASE_URL:https://api.deepseek.com}
+      chat:
+        options:
+          model: ${DEEPSEEK_MODEL:deepseek-v4-flash}
+          max-tokens: ${AGENT_MODEL_MAX_TOKENS:4096}
+
+agent:
+  runtime:
+    alibaba:
+      enabled: ${AGENT_ALIBABA_ENABLED:true}
+      max-model-calls: ${AGENT_MAX_MODEL_CALLS:6}
+      max-tool-calls: ${AGENT_MAX_TOOL_CALLS:12}
+      tool-timeout-ms: ${AGENT_TOOL_TIMEOUT_MS:15000}
+      model-timeout-ms: ${AGENT_MODEL_TIMEOUT_MS:60000}
+      persist-events: ${AGENT_EVENT_PERSIST_ENABLED:true}
 
 mybatis-plus:
   mapper-locations: classpath*:/mapper/**/*.xml

@@ -1,0 +1,267 @@
+/* API console: one dark telemetry surface across overview, keys, billing and usage. */
+.visual-app-shell .visual-module-page.module-api .api-page {
+  --api-surface: linear-gradient(180deg, rgba(8, 35, 72, 0.9), rgba(4, 24, 50, 0.84));
+  --api-surface-soft: rgba(6, 32, 65, 0.76);
+  --api-line: rgba(82, 232, 255, 0.16);
+  --api-line-strong: rgba(82, 232, 255, 0.32);
+  --api-text: #d9f5fa;
+  --api-copy: #91bdc9;
+  --api-muted: #5f8da2;
+  color: var(--api-copy);
+  background: transparent !important;
+}
+
+.visual-app-shell .visual-module-page.module-api .overview-section,
+.visual-app-shell .visual-module-page.module-api .key-section {
+  color: var(--api-copy);
+  background: transparent !important;
+}
+
+.visual-app-shell .visual-module-page.module-api .overview-summary article,
+.visual-app-shell .visual-module-page.module-api .model-panel,
+.visual-app-shell .visual-module-page.module-api .model-card,
+.visual-app-shell .visual-module-page.module-api .service-note,
+.visual-app-shell .visual-module-page.module-api .key-security-alert,
+.visual-app-shell .visual-module-page.module-api .key-table-shell,
+.visual-app-shell .visual-module-page.module-api .wallet-section,
+.visual-app-shell .visual-module-page.module-api .wallet-grid article,
+.visual-app-shell .visual-module-page.module-api .wallet-records,
+.visual-app-shell .visual-module-page.module-api .filter-bar,
+.visual-app-shell .visual-module-page.module-api .summary-card,
+.visual-app-shell .visual-module-page.module-api .usage-empty,
+.visual-app-shell .visual-module-page.module-api .chart-card,
+.visual-app-shell .visual-module-page.module-api .log-card,
+.visual-app-shell .visual-module-page.module-api .one-time-key,
+.visual-app-shell .visual-module-page.module-api .heading-actions .el-button,
+.visual-app-shell .visual-module-page.module-api .range-tabs {
+  border-color: var(--api-line) !important;
+  border-radius: 0 !important;
+  color: var(--api-copy) !important;
+  background: var(--api-surface) !important;
+  box-shadow: inset 0 0 24px rgba(34, 120, 191, 0.05) !important;
+}
+
+.visual-app-shell .visual-module-page.module-api .usage-section {
+  border: 1px solid var(--api-line) !important;
+  border-radius: 0 !important;
+  color: var(--api-copy);
+  background:
+    linear-gradient(135deg, rgba(24, 88, 153, 0.08), transparent 26%),
+    rgba(3, 20, 43, 0.7) !important;
+  box-shadow: inset 0 0 28px rgba(34, 120, 191, 0.04);
+}
+
+.visual-app-shell .visual-module-page.module-api .wallet-records {
+  padding: 14px;
+}
+
+.visual-app-shell .visual-module-page.module-api .overview-summary article,
+.visual-app-shell .visual-module-page.module-api .summary-card,
+.visual-app-shell .visual-module-page.module-api .wallet-grid article,
+.visual-app-shell .visual-module-page.module-api .chart-card {
+  position: relative;
+  overflow: hidden;
+}
+
+.visual-app-shell .visual-module-page.module-api .overview-summary article::after,
+.visual-app-shell .visual-module-page.module-api .wallet-grid article::after,
+.visual-app-shell .visual-module-page.module-api .chart-card::after {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 34px;
+  height: 1px;
+  content: "";
+  background: var(--viz-cyan);
+  box-shadow: 0 0 7px rgba(82, 232, 255, 0.58);
+}
+
+.visual-app-shell .visual-module-page.module-api .section-heading h1,
+.visual-app-shell .visual-module-page.module-api .section-heading h2,
+.visual-app-shell .visual-module-page.module-api .wallet-heading h1,
+.visual-app-shell .visual-module-page.module-api .wallet-heading h2,
+.visual-app-shell .visual-module-page.module-api .wallet-records-heading h2,
+.visual-app-shell .visual-module-page.module-api .wallet-records-heading h3,
+.visual-app-shell .visual-module-page.module-api .panel-heading h2,
+.visual-app-shell .visual-module-page.module-api .service-note h2,
+.visual-app-shell .visual-module-page.module-api .model-card h3,
+.visual-app-shell .visual-module-page.module-api .chart-heading h3,
+.visual-app-shell .visual-module-page.module-api .overview-summary strong,
+.visual-app-shell .visual-module-page.module-api .wallet-grid strong,
+.visual-app-shell .visual-module-page.module-api .summary-card strong,
+.visual-app-shell .visual-module-page.module-api .chart-total,
+.visual-app-shell .visual-module-page.module-api .error-total {
+  color: var(--api-text) !important;
+}
+
+.visual-app-shell .visual-module-page.module-api .section-heading p,
+.visual-app-shell .visual-module-page.module-api .page-description,
+.visual-app-shell .visual-module-page.module-api .panel-heading p,
+.visual-app-shell .visual-module-page.module-api .service-note p,
+.visual-app-shell .visual-module-page.module-api .model-card-head p,
+.visual-app-shell .visual-module-page.module-api .model-description,
+.visual-app-shell .visual-module-page.module-api .model-meta,
+.visual-app-shell .visual-module-page.module-api .overview-summary span,
+.visual-app-shell .visual-module-page.module-api .overview-summary small,
+.visual-app-shell .visual-module-page.module-api .wallet-grid span,
+.visual-app-shell .visual-module-page.module-api .wallet-grid small,
+.visual-app-shell .visual-module-page.module-api .wallet-records-heading span,
+.visual-app-shell .visual-module-page.module-api .summary-card > span,
+.visual-app-shell .visual-module-page.module-api .summary-card small,
+.visual-app-shell .visual-module-page.module-api .token-row em,
+.visual-app-shell .visual-module-page.module-api .chart-heading p,
+.visual-app-shell .visual-module-page.module-api .log-heading > span,
+.visual-app-shell .visual-module-page.module-api .wallet-disclaimer {
+  color: var(--api-muted) !important;
+}
+
+.visual-app-shell .visual-module-page.module-api .model-meta code,
+.visual-app-shell .visual-module-page.module-api .masked-key,
+.visual-app-shell .visual-module-page.module-api .one-time-key code {
+  color: #79d8e8 !important;
+}
+
+.visual-app-shell .visual-module-page.module-api .model-glyph,
+.visual-app-shell .visual-module-page.module-api .path-cell b {
+  border: 1px solid rgba(82, 232, 255, 0.16);
+  border-radius: 0 !important;
+  color: #83d6e6 !important;
+  background: rgba(24, 106, 180, 0.2) !important;
+}
+
+.visual-app-shell .visual-module-page.module-api .unavailable-card,
+.visual-app-shell .visual-module-page.module-api .reference-summary .summary-card:nth-child(1),
+.visual-app-shell .visual-module-page.module-api .reference-summary .summary-card:nth-child(2),
+.visual-app-shell .visual-module-page.module-api .reference-summary .summary-card:nth-child(3),
+.visual-app-shell .visual-module-page.module-api .reference-summary .summary-card:nth-child(4),
+.visual-app-shell .visual-module-page.module-api .reference-summary .token-card,
+.visual-app-shell .visual-module-page.module-api .reference-dashboard .chart-card {
+  background: var(--api-surface) !important;
+}
+
+.visual-app-shell .visual-module-page.module-api .summary-card::before {
+  height: 2px;
+  background: var(--viz-cyan) !important;
+  box-shadow: 0 0 8px rgba(82, 232, 255, 0.45);
+}
+
+.visual-app-shell .visual-module-page.module-api .summary-card.tone-green::before { background: var(--viz-mint) !important; }
+.visual-app-shell .visual-module-page.module-api .summary-card.tone-red::before { background: #ff7187 !important; }
+.visual-app-shell .visual-module-page.module-api .summary-card.tone-purple::before { background: #a990ff !important; }
+.visual-app-shell .visual-module-page.module-api .unavailable-card::before { background: #557b8e !important; }
+
+.visual-app-shell .visual-module-page.module-api .reference-summary .summary-card::before {
+  display: block !important;
+}
+
+.visual-app-shell .visual-module-page.module-api .key-security-alert {
+  --el-alert-bg-color: rgba(139, 88, 20, 0.17);
+  border-color: rgba(255, 196, 92, 0.24) !important;
+  background: rgba(139, 88, 20, 0.17) !important;
+}
+
+.visual-app-shell .visual-module-page.module-api .key-security-alert .el-alert__title,
+.visual-app-shell .visual-module-page.module-api .key-security-alert .el-alert__icon {
+  color: #f0c875 !important;
+}
+
+.visual-app-shell .visual-module-page.module-api .key-table-shell,
+.visual-app-shell .visual-module-page.module-api .log-card {
+  --el-table-bg-color: rgba(5, 29, 59, 0.84);
+  --el-table-tr-bg-color: rgba(5, 29, 59, 0.84);
+  --el-table-row-hover-bg-color: rgba(24, 106, 180, 0.2);
+  --el-table-header-bg-color: rgba(7, 43, 80, 0.94);
+  --el-table-border-color: rgba(82, 232, 255, 0.12);
+  --el-table-text-color: #9fc6d1;
+  --el-table-header-text-color: #6f9fb4;
+}
+
+.visual-app-shell .visual-module-page.module-api .key-table .el-table__header th,
+.visual-app-shell .visual-module-page.module-api .key-table .el-table__row td,
+.visual-app-shell .visual-module-page.module-api .log-card .el-table__header th,
+.visual-app-shell .visual-module-page.module-api .log-card .el-table__row td {
+  border-color: rgba(82, 232, 255, 0.1) !important;
+  color: #9fc6d1 !important;
+  background: rgba(5, 29, 59, 0.84) !important;
+}
+
+.visual-app-shell .visual-module-page.module-api .key-table .el-table__header th,
+.visual-app-shell .visual-module-page.module-api .log-card .el-table__header th {
+  color: #6f9fb4 !important;
+  background: rgba(7, 43, 80, 0.94) !important;
+}
+
+.visual-app-shell .visual-module-page.module-api .key-table .el-table__row:hover > td,
+.visual-app-shell .visual-module-page.module-api .log-card .el-table__row:hover > td {
+  background: rgba(24, 106, 180, 0.2) !important;
+}
+
+.visual-app-shell .visual-module-page.module-api .key-table .el-table__empty-block,
+.visual-app-shell .visual-module-page.module-api .log-card .el-table__empty-block,
+.visual-app-shell .visual-module-page.module-api .el-empty {
+  color: #638fa4 !important;
+  background: rgba(5, 29, 59, 0.72) !important;
+}
+
+.visual-app-shell .visual-module-page.module-api .filter-bar,
+.visual-app-shell .visual-module-page.module-api .reference-toolbar {
+  border: 1px solid var(--api-line) !important;
+  padding: 10px !important;
+  background: rgba(4, 25, 53, 0.7) !important;
+}
+
+.visual-app-shell .visual-module-page.module-api .range-tabs button {
+  border-radius: 0 !important;
+  color: #678fa4 !important;
+  background: transparent !important;
+}
+
+.visual-app-shell .visual-module-page.module-api .range-tabs button:hover,
+.visual-app-shell .visual-module-page.module-api .range-tabs button.active {
+  color: #e6fcff !important;
+  background: rgba(24, 106, 180, 0.34) !important;
+  box-shadow: inset 0 -1px var(--viz-cyan);
+}
+
+.visual-app-shell .visual-module-page.module-api .usage-empty {
+  border-style: dashed !important;
+  background:
+    radial-gradient(circle, rgba(24, 106, 180, 0.12), transparent 52%),
+    rgba(4, 25, 53, 0.72) !important;
+}
+
+.visual-app-shell .visual-module-page.module-api .chart-canvas {
+  background: transparent !important;
+}
+
+.visual-app-shell .visual-module-page.module-api .el-pagination button,
+.visual-app-shell .visual-module-page.module-api .el-pager li {
+  border-color: rgba(82, 232, 255, 0.13) !important;
+  color: #6f9fb4 !important;
+  background: rgba(7, 42, 78, 0.8) !important;
+}
+
+.visual-app-shell .visual-module-page.module-api .el-pager li.is-active {
+  color: #efffff !important;
+  background: rgba(35, 128, 207, 0.66) !important;
+}
+
+body:has(.visual-module-page.module-api) .key-result,
+body:has(.visual-module-page.module-api) .one-time-key {
+  color: #a4cad5 !important;
+}
+
+body:has(.visual-module-page.module-api) .one-time-key {
+  border-color: rgba(82, 232, 255, 0.2) !important;
+  border-radius: 0 !important;
+  background: linear-gradient(180deg, #082349, #04172f) !important;
+}
+
+body:has(.visual-module-page.module-api) .one-time-key code {
+  color: #79d8e8 !important;
+}
+
+@media (max-width: 680px) {
+  .visual-app-shell .visual-module-page.module-api .usage-section { padding: 14px !important; }
+  .visual-app-shell .visual-module-page.module-api .wallet-records { padding: 10px; }
+}
