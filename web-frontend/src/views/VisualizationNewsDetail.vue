@@ -7,7 +7,6 @@ import NewsDetail from './NewsDetail.vue'
   <section class="visual-news-detail-page">
     <header class="detail-intelligence-heading">
       <div>
-        <span>NEWS INTELLIGENCE · DETAIL</span>
         <h1>新闻情报详情</h1>
         <p>保留信息来源、发布时间与关联内容，便于快速核验和追踪。</p>
       </div>

@@ -14,17 +14,17 @@ import NewsList from './NewsList.vue'
       <div class="intelligence-status-grid" aria-label="信息中心状态">
         <article>
           <el-icon><Connection /></el-icon>
-          <span><small>NEWS LINK</small><strong>新闻链路</strong></span>
+          <span><strong>新闻链路</strong></span>
           <em><i></i>在线</em>
         </article>
         <article>
           <el-icon><Bell /></el-icon>
-          <span><small>MESSAGE BUS</small><strong>消息总线</strong></span>
+          <span><strong>消息总线</strong></span>
           <em><i></i>同步</em>
         </article>
         <article>
           <el-icon><DataLine /></el-icon>
-          <span><small>UPDATE MODE</small><strong>更新模式</strong></span>
+          <span><strong>更新模式</strong></span>
           <em><i></i>实时</em>
         </article>
       </div>

@@ -27,6 +27,7 @@
   background-size: auto, 52px 52px, 52px 52px, auto;
   font-family: "Microsoft YaHei", "PingFang SC", sans-serif;
   isolation: isolate;
+  transition: grid-template-columns 180ms ease;
 }
 
 .visual-app-shell,
@@ -76,6 +77,7 @@
   opacity: 0.28;
   background: linear-gradient(180deg, transparent, rgba(75, 214, 255, 0.08), transparent);
   animation: visual-shell-scan 10s linear infinite;
+  transition: left 180ms ease, width 180ms ease;
 }
 
 .visual-sidebar {
@@ -106,6 +108,44 @@
 .visual-sidebar::before { top: 0; height: 72px; }
 .visual-sidebar::after { bottom: 0; height: 42px; }
 
+.visual-sidebar-toggle {
+  position: absolute;
+  z-index: 12;
+  top: 72px;
+  right: -14px;
+  display: grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  border: 1px solid rgba(82, 232, 255, 0.5);
+  border-radius: 50%;
+  color: #fff;
+  background: #082746;
+  box-shadow: 0 0 12px rgba(82, 232, 255, 0.24);
+  cursor: pointer;
+}
+
+.visual-sidebar-toggle:hover { border-color: var(--viz-cyan); background: #0b3760; }
+.visual-sidebar-toggle:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+
+.visual-app-shell.is-sidebar-collapsed { grid-template-columns: 84px minmax(0, 1fr); }
+.visual-app-shell.is-sidebar-collapsed .visual-shell-scan { left: 84px; width: calc(100% - 84px); }
+.visual-app-shell.is-sidebar-collapsed .visual-sidebar { padding-inline: 9px; }
+.visual-app-shell.is-sidebar-collapsed .visual-brand { grid-template-columns: 1fr; justify-items: center; }
+.visual-app-shell.is-sidebar-collapsed .visual-brand-copy,
+.visual-app-shell.is-sidebar-collapsed .visual-system-state,
+.visual-app-shell.is-sidebar-collapsed .visual-console-scope,
+.visual-app-shell.is-sidebar-collapsed .visual-nav-group > p,
+.visual-app-shell.is-sidebar-collapsed .visual-nav-item > span:not(.nav-energy-node),
+.visual-app-shell.is-sidebar-collapsed .visual-nav-item > small,
+.visual-app-shell.is-sidebar-collapsed .visual-admin-entry,
+.visual-app-shell.is-sidebar-collapsed .visual-user-entry,
+.visual-app-shell.is-sidebar-collapsed .visual-user > span,
+.visual-app-shell.is-sidebar-collapsed .visual-user button { display: none; }
+.visual-app-shell.is-sidebar-collapsed .visual-nav-item { grid-template-columns: 11px 1fr; padding-right: 5px; }
+.visual-app-shell.is-sidebar-collapsed .visual-nav-icon { width: 22px; height: 22px; justify-self: center; }
+.visual-app-shell.is-sidebar-collapsed .visual-user { grid-template-columns: 1fr; justify-items: center; }
+
 .visual-brand {
   display: grid;
   grid-template-columns: 48px minmax(0, 1fr);
@@ -129,7 +169,7 @@
   clip-path: polygon(13% 0, 87% 0, 100% 13%, 100% 87%, 87% 100%, 13% 100%, 0 87%, 0 13%);
 }
 
-.visual-brand-core .el-icon { font-size: 25px; }
+.visual-brand-core > img { width: 30px; height: 30px; object-fit: contain; filter: brightness(0) invert(1); }
 .visual-brand-core i { position: absolute; right: 3px; bottom: 3px; width: 5px; height: 5px; border-radius: 50%; background: var(--viz-mint); box-shadow: 0 0 8px var(--viz-mint); }
 .visual-brand-copy { min-width: 0; }
 .visual-brand-copy small,
@@ -139,8 +179,7 @@
 .visual-brand-copy strong { margin: 4px 0 3px; color: #effcff; font-size: 20px; font-weight: 600; letter-spacing: 0.12em; text-shadow: 0 0 16px rgba(82, 232, 255, 0.25); }
 .visual-brand-copy em { color: #5f91aa; font: 8px/1 Bahnschrift, sans-serif; font-style: normal; letter-spacing: 0.14em; }
 
-.visual-system-state,
-.visual-channel-state {
+.visual-system-state {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -150,10 +189,8 @@
 }
 
 .visual-system-state { margin: 13px 5px 9px; }
-.visual-system-state span,
-.visual-channel-state span { display: inline-flex; align-items: center; gap: 7px; }
+.visual-system-state span { display: inline-flex; align-items: center; gap: 7px; }
 .visual-system-state i,
-.visual-channel-state i,
 .visual-clock > span i,
 .visual-shell-footer i { width: 6px; height: 6px; border-radius: 50%; background: var(--viz-mint); box-shadow: 0 0 8px var(--viz-mint); }
 .visual-system-state b { color: #4f91b1; font-weight: 500; }
@@ -227,8 +264,9 @@
 }
 
 .visual-nav-item.active::after { opacity: 1; }
-.visual-nav-item .el-icon { color: #69b6d3; font-size: 17px; }
-.visual-nav-item.active .el-icon { color: var(--viz-cyan); filter: drop-shadow(0 0 5px rgba(82, 232, 255, 0.55)); }
+.visual-nav-icon { width: 20px; height: 20px; object-fit: contain; opacity: 0.78; filter: brightness(0) invert(1); transition: opacity 160ms ease, filter 160ms ease; }
+.visual-nav-item:hover .visual-nav-icon { opacity: 1; }
+.visual-nav-item.active .visual-nav-icon { opacity: 1; filter: brightness(0) invert(1) drop-shadow(0 0 5px rgba(82, 232, 255, 0.72)); }
 .visual-nav-item > small { color: #3f718d; font: 8px Bahnschrift, sans-serif; }
 .visual-nav-item.active > small { color: #63b4d2; }
 
@@ -241,8 +279,6 @@
 .visual-admin-entry { display: flex; align-items: center; justify-content: space-between; min-height: 34px; padding: 0 10px; border: 1px solid rgba(255, 196, 92, 0.22); color: #ddbd7c; background: rgba(126, 77, 19, 0.13); font: 10px "Microsoft YaHei", sans-serif; cursor: pointer; }
 .visual-admin-entry small { color: #8b7346; font: 7px Bahnschrift, sans-serif; letter-spacing: 0.08em; }
 .visual-admin-entry:hover { border-color: rgba(255, 196, 92, 0.55); color: #ffe1a6; background: rgba(126, 77, 19, 0.22); }
-.visual-channel-state { padding: 8px 10px; border: 1px solid rgba(82, 232, 255, 0.12); background: rgba(8, 45, 83, 0.32); }
-.visual-channel-state strong { color: var(--viz-mint); font-size: 9px; font-weight: 500; }
 .visual-user { display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; align-items: center; gap: 9px; min-width: 0; padding: 5px; }
 .visual-user .el-avatar { border: 1px solid rgba(82, 232, 255, 0.45); color: #eaffff; background: #0d4a80; }
 .visual-user > span { min-width: 0; }
@@ -261,7 +297,7 @@
   outline-offset: 2px;
 }
 
-.visual-main { display: grid; width: 100%; height: 100vh; min-width: 0; min-height: 0; overflow: hidden; grid-template-rows: 68px minmax(0, 1fr) 28px; }
+.visual-main { display: grid; width: 100%; height: 100vh; min-width: 0; min-height: 0; overflow: hidden; grid-template-rows: 68px minmax(0, 1fr); }
 .visual-main.is-cockpit { grid-template-rows: minmax(0, 1fr); height: 100vh; min-height: 0; overflow: hidden; }
 .visual-main.is-cockpit .visual-content { height: 100vh; padding: 0; overflow: hidden; }
 .visual-topbar { position: relative; display: grid; grid-template-columns: 1fr minmax(180px, 0.7fr) 1fr; align-items: center; gap: 18px; padding: 0 22px; border-bottom: 1px solid var(--viz-line-soft); background: rgba(3, 18, 41, 0.7); }
@@ -304,13 +340,12 @@
   .visual-nav-group > p,
   .visual-nav-item > span:not(.nav-energy-node),
   .visual-nav-item > small,
-  .visual-channel-state,
   .visual-admin-entry,
   .visual-user-entry,
   .visual-user > span,
   .visual-user button { display: none; }
   .visual-nav-item { grid-template-columns: 11px 1fr; padding-right: 5px; }
-  .visual-nav-item .el-icon { justify-self: center; font-size: 19px; }
+  .visual-nav-icon { width: 22px; height: 22px; justify-self: center; }
   .visual-user { grid-template-columns: 1fr; justify-items: center; }
 }
 
@@ -320,13 +355,14 @@
   .visual-sidebar::before,
   .visual-sidebar::after,
   .visual-sidebar-footer { display: none; }
+  .visual-sidebar-toggle { display: none; }
   .visual-brand { display: none; }
   .visual-nav { display: flex; overflow-x: auto; }
   .visual-nav-group { display: flex; padding: 0; border: 0 !important; }
   .visual-nav-item { display: flex; width: 54px; min-height: 48px; flex: 0 0 54px; justify-content: center; padding: 0; }
   .visual-nav-item::after { top: auto; right: 8px; bottom: -1px; left: 8px; width: auto; height: 2px; }
   .nav-energy-node { display: none; }
-  .visual-main { height: auto; min-height: calc(100vh - 65px); overflow: visible; grid-template-rows: 56px minmax(0, 1fr) 24px; }
+  .visual-main { height: auto; min-height: calc(100vh - 65px); overflow: visible; grid-template-rows: 56px minmax(0, 1fr); }
   .visual-main.is-cockpit { height: auto; min-height: calc(100vh - 65px); grid-template-rows: minmax(0, 1fr); overflow: visible; }
   .visual-main.is-cockpit .visual-content { height: auto; overflow: visible; }
   .visual-topbar { grid-template-columns: minmax(0, 1fr) auto; padding: 0 12px; }

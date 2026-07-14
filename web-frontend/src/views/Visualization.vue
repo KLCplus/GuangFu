@@ -47,8 +47,12 @@ const selectedStation = computed(() =>
 const currentPower = computed(() => realtime.value?.power ?? 0)
 const currentIrradiance = computed(() => realtime.value?.irradiance ?? 0)
 const stationCapacity = computed(() => selectedStation.value?.capacity ?? 0)
-const loadPower = computed(() => Number((currentPower.value * 0.18).toFixed(2)))
-const gridPower = computed(() => Math.max(0, Number((currentPower.value - loadPower.value).toFixed(2))))
+const loadPower = computed(() => estimateLoadPower(selectedStationId.value, stationCapacity.value, new Date()))
+const gridPower = computed(() => Number(Math.abs(currentPower.value - loadPower.value).toFixed(2)))
+const batterySoc = computed(() => {
+  const utilization = stationCapacity.value > 0 ? currentPower.value / stationCapacity.value : 0
+  return Math.round(clamp(48 + utilization * 24 + stableNoise(selectedStationId.value ?? 1, Date.now(), 4), 25, 92))
+})
 
 const fallbackResources = [
   { code: 'CPU', label: '计算资源', value: '正常', detail: '使用率 34%', load: '34%', tone: 'blue' },
@@ -59,9 +63,7 @@ const fallbackResources = [
 
 const stationDetails = computed(() => [
   { label: '装机容量', value: formatMetric(stationCapacity.value, 1), unit: 'kW' },
-  { label: '运行状态', value: stationStatusText(selectedStation.value?.status), unit: '' },
-  { label: '经度', value: formatMetric(selectedStation.value?.longitude, 4), unit: 'E' },
-  { label: '纬度', value: formatMetric(selectedStation.value?.latitude, 4), unit: 'N' }
+  { label: '运行状态', value: stationStatusText(selectedStation.value?.status), unit: '' }
 ])
 
 const predictionPeak = computed(() => Math.max(...predictionRows.value.map((item) => item.predictPower), 0))
@@ -72,9 +74,9 @@ const predictionSourceLabel = computed(() => {
 })
 
 const summaryMetrics = computed(() => [
-  { label: '实时功率', value: formatMetric(realtime.value?.power, 2), unit: 'kW', trend: realtime.value ? '实时接口' : '等待数据' },
-  { label: '实时电压', value: formatMetric(realtime.value?.voltage, 1), unit: 'V', trend: realtime.value?.collectTime?.slice(11, 19) || '等待数据' },
-  { label: '实时辐照度', value: formatMetric(realtime.value?.irradiance, 0), unit: 'W/m²', trend: selectedStation.value?.stationName ?? '暂无电站' }
+  { label: '实时功率', value: formatMetric(realtime.value?.power, 2), unit: 'kW' },
+  { label: '估算电压', value: formatMetric(realtime.value?.voltage, 1), unit: 'V' },
+  { label: '估算辐照度', value: formatMetric(realtime.value?.irradiance, 0), unit: 'W/m²' }
 ])
 
 const weatherHours = computed(() => forecasts.value.slice(0, 5).map((item) => ({
@@ -217,8 +219,8 @@ async function loadPvOutputData(stationId: number) {
 
   lastUpdate.value = lastUpdate.value || weather.value?.reportTime || ''
   dataSource.value = [latestResult, historyResult, weatherResult].some((item) => item.status === 'rejected')
-    ? 'PVOutput 部分接口在线'
-    : 'PVOutput 实时接口在线'
+    ? 'PVOutput 功率 · 部分模拟估算'
+    : 'PVOutput 功率 · 模拟估算指标'
 }
 
 async function loadInternalStationData(stationId: number) {
@@ -284,6 +286,8 @@ async function loadSplitInterfaces() {
 }
 
 function mapPvOutputStation(item: PvOutputStation): Station {
+  const reportedCapacity = (item.systemSizeW ?? 0) / 1000
+  const panelCapacity = capacityFromPanelDescription(item.panel)
   return {
     stationId: item.id ?? item.externalSystemId,
     stationName: item.systemName || `PVOutput 电站 #${item.externalSystemId}`,
@@ -292,46 +296,43 @@ function mapPvOutputStation(item: PvOutputStation): Station {
     address: item.systemName || '暂无地址',
     longitude: item.longitude ?? 0,
     latitude: item.latitude ?? 0,
-    capacity: (item.systemSizeW ?? 0) / 1000,
+    capacity: chooseCredibleCapacity(reportedCapacity, panelCapacity),
     status: item.enabled ? 'RUNNING' : 'STOPPED',
     description: item.lastSyncStatus || 'PVOutput 真实接口电站'
   }
 }
 
 function mapPvOutputRealtime(item: PvOutputStatus): RealtimePvData {
-  const power = item.powerGenerationW == null ? 0 : item.powerGenerationW / 1000
-  const voltage = item.voltageV ?? realtime.value?.voltage ?? 382.5
+  const rawPower = item.powerGenerationW == null ? 0 : item.powerGenerationW / 1000
+  const power = stationCapacity.value > 0 ? Math.min(rawPower, stationCapacity.value * 1.05) : rawPower
+  const voltage = item.voltageV ?? estimateVoltage(item.sampleTime, power)
   return {
     stationId: selectedStationId.value ?? item.externalSystemId,
     collectTime: item.sampleTime,
     power,
     voltage,
-    current: voltage > 0 && item.powerGenerationW != null
-      ? Number((item.powerGenerationW / voltage).toFixed(1))
-      : (realtime.value?.current ?? 125.3),
+    current: estimateThreePhaseCurrent(power, voltage),
     irradiance: estimateIrradiance(power),
-    temperature: item.temperatureC ?? realtime.value?.temperature ?? 30.7,
-    humidity: weather.value?.humidity ?? realtime.value?.humidity ?? 54,
-    windSpeed: weather.value?.windSpeed ?? realtime.value?.windSpeed ?? 2.8
+    temperature: item.temperatureC ?? weather.value?.temperature ?? 26,
+    humidity: weather.value?.humidity ?? 55,
+    windSpeed: weather.value?.windSpeed ?? 2.5
   }
 }
 
 function enrichPvOutputHistory(rows: PvOutputStatus[]): PvHistoryItem[] {
-  return rows.map((item, index) => {
-    const power = item.powerGenerationW == null ? 0 : item.powerGenerationW / 1000
-    const base = currentPower.value || 2.1
-    const voltage = item.voltageV ?? Number((380 + Math.random() * 8).toFixed(1))
+  return rows.map((item) => {
+    const rawPower = item.powerGenerationW == null ? 0 : item.powerGenerationW / 1000
+    const power = stationCapacity.value > 0 ? Math.min(rawPower, stationCapacity.value * 1.05) : rawPower
+    const voltage = item.voltageV ?? estimateVoltage(item.sampleTime, power)
     return {
-      time: item.sampleTime || `采样 ${index + 1}`,
-      power: item.powerGenerationW == null
-        ? Number((base * (0.35 + Math.random() * 1.2 + (index % 5 === 0 ? Math.random() * 0.35 : 0))).toFixed(2))
-        : power,
+      time: item.sampleTime,
+      power: Number(power.toFixed(2)),
       voltage,
-      current: Number((118 + Math.random() * 18).toFixed(1)),
-      irradiance: Number((760 + Math.random() * 180).toFixed(0)),
-      temperature: Number((item.temperatureC ?? 26 + Math.random() * 8).toFixed(1)),
-      humidity: Number((45 + Math.random() * 18).toFixed(0)),
-      windSpeed: Number((1.8 + Math.random() * 2.2).toFixed(1))
+      current: estimateThreePhaseCurrent(power, voltage),
+      irradiance: estimateIrradiance(power),
+      temperature: Number((item.temperatureC ?? weather.value?.temperature ?? 26).toFixed(1)),
+      humidity: Number((weather.value?.humidity ?? 55).toFixed(0)),
+      windSpeed: Number((weather.value?.windSpeed ?? 2.5).toFixed(1))
     }
   })
 }
@@ -345,29 +346,79 @@ function getDisplayHistory(stationId: number): PvHistoryItem[] {
 }
 
 function createDisplayHistory(): PvHistoryItem[] {
-  const base = currentPower.value || 2.1
+  const capacity = stationCapacity.value || 100
+  const endPower = clamp(currentPower.value || capacity * 0.55, 0, capacity * 0.98)
   const now = new Date()
   return Array.from({ length: 12 }, (_, index) => {
     const time = new Date(now.getTime() - (11 - index) * 30 * 60_000)
-    const ratio = 0.35 + Math.random() * 1.2 + (index % 4 === 0 ? Math.random() * 0.3 : 0)
+    const progress = index / 11
+    const smoothFactor = 0.72 + progress * 0.28 + Math.sin(index * 0.8) * 0.025
+    const power = clamp(endPower * smoothFactor, 0, capacity * 0.98)
+    const voltage = estimateVoltage(formatDateTime(time), power)
     return {
       time: formatDateTime(time),
-      power: Number((base * ratio).toFixed(2)),
-      voltage: Number((380 + Math.random() * 8).toFixed(1)),
-      current: Number((118 + Math.random() * 18).toFixed(1)),
-      irradiance: Number((760 + Math.random() * 180).toFixed(0)),
-      temperature: Number((26 + Math.random() * 8).toFixed(1)),
-      humidity: Number((45 + Math.random() * 18).toFixed(0)),
-      windSpeed: Number((1.8 + Math.random() * 2.2).toFixed(1))
+      power: Number(power.toFixed(2)),
+      voltage,
+      current: estimateThreePhaseCurrent(power, voltage),
+      irradiance: estimateIrradiance(power),
+      temperature: Number((weather.value?.temperature ?? 26).toFixed(1)),
+      humidity: Number((weather.value?.humidity ?? 55).toFixed(0)),
+      windSpeed: Number((weather.value?.windSpeed ?? 2.5).toFixed(1))
     }
   })
 }
 
 function estimateIrradiance(powerKw: number) {
   if (stationCapacity.value > 0) {
-    return Math.round(Math.min(1200, Math.max(0, powerKw / stationCapacity.value * 1000)))
+    // Demo estimate: P = capacity * irradiance / 1000 * performance ratio.
+    return Math.round(clamp(powerKw / (stationCapacity.value * 0.84) * 1000, 0, 1100))
   }
-  return realtime.value?.irradiance ?? 865
+  return 0
+}
+
+function estimateVoltage(time: string, powerKw: number) {
+  const utilization = stationCapacity.value > 0 ? powerKw / stationCapacity.value : 0
+  const variation = stableNoise(selectedStationId.value ?? 1, Date.parse(time) || Date.now(), 2.2)
+  return Number(clamp(380 + utilization * 3 + variation, 370, 395).toFixed(1))
+}
+
+function estimateThreePhaseCurrent(powerKw: number, voltage: number) {
+  if (powerKw <= 0 || voltage <= 0) return 0
+  return Number((powerKw * 1000 / (Math.sqrt(3) * voltage * 0.96)).toFixed(1))
+}
+
+function estimateLoadPower(stationId: number | undefined, capacityKw: number, time: Date) {
+  if (capacityKw <= 0) return 0
+  const hour = time.getHours() + time.getMinutes() / 60
+  const daytimeFactor = hour >= 7 && hour <= 19 ? 1 : 0.72
+  const variation = stableNoise(stationId ?? 1, time.getTime(), 0.012)
+  return Number(clamp(capacityKw * (0.1 * daytimeFactor + variation), capacityKw * 0.04, capacityKw * 0.16).toFixed(2))
+}
+
+function capacityFromPanelDescription(panel?: string) {
+  if (!panel) return 0
+  let watts = 0
+  for (const match of panel.matchAll(/(\d+)\s*x\s*(\d+(?:\.\d+)?)\s*W/gi)) {
+    watts += Number(match[1]) * Number(match[2])
+  }
+  return watts / 1000
+}
+
+function chooseCredibleCapacity(reportedKw: number, panelKw: number) {
+  if (panelKw > 0 && (reportedKw <= 0 || reportedKw / panelKw > 1.35 || reportedKw / panelKw < 0.65)) {
+    return Number(panelKw.toFixed(2))
+  }
+  return Number(Math.max(0, reportedKw || panelKw).toFixed(2))
+}
+
+function stableNoise(stationId: number, timestamp: number, amplitude: number) {
+  const bucket = Math.floor(timestamp / (15 * 60_000))
+  const value = Math.sin(stationId * 12.9898 + bucket * 78.233) * 43758.5453
+  return ((value - Math.floor(value)) * 2 - 1) * amplitude
+}
+
+function clamp(value: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, value))
 }
 
 function ensurePredictionSeries() {
@@ -604,14 +655,12 @@ function resourceCode(name: string) {
       <div class="header-wing header-wing-left">
         <span class="wing-mark" />
         <div>
-          <small>GUANGFU DATA CENTER</small>
           <strong>新能源集中监控中心</strong>
         </div>
       </div>
 
       <div class="title-lockup">
-        <span class="title-overline">PV ENERGY · LIVE OPERATION</span>
-        <h1>光伏能源运行驾驶舱</h1>
+        <h1>光伏智控中心</h1>
         <span class="title-axis" aria-hidden="true"><i /></span>
       </div>
 
@@ -633,7 +682,6 @@ function resourceCode(name: string) {
         <section class="data-panel station-panel">
           <header class="panel-heading">
             <div>
-              <span class="panel-kicker">STATION PROFILE</span>
               <h2>电站信息</h2>
             </div>
             <span class="station-live"><i />{{ stationStatusText(selectedStation?.status) }}</span>
@@ -690,7 +738,6 @@ function resourceCode(name: string) {
         <section class="data-panel generation-panel">
           <header class="panel-heading">
             <div>
-              <span class="panel-kicker">POWER FORECAST</span>
               <h2>预测功率</h2>
             </div>
             <span class="panel-meta">{{ predictionSourceLabel }}</span>
@@ -717,14 +764,12 @@ function resourceCode(name: string) {
           <article v-for="metric in summaryMetrics" :key="metric.label">
             <span>{{ metric.label }}</span>
             <div><strong>{{ metric.value }}</strong><small>{{ metric.unit }}</small></div>
-            <em>{{ metric.trend }}</em>
           </article>
         </div>
 
         <section class="situation-panel">
           <header class="situation-head">
             <div>
-              <span class="panel-kicker">LIVE ENERGY FLOW</span>
               <h2>实时能源流</h2>
             </div>
             <div class="flow-sync-state">
@@ -739,7 +784,6 @@ function resourceCode(name: string) {
             <img src="/images/dashboard.png" alt="光伏发电、负载、电网与储能实时能源流拓扑图" />
 
             <div class="flow-hub">
-              <span>ENERGY HUB</span>
               <strong>{{ formatMetric(currentPower, 2) }} <small>kW</small></strong>
               <em>{{ selectedStation?.stationName || '等待电站数据' }}</em>
             </div>
@@ -747,17 +791,32 @@ function resourceCode(name: string) {
             <div class="flow-metric flow-load"><i /><span>负载</span><strong>{{ formatMetric(loadPower, 2) }} <small>kW</small></strong></div>
             <div class="flow-metric flow-solar"><i /><span>光伏发电</span><strong>{{ formatMetric(currentPower, 2) }} <small>kW</small></strong></div>
             <div class="flow-metric flow-grid-node"><i /><span>电网</span><strong>{{ formatMetric(gridPower, 2) }} <small>kW</small></strong></div>
-            <div class="flow-metric flow-battery"><i /><span>储能</span><strong>52 <small>%</small></strong></div>
+            <div class="flow-metric flow-battery"><i /><span>储能</span><strong>{{ batterySoc }} <small>%</small></strong></div>
 
             <div class="flow-direction flow-direction-left" aria-hidden="true"><i /></div>
             <div class="flow-direction flow-direction-right" aria-hidden="true"><i /></div>
-            <div class="flow-direction flow-direction-bottom" aria-hidden="true"><i /></div>
+            <svg class="flow-direction-branches" viewBox="0 0 1000 600" preserveAspectRatio="none" aria-hidden="true">
+              <defs>
+                <filter id="flow-particle-glow" x="-200%" y="-200%" width="500%" height="500%">
+                  <feGaussianBlur stdDeviation="5" result="blur" />
+                  <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
+                </filter>
+              </defs>
+              <path id="flow-branch-solar" class="flow-branch-track" d="M500 330 V460 H390" />
+              <path id="flow-branch-battery" class="flow-branch-track" d="M500 330 V460 H610" />
+              <circle class="flow-branch-particle" r="4" filter="url(#flow-particle-glow)">
+                <animateMotion dur="2.7s" repeatCount="indefinite"><mpath href="#flow-branch-solar" /></animateMotion>
+              </circle>
+              <circle class="flow-branch-particle" r="4" filter="url(#flow-particle-glow)">
+                <animateMotion dur="2.7s" begin="-1.35s" repeatCount="indefinite"><mpath href="#flow-branch-battery" /></animateMotion>
+              </circle>
+            </svg>
           </div>
         </section>
 
         <section class="server-strip">
           <header class="server-strip-heading">
-            <div><span class="panel-kicker">INFRASTRUCTURE</span><h2>服务器信息</h2></div>
+            <div><h2>服务器信息</h2></div>
             <span class="server-summary"><i />全部服务正常</span>
           </header>
           <div class="server-resource-grid">
@@ -775,7 +834,6 @@ function resourceCode(name: string) {
         <section class="data-panel weather-panel">
           <header class="panel-heading">
             <div>
-              <span class="panel-kicker">SOLAR WEATHER</span>
               <h2>天气实况</h2>
             </div>
             <span class="weather-symbol" aria-hidden="true">☼</span>
@@ -784,7 +842,7 @@ function resourceCode(name: string) {
           <div class="weather-current">
             <div><strong>{{ formatMetric(weather?.temperature, 1) }}<small>°C</small></strong><span>{{ weather?.weather || '等待天气数据' }}</span></div>
             <dl>
-              <div><dt>辐照度</dt><dd>{{ formatMetric(currentIrradiance, 0) }} W/m²</dd></div>
+            <div><dt>估算辐照度</dt><dd>{{ formatMetric(currentIrradiance, 0) }} W/m²</dd></div>
               <div><dt>风速</dt><dd>{{ formatMetric(weather?.windSpeed, 1) }} m/s</dd></div>
               <div><dt>湿度</dt><dd>{{ formatMetric(weather?.humidity, 0) }} %</dd></div>
             </dl>
@@ -800,8 +858,7 @@ function resourceCode(name: string) {
         <section class="data-panel realtime-lines-panel">
           <header class="panel-heading">
             <div>
-              <span class="panel-kicker">ELECTRICAL STREAM</span>
-              <h2>辐照与电气实时数据</h2>
+              <h2>辐照与电气估算数据</h2>
             </div>
             <span class="panel-meta">{{ historyRows.length }} POINTS</span>
           </header>
@@ -812,9 +869,9 @@ function resourceCode(name: string) {
           </div>
 
           <div class="latest-measurements">
-            <div><span>辐照度</span><strong>{{ formatMetric(realtime?.irradiance, 0) }} <small>W/m²</small></strong></div>
-            <div><span>电压</span><strong>{{ formatMetric(realtime?.voltage, 1) }} <small>V</small></strong></div>
-            <div><span>电流</span><strong>{{ formatMetric(realtime?.current, 1) }} <small>A</small></strong></div>
+            <div><span>估算辐照度</span><strong>{{ formatMetric(realtime?.irradiance, 0) }} <small>W/m²</small></strong></div>
+            <div><span>估算电压</span><strong>{{ formatMetric(realtime?.voltage, 1) }} <small>V</small></strong></div>
+            <div><span>估算电流</span><strong>{{ formatMetric(realtime?.current, 1) }} <small>A</small></strong></div>
           </div>
         </section>
       </aside>
