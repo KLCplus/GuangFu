@@ -5,6 +5,10 @@ import { useUserStore } from '../store/user'
 const AuthLayout = () => import('../layouts/AuthLayout.vue')
 const UserLayout = () => import('../layouts/UserLayout.vue')
 const AdminLayout = () => import('../layouts/AdminLayout.vue')
+const VisualizationLayout = () => import('../layouts/VisualizationLayout.vue')
+const VisualizationModulePage = () => import('../views/VisualizationModulePage.vue')
+const VisualizationAdminLayout = () => import('../layouts/VisualizationAdminLayout.vue')
+const VisualizationAdminPage = () => import('../views/VisualizationAdminPage.vue')
 
 const routes: RouteRecordRaw[] = [
   {
@@ -22,6 +26,141 @@ const routes: RouteRecordRaw[] = [
     name: 'Visualization',
     component: () => import('../views/Visualization.vue'),
     meta: { requiresAuth: true, title: '光伏能源运行驾驶舱' }
+  },
+  {
+    path: '/visualization-ui',
+    component: VisualizationLayout,
+    meta: { requiresAuth: true },
+    children: [
+      { path: '', redirect: '/visualization-ui/cockpit' },
+      {
+        path: 'cockpit',
+        name: 'VisualizationCockpit',
+        component: () => import('../views/VisualizationCockpit.vue'),
+        meta: { title: '光伏能源运行驾驶舱' }
+      },
+      {
+        path: 'pvoutput',
+        name: 'VisualizationPvOutput',
+        component: VisualizationModulePage,
+        meta: { title: '公开电站观测台', visualModule: 'pvoutput' }
+      },
+      {
+        path: 'weather',
+        name: 'VisualizationWeather',
+        component: VisualizationModulePage,
+        meta: { title: '气象监测中心', visualModule: 'weather' }
+      },
+      {
+        path: 'models/use',
+        name: 'VisualizationModelUse',
+        component: VisualizationModulePage,
+        meta: { title: '模型预测控制台', visualModule: 'model' }
+      },
+      {
+        path: 'cloud-forecast',
+        name: 'VisualizationCloudForecast',
+        component: VisualizationModulePage,
+        meta: { title: '云图预测控制台', visualModule: 'cloud' }
+      },
+      {
+        path: 'marketplace',
+        name: 'VisualizationMarketplace',
+        component: VisualizationModulePage,
+        meta: { title: '模型能力广场', visualModule: 'marketplace' }
+      },
+      {
+        path: 'api/overview',
+        name: 'VisualizationApiOverview',
+        component: VisualizationModulePage,
+        meta: { title: 'API 开放平台', visualModule: 'api-overview' }
+      },
+      {
+        path: 'api/keys',
+        name: 'VisualizationApiKeys',
+        component: VisualizationModulePage,
+        meta: { title: 'API Key 控制台', visualModule: 'api-keys' }
+      },
+      {
+        path: 'api/billing',
+        name: 'VisualizationApiBilling',
+        component: VisualizationModulePage,
+        meta: { title: '余额与流水中心', visualModule: 'api-billing' }
+      },
+      {
+        path: 'api/usage',
+        name: 'VisualizationApiUsage',
+        component: VisualizationModulePage,
+        meta: { title: 'API 使用统计', visualModule: 'api-usage' }
+      },
+      {
+        path: 'reports',
+        name: 'VisualizationReports',
+        component: VisualizationModulePage,
+        meta: { title: 'Agent 分析工作台', visualModule: 'reports' }
+      },
+      {
+        path: 'news',
+        name: 'VisualizationNews',
+        component: () => import('../views/VisualizationNews.vue'),
+        meta: { title: '新闻通知情报台' }
+      },
+      {
+        path: 'news/:newsId',
+        name: 'VisualizationNewsDetail',
+        component: () => import('../views/VisualizationNewsDetail.vue'),
+        meta: { title: '新闻情报详情' }
+      },
+      {
+        path: 'profile',
+        name: 'VisualizationProfile',
+        component: () => import('../views/VisualizationProfile.vue'),
+        meta: { title: '我的能源账户' }
+      },
+      { path: 'notifications', redirect: { path: '/visualization-ui/news', query: { tab: 'notifications' } } },
+      { path: 'prediction/new', redirect: '/visualization-ui/models/use' },
+      { path: 'open', redirect: '/visualization-ui/api/overview' },
+      { path: 'analysis/reports', redirect: '/visualization-ui/reports' }
+    ]
+  },
+  {
+    path: '/visualization-admin',
+    component: VisualizationAdminLayout,
+    meta: { requiresAuth: true, roles: ['ADMIN'] },
+    children: [
+      { path: '', redirect: '/visualization-admin/users-apis' },
+      {
+        path: 'users-apis',
+        name: 'VisualizationAdminUsersApis',
+        component: VisualizationAdminPage,
+        meta: { title: '用户与 API 管理', visualAdminModule: 'users-apis' }
+      },
+      {
+        path: 'pvoutput',
+        name: 'VisualizationAdminPvOutput',
+        component: VisualizationAdminPage,
+        meta: { title: '数据源管理', visualAdminModule: 'pvoutput' }
+      },
+      {
+        path: 'models',
+        name: 'VisualizationAdminModels',
+        component: VisualizationAdminPage,
+        meta: { title: '模型管理', visualAdminModule: 'models' }
+      },
+      {
+        path: 'news',
+        name: 'VisualizationAdminNews',
+        component: VisualizationAdminPage,
+        meta: { title: '新闻管理', visualAdminModule: 'news' }
+      },
+      {
+        path: 'announcements',
+        name: 'VisualizationAdminAnnouncements',
+        component: VisualizationAdminPage,
+        meta: { title: '公告管理', visualAdminModule: 'announcements' }
+      },
+      { path: 'api-keys', redirect: '/visualization-admin/users-apis' }
+    ]
   },
   {
     path: '/',

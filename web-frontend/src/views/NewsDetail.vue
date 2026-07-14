@@ -4,6 +4,12 @@ import { useRoute, useRouter } from 'vue-router'
 import { loadNewsDetail, loadNewsPage } from '../api/userPages'
 import type { News } from '../api/news'
 
+const props = withDefaults(defineProps<{
+  basePath?: string
+}>(), {
+  basePath: '/news'
+})
+
 const route = useRoute()
 const router = useRouter()
 
@@ -61,11 +67,11 @@ async function fetchRelatedNews() {
 }
 
 function openRelated(item: News) {
-  void router.push(`/news/${item.newsId}`)
+  void router.push(`${props.basePath}/${item.newsId}`)
 }
 
 function goBack() {
-  void router.push('/news')
+  void router.push(props.basePath)
 }
 
 function newsTypeLabel(type?: string) {

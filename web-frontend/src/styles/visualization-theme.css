@@ -1,0 +1,342 @@
+/* Final theme boundary for every page mounted inside either visualization console. */
+.visual-app-shell .visual-content {
+  --color-primary: #52e8ff;
+  --color-primary-dark: #2f82ff;
+  --color-primary-soft: rgba(24, 106, 180, 0.18);
+  --color-border: rgba(82, 232, 255, 0.18);
+  --color-muted: #6e9fba;
+  --color-surface: rgba(5, 27, 57, 0.84);
+  --shadow-panel: inset 0 0 24px rgba(34, 120, 191, 0.05);
+  --el-bg-color: #071d3d;
+  --el-bg-color-page: #02091b;
+  --el-bg-color-overlay: #082349;
+  --el-fill-color-blank: #071d3d;
+  --el-fill-color-light: rgba(24, 106, 180, 0.14);
+  --el-fill-color-lighter: rgba(24, 106, 180, 0.09);
+  --el-fill-color-extra-light: rgba(24, 106, 180, 0.06);
+  --el-border-color: rgba(82, 232, 255, 0.2);
+  --el-border-color-light: rgba(82, 232, 255, 0.14);
+  --el-border-color-lighter: rgba(82, 232, 255, 0.09);
+  --el-text-color-primary: #dff7ff;
+  --el-text-color-regular: #a4cad5;
+  --el-text-color-secondary: #6e9fba;
+  --el-text-color-placeholder: #47778f;
+  --el-color-primary: #52e8ff;
+}
+
+/* Marketplace: remove the remaining white chips and restore title contrast. */
+.visual-app-shell .visual-module-page .module-content .model-card {
+  border-color: rgba(82, 232, 255, 0.18) !important;
+  color: #a8ccd6 !important;
+  background: linear-gradient(180deg, rgba(8, 35, 72, 0.92), rgba(4, 24, 50, 0.86)) !important;
+  box-shadow: inset 0 0 24px rgba(34, 120, 191, 0.05), 0 10px 24px rgba(0, 9, 30, 0.25) !important;
+}
+
+.visual-app-shell .visual-module-page .module-content .model-card:hover,
+.visual-app-shell .visual-module-page .module-content .model-card:focus-visible {
+  border-color: rgba(82, 232, 255, 0.52) !important;
+  box-shadow: inset 2px 0 var(--viz-cyan), 0 15px 32px rgba(0, 9, 30, 0.42) !important;
+}
+
+.visual-app-shell .visual-module-page .module-content .model-heading-copy strong,
+.visual-app-shell .visual-module-page .module-content .detail-heading-copy h2,
+.visual-app-shell .visual-module-page .module-content .detail-section h3,
+.visual-app-shell .visual-module-page .module-content .filter-section-heading strong,
+.visual-app-shell .visual-module-page .module-content .info-block strong,
+.visual-app-shell .visual-module-page .module-content .config-card strong {
+  color: #daf6fb !important;
+}
+
+.visual-app-shell .visual-module-page .module-content .model-description,
+.visual-app-shell .visual-module-page .module-content .detail-description,
+.visual-app-shell .visual-module-page .module-content .info-block ul,
+.visual-app-shell .visual-module-page .module-content .meta-list dd {
+  color: #6f9caf !important;
+}
+
+.visual-app-shell .visual-module-page .module-content .tag-chip,
+.visual-app-shell .visual-module-page .module-content .detail-badges .el-tag,
+.visual-app-shell .visual-module-page .module-content .selected-filter-chips > span {
+  border-color: rgba(82, 232, 255, 0.2) !important;
+  border-radius: 0 !important;
+  color: #8bc8d7 !important;
+  background: rgba(18, 76, 126, 0.34) !important;
+  box-shadow: inset 0 -1px rgba(82, 232, 255, 0.07);
+}
+
+.visual-app-shell .visual-module-page .module-content .model-icon,
+.visual-app-shell .visual-module-page .module-content .detail-icon {
+  border: 1px solid rgba(82, 232, 255, 0.18);
+  border-radius: 0 !important;
+  background: #09264b;
+  filter: brightness(0.82) saturate(1.18);
+}
+
+.visual-app-shell .visual-module-page .module-content .info-block,
+.visual-app-shell .visual-module-page .module-content .config-card,
+.visual-app-shell .visual-module-page .module-content .schema-block,
+.visual-app-shell .visual-module-page .module-content .detail-hero,
+.visual-app-shell .visual-module-page .module-content .filter-sidebar-head,
+.visual-app-shell .visual-module-page .module-content .filter-sidebar-body {
+  border-color: rgba(82, 232, 255, 0.15) !important;
+  border-radius: 0 !important;
+  color: #9fc6d1 !important;
+  background: rgba(5, 29, 59, 0.86) !important;
+}
+
+.visual-app-shell .visual-module-page .module-content .schema-block {
+  color: #83bfd0 !important;
+}
+
+.visual-app-shell .visual-module-page .module-content .filter-option-list .el-checkbox {
+  border: 1px solid transparent;
+  border-radius: 0 !important;
+  color: #6f9caf;
+  background: rgba(7, 36, 70, 0.42);
+}
+
+.visual-app-shell .visual-module-page .module-content .filter-option-list .el-checkbox:hover,
+.visual-app-shell .visual-module-page .module-content .filter-option-list .el-checkbox.is-checked {
+  border-color: rgba(82, 232, 255, 0.22);
+  color: #d9f7fb;
+  background: rgba(24, 106, 180, 0.22);
+}
+
+/* Weather, cloud, model execution and public station surfaces. */
+.visual-app-shell .visual-module-page .module-content .forecast-section,
+.visual-app-shell .visual-module-page .module-content .frame-card,
+.visual-app-shell .visual-module-page .module-content .predict-bar,
+.visual-app-shell .visual-module-page .module-content .file-control,
+.visual-app-shell .visual-module-page .module-content .result-section,
+.visual-app-shell .visual-module-page .module-content .station-row,
+.visual-app-shell .visual-module-page .module-content .weather-mini,
+.visual-app-shell .visual-module-page .module-content .forecast-chip {
+  border-color: rgba(82, 232, 255, 0.15) !important;
+  border-radius: 0 !important;
+  color: #98c1cc !important;
+  background: rgba(6, 32, 65, 0.78) !important;
+}
+
+.visual-app-shell .visual-module-page .module-content .panel-head h3,
+.visual-app-shell .visual-module-page .module-content .forecast-info strong,
+.visual-app-shell .visual-module-page .module-content .predict-bar strong,
+.visual-app-shell .visual-module-page .module-content .weather-hero h2,
+.visual-app-shell .visual-module-page .module-content .forecast-card strong,
+.visual-app-shell .visual-module-page .module-content .weather-mini-main strong,
+.visual-app-shell .visual-module-page .module-content .forecast-chip strong,
+.visual-app-shell .visual-module-page .module-content .file-control strong,
+.visual-app-shell .visual-module-page .module-content .result-summary b {
+  color: #d9f5fa !important;
+}
+
+/* API platform hard-coded light sections. */
+.visual-app-shell .visual-module-page .module-content .overview-summary article,
+.visual-app-shell .visual-module-page .module-content .model-panel,
+.visual-app-shell .visual-module-page .module-content .wallet-section,
+.visual-app-shell .visual-module-page .module-content .wallet-grid article,
+.visual-app-shell .visual-module-page .module-content .one-time-key,
+.visual-app-shell .visual-module-page .module-content .reference-summary .summary-card,
+.visual-app-shell .visual-module-page .module-content .reference-summary .token-card,
+.visual-app-shell .visual-module-page .module-content .reference-dashboard .chart-card,
+.visual-app-shell .visual-module-page .module-content .heading-actions .el-button,
+.visual-app-shell .visual-module-page .module-content .range-tabs {
+  border-color: rgba(82, 232, 255, 0.16) !important;
+  border-radius: 0 !important;
+  color: #a4cad5 !important;
+  background: linear-gradient(180deg, rgba(8, 35, 72, 0.88), rgba(4, 24, 50, 0.8)) !important;
+  box-shadow: none !important;
+}
+
+.visual-app-shell .visual-module-page .module-content .wallet-heading h1,
+.visual-app-shell .visual-module-page .module-content .wallet-records-heading h2,
+.visual-app-shell .visual-module-page .module-content .key-heading h1,
+.visual-app-shell .visual-module-page .module-content .usage-heading h2,
+.visual-app-shell .visual-module-page .module-content .panel-heading h2,
+.visual-app-shell .visual-module-page .module-content .service-note h2,
+.visual-app-shell .visual-module-page .module-content .model-card h3,
+.visual-app-shell .visual-module-page .module-content .chart-heading h3,
+.visual-app-shell .visual-module-page .module-content .chart-total,
+.visual-app-shell .visual-module-page .module-content .error-total,
+.visual-app-shell .visual-module-page .module-content .overview-summary strong,
+.visual-app-shell .visual-module-page .module-content .summary-card strong,
+.visual-app-shell .visual-module-page .module-content .wallet-grid strong {
+  color: #d9f5fa !important;
+}
+
+.visual-app-shell .visual-module-page .module-content .range-tabs button {
+  border-radius: 0 !important;
+  color: #678fa4;
+  background: transparent;
+}
+
+.visual-app-shell .visual-module-page .module-content .range-tabs button.active {
+  color: #e5fcff !important;
+  background: rgba(24, 106, 180, 0.32) !important;
+  box-shadow: inset 0 -1px var(--viz-cyan);
+}
+
+/* Agent conversation and generated UI cards. */
+.visual-app-shell .visual-module-page .module-content .user-chip,
+.visual-app-shell .visual-module-page .module-content .pv-ui-card,
+.visual-app-shell .visual-module-page .module-content .process-strip,
+.visual-app-shell .visual-module-page .module-content .signature-role-tabs,
+.visual-app-shell .visual-module-page .module-content .signature-pad,
+.visual-app-shell .visual-module-page .module-content .markdown-body code,
+.visual-app-shell .visual-module-page .module-content .markdown-body table,
+.visual-app-shell .visual-module-page .module-content .kind-error .message-bubble {
+  border-color: rgba(82, 232, 255, 0.16) !important;
+  border-radius: 0 !important;
+  color: #a7ccd6 !important;
+  background: rgba(6, 32, 65, 0.82) !important;
+}
+
+.visual-app-shell .visual-module-page .module-content .pv-ui-card header strong,
+.visual-app-shell .visual-module-page .module-content .pv-ui-card dd,
+.visual-app-shell .visual-module-page .module-content .markdown-body h1,
+.visual-app-shell .visual-module-page .module-content .markdown-body h2,
+.visual-app-shell .visual-module-page .module-content .markdown-body h3,
+.visual-app-shell .visual-module-page .module-content .markdown-body h4,
+.visual-app-shell .visual-module-page .module-content .markdown-body h5 {
+  color: #d9f5fa !important;
+}
+
+.visual-app-shell .visual-module-page .module-content .process-strip.running .process-pulse,
+.visual-app-shell .visual-module-page .module-content .process-strip.waiting .process-pulse,
+.visual-app-shell .visual-module-page .module-content .run-step.running > span,
+.visual-app-shell .visual-module-page .module-content .run-step.waiting > span {
+  color: #ffc96e !important;
+  background: rgba(151, 94, 23, 0.22) !important;
+}
+
+.visual-app-shell .visual-module-page .module-content .role-assistant .message-bubble:has(.markdown-body table) {
+  border-color: rgba(82, 232, 255, 0.16) !important;
+  color: #a7ccd6 !important;
+  background: rgba(6, 32, 65, 0.86) !important;
+  box-shadow: none !important;
+}
+
+/* Element Plus descendants inside the visualization viewport. */
+.visual-app-shell .visual-content .el-card,
+.visual-app-shell .visual-content .el-table,
+.visual-app-shell .visual-content .el-descriptions,
+.visual-app-shell .visual-content .el-upload-dragger,
+.visual-app-shell .visual-content .el-pagination button,
+.visual-app-shell .visual-content .el-pager li,
+.visual-app-shell .visual-content .el-collapse-item__wrap,
+.visual-app-shell .visual-content .el-collapse-item__header,
+.visual-app-shell .visual-content .el-empty,
+.visual-app-shell .visual-content .el-result {
+  border-color: rgba(82, 232, 255, 0.16) !important;
+  color: #a6ccd6 !important;
+  background: rgba(5, 29, 59, 0.82) !important;
+}
+
+.visual-app-shell .visual-content .el-upload-dragger:hover {
+  border-color: rgba(82, 232, 255, 0.55) !important;
+  background: rgba(24, 106, 180, 0.16) !important;
+}
+
+.visual-app-shell .visual-content .el-pagination button,
+.visual-app-shell .visual-content .el-pager li {
+  color: #6f9fb4 !important;
+}
+
+.visual-app-shell .visual-content .el-pager li.is-active {
+  color: #efffff !important;
+  background: rgba(35, 128, 207, 0.66) !important;
+  box-shadow: inset 0 -1px var(--viz-cyan);
+}
+
+.visual-app-shell .visual-content .el-table__inner-wrapper::before {
+  background: rgba(82, 232, 255, 0.13) !important;
+}
+
+.visual-app-shell .visual-content .el-table {
+  --el-table-bg-color: rgba(5, 29, 59, 0.82);
+  --el-table-tr-bg-color: rgba(5, 29, 59, 0.82);
+  --el-table-row-hover-bg-color: rgba(24, 106, 180, 0.18);
+  --el-table-header-bg-color: rgba(7, 43, 80, 0.92);
+  --el-table-border-color: rgba(82, 232, 255, 0.12);
+  --el-table-text-color: #9fc6d1;
+  --el-table-header-text-color: #6f9fb4;
+}
+
+.visual-app-shell .visual-content .el-checkbox__inner,
+.visual-app-shell .visual-content .el-radio__inner {
+  border-color: rgba(82, 198, 255, 0.42);
+  background: #061b39;
+}
+
+.visual-app-shell .visual-content .el-checkbox__input.is-checked .el-checkbox__inner,
+.visual-app-shell .visual-content .el-radio__input.is-checked .el-radio__inner {
+  border-color: var(--viz-cyan);
+  background: var(--viz-cyan);
+}
+
+/* Teleported dropdowns, drawers and dialogs only while the visualization console is mounted. */
+body:has(.visual-app-shell) .el-popper,
+body:has(.visual-app-shell) .el-select__popper,
+body:has(.visual-app-shell) .el-picker__popper,
+body:has(.visual-app-shell) .el-dropdown__popper,
+body:has(.visual-app-shell) .el-dialog,
+body:has(.visual-app-shell) .el-message-box,
+body:has(.visual-app-shell) .el-drawer,
+body:has(.visual-app-shell) .marketplace-detail-drawer {
+  --el-bg-color-overlay: #082349;
+  --el-fill-color-light: rgba(24, 106, 180, 0.16);
+  --el-text-color-primary: #dff7ff;
+  --el-text-color-regular: #a4cad5;
+  --el-border-color-light: rgba(82, 232, 255, 0.15);
+  border-color: rgba(82, 232, 255, 0.25) !important;
+  border-radius: 0 !important;
+  color: #a8ccd6 !important;
+  background: linear-gradient(180deg, #082349, #04172f) !important;
+  box-shadow: 0 18px 50px rgba(0, 8, 28, 0.65) !important;
+}
+
+body:has(.visual-app-shell) .el-select-dropdown__item,
+body:has(.visual-app-shell) .el-dropdown-menu__item,
+body:has(.visual-app-shell) .el-picker-panel,
+body:has(.visual-app-shell) .el-drawer__header,
+body:has(.visual-app-shell) .el-dialog__title,
+body:has(.visual-app-shell) .el-message-box__title,
+body:has(.visual-app-shell) .el-message-box__content {
+  color: #a8ccd6 !important;
+}
+
+body:has(.visual-app-shell) .el-select-dropdown__item.is-hovering,
+body:has(.visual-app-shell) .el-select-dropdown__item.is-selected,
+body:has(.visual-app-shell) .el-dropdown-menu__item:hover {
+  color: #e4fbff !important;
+  background: rgba(24, 106, 180, 0.28) !important;
+}
+
+body:has(.visual-app-shell) .el-popper__arrow::before {
+  border-color: rgba(82, 232, 255, 0.2) !important;
+  background: #082349 !important;
+}
+
+body:has(.visual-app-shell) .el-overlay {
+  background: rgba(0, 8, 25, 0.72);
+}
+
+.visual-app-shell .visual-module-page .module-content .final-actions button,
+.visual-app-shell .visual-module-page .module-content .signature-role-tabs button,
+.visual-app-shell .visual-module-page .module-content .slash-menu button,
+.visual-app-shell .visual-module-page .module-content .more-button,
+.visual-app-shell .visual-module-page .module-content .icon-button {
+  border-color: rgba(82, 232, 255, 0.18) !important;
+  border-radius: 0 !important;
+  color: #86b8ca !important;
+  background: rgba(7, 36, 70, 0.76) !important;
+}
+
+.visual-app-shell .visual-module-page .module-content .final-actions button:hover,
+.visual-app-shell .visual-module-page .module-content .signature-role-tabs button:hover,
+.visual-app-shell .visual-module-page .module-content .signature-role-tabs button.active,
+.visual-app-shell .visual-module-page .module-content .more-button:hover,
+.visual-app-shell .visual-module-page .module-content .icon-button:hover {
+  border-color: rgba(82, 232, 255, 0.5) !important;
+  color: #e3fbff !important;
+  background: rgba(24, 106, 180, 0.3) !important;
+}
