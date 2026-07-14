@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ArrowLeftBold, ArrowRightBold, House } from '@element-plus/icons-vue'
+import { ArrowLeftBold, ArrowRightBold, House, Management } from '@element-plus/icons-vue'
 import { useUserStore } from '../store/user'
 import ThemeToggle from '../components/ThemeToggle.vue'
 
@@ -147,8 +147,11 @@ onBeforeUnmount(() => {
           v-if="userStore.hasRole('ADMIN')"
           type="button"
           class="visual-admin-entry"
+          title="进入管理端"
+          aria-label="进入管理端"
           @click="router.push('/visualization-admin/users-apis')"
         >
+          <el-icon aria-hidden="true"><Management /></el-icon>
           <span>进入管理端</span>
         </button>
         <div class="visual-user">
@@ -172,7 +175,6 @@ onBeforeUnmount(() => {
           <span><i></i>数据链路正常</span>
           <div><strong>{{ currentTime }}</strong><small>{{ currentDate }}</small></div>
         </div>
-        <ThemeToggle />
       </header>
 
       <main class="visual-content">

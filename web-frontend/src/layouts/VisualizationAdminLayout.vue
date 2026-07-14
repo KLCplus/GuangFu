@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ArrowLeftBold, ArrowRightBold, House } from '@element-plus/icons-vue'
+import { ArrowLeftBold, ArrowRightBold, House, User } from '@element-plus/icons-vue'
 import { useUserStore } from '../store/user'
+import ThemeToggle from '../components/ThemeToggle.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -120,7 +121,9 @@ onBeforeUnmount(() => {
       </nav>
 
       <footer class="visual-sidebar-footer">
-        <button type="button" class="visual-user-entry" @click="router.push('/visualization-ui/cockpit')">
+        <ThemeToggle />
+        <button type="button" class="visual-user-entry" title="返回用户端" aria-label="返回用户端" @click="router.push('/visualization-ui/cockpit')">
+          <el-icon aria-hidden="true"><User /></el-icon>
           <span>返回用户运行端</span>
         </button>
         <div class="visual-user">

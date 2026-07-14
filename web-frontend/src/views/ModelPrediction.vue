@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
+import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { getModels } from '../api/model'
 import { createPrediction, getPredictionResults } from '../api/prediction'
@@ -40,6 +41,9 @@ const categories: ModelCategoryOption[] = [
   { value: 'cloud-sequence', label: '云图时空模型' },
   { value: 'multimodal', label: '多模态融合模型' }
 ]
+
+const route = useRoute()
+const isVisualizationTheme = computed(() => route.path.startsWith('/visualization-ui/'))
 
 const fallbackModels: UsableModel[] = [
   { modelId: 1001, modelName: 'PatchTST 功率预测', modelCode: 'patchtst_power', category: 'power-sequence' },
@@ -298,7 +302,14 @@ function formatDateTime(date: Date) {
 </script>
 
 <template>
-  <section class="page-shell model-page model-workbench" v-loading="loading">
+  <section
+    class="page-shell model-page"
+    :class="{ 'model-workbench': isVisualizationTheme }"
+    v-loading="loading"
+  >
+    <div v-if="!isVisualizationTheme" class="page-heading">
+      <h1>模型预测</h1>
+    </div>
     <section class="page-section control-panel">
       <div class="control-grid">
         <div class="control-group">
@@ -319,6 +330,7 @@ function formatDateTime(date: Date) {
                 />
               </el-select>
             </el-form-item>
+
 
           </div>
         </div>

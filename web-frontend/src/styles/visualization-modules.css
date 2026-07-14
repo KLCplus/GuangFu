@@ -145,7 +145,46 @@
 .visual-app-shell .visual-module-page .station-row.active { color: #e0f9fd; background: rgba(24, 106, 180, 0.22); box-shadow: inset 2px 0 var(--viz-cyan); }
 
 /* Marketplace */
-.visual-app-shell .visual-module-page .marketplace-toolbar { top: -1px; border-bottom: 1px solid var(--viz-line-soft); background: rgba(3, 18, 39, 0.94); }
+.visual-app-shell .module-marketplace .marketplace-page > .page-heading { display: none; }
+.visual-app-shell .visual-module-page .marketplace-toolbar {
+  top: -1px;
+  gap: 10px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+.visual-app-shell .module-marketplace .filter-toggle {
+  min-width: 132px;
+  height: 42px;
+  border: 0;
+  color: #87b8c9;
+  background: rgba(9, 42, 78, 0.72);
+  box-shadow: inset 2px 0 rgba(82, 232, 255, 0.72), inset 0 0 0 1px rgba(82, 232, 255, 0.1);
+}
+.visual-app-shell .module-marketplace .filter-toggle:hover {
+  color: #e4fcff;
+  background: rgba(17, 67, 112, 0.78);
+  box-shadow: inset 2px 0 var(--viz-cyan), inset 0 0 0 1px rgba(82, 232, 255, 0.2);
+}
+.visual-app-shell .module-marketplace .model-search {
+  width: min(760px, 100%);
+  max-width: none;
+}
+.visual-app-shell .module-marketplace .model-search .el-input__wrapper {
+  min-height: 42px;
+  border: 0;
+  background: rgba(3, 21, 44, 0.58);
+  box-shadow: inset 0 -1px rgba(103, 184, 220, 0.34), inset 0 0 18px rgba(35, 111, 176, 0.04);
+}
+.visual-app-shell .module-marketplace .model-search .el-input__wrapper:hover {
+  background: rgba(5, 29, 57, 0.68);
+  box-shadow: inset 0 -1px rgba(82, 232, 255, 0.55);
+}
+.visual-app-shell .module-marketplace .model-search .el-input__wrapper.is-focus {
+  border: 0;
+  background: rgba(5, 31, 61, 0.76);
+  box-shadow: inset 0 -1px var(--viz-cyan), 0 6px 20px rgba(0, 10, 34, 0.18);
+}
 .visual-app-shell .visual-module-page .filter-sidebar { border-color: rgba(82, 232, 255, 0.17); border-radius: 0; background: rgba(4, 24, 50, 0.82); }
 .visual-app-shell .visual-module-page .filter-option-list button,
 .visual-app-shell .visual-module-page .filter-toggle,

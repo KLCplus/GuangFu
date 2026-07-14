@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import * as echarts from 'echarts'
-import { getDashboardOverview } from '../api/dashboard'
-import type { DashboardResource } from '../api/dashboard'
+import { getDashboardOverview, getStationDashboard } from '../api/dashboard'
+import type { DashboardInfrastructure } from '../api/dashboard'
 import { getPredictionHistory, getPredictionResults } from '../api/prediction'
 import type { PredictionResult, PredictionTask } from '../api/prediction'
 import {
@@ -34,7 +34,8 @@ const predictionRows = ref<PredictionResult[]>([])
 const latestPredictionTask = ref<PredictionTask | null>(null)
 const predictionMode = ref<'api' | 'derived' | 'empty'>('empty')
 const displayHistoryCache = new Map<number, PvHistoryItem[]>()
-const dashboardResources = ref<DashboardResource[]>([])
+const serverInfrastructure = ref<DashboardInfrastructure | null>(null)
+const serverMonitorState = ref<'loading' | 'ready' | 'error'>('loading')
 const predictionChartRef = ref<HTMLDivElement | null>(null)
 const realtimeChartRef = ref<HTMLDivElement | null>(null)
 let predictionChart: echarts.ECharts | null = null
@@ -53,13 +54,6 @@ const batterySoc = computed(() => {
   const utilization = stationCapacity.value > 0 ? currentPower.value / stationCapacity.value : 0
   return Math.round(clamp(48 + utilization * 24 + stableNoise(selectedStationId.value ?? 1, Date.now(), 4), 25, 92))
 })
-
-const fallbackResources = [
-  { code: 'CPU', label: '计算资源', value: '正常', detail: '使用率 34%', load: '34%', tone: 'blue' },
-  { code: 'RAM', label: '内存状态', value: '正常', detail: '使用率 51%', load: '51%', tone: 'cyan' },
-  { code: 'DB', label: '数据服务', value: '已连接', detail: '实时数据通道', load: '82%', tone: 'mint' },
-  { code: 'QUE', label: '任务队列', value: '空闲', detail: '暂无待处理任务', load: '18%', tone: 'violet' }
-]
 
 const stationDetails = computed(() => [
   { label: '装机容量', value: formatMetric(stationCapacity.value, 1), unit: 'kW' },
@@ -86,15 +80,23 @@ const weatherHours = computed(() => forecasts.value.slice(0, 5).map((item) => ({
 })))
 
 const serverResources = computed(() => {
-  if (!dashboardResources.value.length) return fallbackResources
-  return dashboardResources.value.slice(0, 4).map((resource) => ({
-    code: resourceCode(resource.name),
-    label: resource.name,
-    value: resource.level === 'danger' ? '告警' : resource.level === 'warning' ? '关注' : '正常',
-    detail: `${resource.detail} · ${resource.value}%`,
-    load: `${Math.min(100, Math.max(0, resource.value))}%`,
-    tone: resource.level === 'danger' ? 'violet' : resource.level === 'warning' ? 'cyan' : 'mint'
-  }))
+  const infra = serverInfrastructure.value
+  if (!infra) return []
+  return [
+    { code: 'API', label: '后端服务', value: statusText(infra.backendStatus), detail: 'Spring Boot API', tone: statusTone(infra.backendStatus) },
+    { code: 'DB', label: '数据库', value: statusText(infra.databaseStatus), detail: 'MySQL 连接状态', tone: statusTone(infra.databaseStatus) },
+    { code: 'AI', label: '模型服务', value: statusText(infra.modelServiceStatus), detail: '健康检查结果', tone: statusTone(infra.modelServiceStatus) },
+    { code: 'QUE', label: '任务队列', value: statusText(infra.queueStatus), detail: '队列监控状态', tone: statusTone(infra.queueStatus) }
+  ]
+})
+
+const serverSummary = computed(() => {
+  if (serverMonitorState.value === 'loading') return '正在读取后端监控'
+  if (serverMonitorState.value === 'error') return '监控接口不可用'
+  const infra = serverInfrastructure.value
+  if (!infra) return '监控数据不可用'
+  const healthy = [infra.backendStatus, infra.databaseStatus, infra.modelServiceStatus].every((item) => item === 'UP')
+  return healthy ? `服务状态正常 · ${formatHour(infra.checkedAt)}` : `部分服务不可用 · ${formatHour(infra.checkedAt)}`
 })
 
 let clockTimer: number | undefined
@@ -137,7 +139,6 @@ async function loadVisualizationData(silent = false) {
   if (refreshing) return
   refreshing = true
   if (!silent) loading.value = true
-
   try {
     if (!stations.value.length) await loadStationSources()
     if (!selectedStationId.value) throw new Error('暂无可用电站')
@@ -150,10 +151,27 @@ async function loadVisualizationData(silent = false) {
   } catch {
     await loadSplitInterfaces()
   } finally {
+    await loadServerInfrastructure(selectedStationId.value)
     loading.value = false
     refreshing = false
     await nextTick()
     renderCharts()
+  }
+}
+
+async function loadServerInfrastructure(stationId?: number) {
+  if (!stationId) {
+    serverInfrastructure.value = null
+    serverMonitorState.value = 'error'
+    return
+  }
+  if (!serverInfrastructure.value) serverMonitorState.value = 'loading'
+  try {
+    serverInfrastructure.value = (await getStationDashboard(stationId)).infrastructure
+    serverMonitorState.value = 'ready'
+  } catch {
+    serverInfrastructure.value = null
+    serverMonitorState.value = 'error'
   }
 }
 
@@ -162,10 +180,6 @@ async function loadStationSources() {
     loadPvOutputStations({ enabled: true }),
     getDashboardOverview()
   ])
-
-  if (overviewResult.status === 'fulfilled') {
-    dashboardResources.value = overviewResult.value.resources ?? []
-  }
 
   if (pvOutputResult.status === 'fulfilled' && pvOutputResult.value.length) {
     pvOutputStations.value = pvOutputResult.value
@@ -184,16 +198,14 @@ async function loadStationSources() {
 async function loadPvOutputData(stationId: number) {
   const end = new Date()
   const start = new Date(end.getTime() - 24 * 60 * 60 * 1000)
-  const [latestResult, historyResult, weatherResult, forecastResult, predictionResult, resourceResult] = await Promise.allSettled([
+  const [latestResult, historyResult, weatherResult, forecastResult, predictionResult] = await Promise.allSettled([
     loadPvOutputLatestStatus(stationId),
     loadPvOutputHistory(stationId, { startTime: formatDateTime(start), endTime: formatDateTime(end) }),
     getPvOutputCurrentWeather(stationId),
     getPvOutputForecast(stationId),
-    loadLatestPrediction(stationId),
-    getDashboardOverview()
+    loadLatestPrediction(stationId)
   ])
 
-  if (resourceResult.status === 'fulfilled') dashboardResources.value = resourceResult.value.resources ?? []
   if (weatherResult.status === 'fulfilled') weather.value = weatherResult.value
   if (forecastResult.status === 'fulfilled') forecasts.value = forecastResult.value
   if (historyResult.status === 'fulfilled') historyRows.value = enrichPvOutputHistory(historyResult.value)
@@ -229,7 +241,6 @@ async function loadInternalStationData(stationId: number) {
   realtime.value = overview.realtime ?? null
   weather.value = overview.weather ?? null
   forecasts.value = overview.forecasts ?? []
-  dashboardResources.value = overview.resources ?? []
   lastUpdate.value = overview.lastUpdate || realtime.value?.collectTime || weather.value?.reportTime || ''
   dataSource.value = overview.dataSource === 'PARTIAL' ? '部分接口在线' : '实时接口在线'
 
@@ -634,12 +645,24 @@ function stationStatusText(status?: string) {
   return labels[status ?? ''] ?? '未知'
 }
 
-function resourceCode(name: string) {
-  if (/CPU|计算/i.test(name)) return 'CPU'
-  if (/内存|memory/i.test(name)) return 'RAM'
-  if (/硬盘|磁盘|disk/i.test(name)) return 'DISK'
-  if (/模型|model/i.test(name)) return 'MODEL'
-  return 'SYS'
+function statusText(value?: string) {
+  if (value === 'UP') return '正常'
+  if (value === 'UNAVAILABLE') return '未接入'
+  return value || '--'
+}
+
+function statusTone(value?: string) {
+  if (value === 'UP') return 'mint'
+  if (value === 'UNAVAILABLE') return 'violet'
+  return 'cyan'
+}
+
+function formatHour(value?: string) {
+  if (!value) return '--'
+  const date = new Date(value)
+  return Number.isFinite(date.getTime())
+    ? date.toLocaleTimeString('zh-CN', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' })
+    : value
 }
 </script>
 
@@ -817,15 +840,17 @@ function resourceCode(name: string) {
         <section class="server-strip">
           <header class="server-strip-heading">
             <div><h2>服务器信息</h2></div>
-            <span class="server-summary"><i />全部服务正常</span>
+            <span class="server-summary" :class="`is-${serverMonitorState}`"><i />{{ serverSummary }}</span>
           </header>
           <div class="server-resource-grid">
             <article v-for="resource in serverResources" :key="resource.label">
               <span class="server-code" :class="`is-${resource.tone}`">{{ resource.code }}</span>
               <div class="server-copy"><span>{{ resource.label }}</span><strong>{{ resource.value }}</strong><small>{{ resource.detail }}</small></div>
-              <div class="server-load"><i :style="{ width: resource.load }" /></div>
-              <b />
+              <b :class="{ 'is-offline': resource.tone === 'violet' }" />
             </article>
+            <div v-if="!serverResources.length" class="server-resource-empty">
+              {{ serverMonitorState === 'loading' ? '正在读取服务器真实指标…' : '未能从后端获取服务器指标' }}
+            </div>
           </div>
         </section>
       </section>

@@ -11,9 +11,10 @@
   --viz-warn: #ffc45c;
   --viz-text: #dff7ff;
   --viz-muted: #6e9fba;
+  --viz-sidebar-width: var(--layout-sidebar-width, 224px);
   position: relative;
   display: grid;
-  grid-template-columns: 244px minmax(0, 1fr);
+  grid-template-columns: var(--viz-sidebar-width) minmax(0, 1fr);
   width: 100%;
   height: 100vh;
   min-height: 0;
@@ -71,8 +72,8 @@
 
 .visual-shell-scan {
   top: -16%;
-  left: 244px;
-  width: calc(100% - 244px);
+  left: var(--viz-sidebar-width);
+  width: calc(100% - var(--viz-sidebar-width));
   height: 16%;
   opacity: 0.28;
   background: linear-gradient(180deg, transparent, rgba(75, 214, 255, 0.08), transparent);
@@ -138,8 +139,9 @@
 .visual-app-shell.is-sidebar-collapsed .visual-nav-group > p,
 .visual-app-shell.is-sidebar-collapsed .visual-nav-item > span:not(.nav-energy-node),
 .visual-app-shell.is-sidebar-collapsed .visual-nav-item > small,
-.visual-app-shell.is-sidebar-collapsed .visual-admin-entry,
-.visual-app-shell.is-sidebar-collapsed .visual-user-entry,
+.visual-app-shell.is-sidebar-collapsed .visual-admin-entry > span,
+.visual-app-shell.is-sidebar-collapsed .visual-user-entry > span,
+.visual-app-shell.is-sidebar-collapsed .theme-toggle-label,
 .visual-app-shell.is-sidebar-collapsed .visual-user > span,
 .visual-app-shell.is-sidebar-collapsed .visual-user button { display: none; }
 .visual-app-shell.is-sidebar-collapsed .visual-nav-item { grid-template-columns: 11px 1fr; padding-right: 5px; }
@@ -276,7 +278,15 @@
 .visual-nav-item.active .nav-energy-node i { border-color: #d6ffff; background: var(--viz-cyan); box-shadow: 0 0 8px var(--viz-cyan); }
 
 .visual-sidebar-footer { display: grid; gap: 10px; padding-top: 12px; border-top: 1px solid var(--viz-line-soft); }
-.visual-admin-entry { display: flex; align-items: center; justify-content: space-between; min-height: 34px; padding: 0 10px; border: 1px solid rgba(255, 196, 92, 0.22); color: #ddbd7c; background: rgba(126, 77, 19, 0.13); font: 10px "Microsoft YaHei", sans-serif; cursor: pointer; }
+.visual-sidebar-footer .theme-toggle { border-radius: 0; color: #79a9bc; background: rgba(8, 49, 83, 0.22); }
+.visual-sidebar-footer .theme-toggle:hover { color: #dcf9ff; background: rgba(24, 106, 180, 0.22); }
+.visual-app-shell.is-sidebar-collapsed .visual-sidebar-footer { justify-items: center; gap: 8px; }
+.visual-app-shell.is-sidebar-collapsed .visual-sidebar-footer .theme-toggle,
+.visual-app-shell.is-sidebar-collapsed .visual-admin-entry,
+.visual-app-shell.is-sidebar-collapsed .visual-user-entry { width: 42px; min-height: 42px; padding: 0; justify-content: center; border-radius: 6px; }
+.visual-app-shell.is-sidebar-collapsed .visual-sidebar-footer .theme-toggle { border-color: rgba(82, 232, 255, 0.28); }
+.visual-app-shell.is-sidebar-collapsed .visual-sidebar-footer .el-icon { font-size: 17px; }
+.visual-admin-entry { display: flex; align-items: center; justify-content: flex-start; gap: 8px; min-height: 34px; padding: 0 10px; border: 1px solid rgba(255, 196, 92, 0.22); color: #ddbd7c; background: rgba(126, 77, 19, 0.13); font: 10px "Microsoft YaHei", sans-serif; cursor: pointer; }
 .visual-admin-entry small { color: #8b7346; font: 7px Bahnschrift, sans-serif; letter-spacing: 0.08em; }
 .visual-admin-entry:hover { border-color: rgba(255, 196, 92, 0.55); color: #ffe1a6; background: rgba(126, 77, 19, 0.22); }
 .visual-user { display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; align-items: center; gap: 9px; min-width: 0; padding: 5px; }
@@ -290,6 +300,7 @@
 .visual-user button:hover { color: var(--viz-cyan); }
 
 .visual-nav-item:focus-visible,
+.theme-toggle:focus-visible,
 .visual-admin-entry:focus-visible,
 .visual-user-entry:focus-visible,
 .visual-user button:focus-visible {
@@ -340,13 +351,17 @@
   .visual-nav-group > p,
   .visual-nav-item > span:not(.nav-energy-node),
   .visual-nav-item > small,
-  .visual-admin-entry,
-  .visual-user-entry,
+  .visual-admin-entry > span,
+  .visual-user-entry > span,
   .visual-user > span,
   .visual-user button { display: none; }
   .visual-nav-item { grid-template-columns: 11px 1fr; padding-right: 5px; }
   .visual-nav-icon { width: 22px; height: 22px; justify-self: center; }
   .visual-user { grid-template-columns: 1fr; justify-items: center; }
+  .visual-sidebar-footer { justify-items: center; gap: 8px; }
+  .visual-sidebar-footer .theme-toggle,
+  .visual-admin-entry,
+  .visual-user-entry { width: 42px; min-height: 42px; padding: 0; justify-content: center; border-radius: 6px; }
 }
 
 @media (max-width: 700px) {

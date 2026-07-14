@@ -142,7 +142,6 @@ const username = computed(() => userStore.userInfo.nickname || userStore.userInf
 const pinnedSessions = computed(() => agentSessions.value.filter((session) => session.pinned && !session.archived))
 const recentSessions = computed(() => agentSessions.value.filter((session) => !session.pinned && !session.archived))
 const archivedSessions = computed(() => agentSessions.value.filter((session) => session.archived))
-const connected = computed(() => agentTools.value.some((tool) => tool.enabled))
 const filteredCommands = computed(() => {
   const text = composerText.value.trim()
   if (!text.startsWith('/')) return slashCommands
@@ -1193,7 +1192,7 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="agent-workbench" :class="{ 'left-collapsed': leftCollapsed }">
+  <div class="agent-workbench" :class="{ 'left-collapsed': leftCollapsed, 'right-collapsed': rightCollapsed }">
     <aside class="session-rail">
       <div class="rail-top">
         <button class="icon-button" type="button" @click="leftCollapsed = !leftCollapsed">
@@ -1307,8 +1306,6 @@ onMounted(() => {
           <span class="stage-subtitle">实时数据 · 工具执行 · 结构化输出</span>
         </div>
         <div class="header-actions">
-          <button class="header-action" type="button" @click="exportConversation">导出记录</button>
-          <el-tag size="small" :type="connected ? 'success' : 'warning'" effect="plain">{{ connected ? '已连接' : '连接中' }}</el-tag>
           <el-dropdown trigger="click">
             <button class="user-chip" type="button">
               <span>{{ username.slice(0, 1).toUpperCase() }}</span>
@@ -1482,7 +1479,13 @@ onMounted(() => {
     </main>
 
     <aside class="context-rail" :class="{ collapsed: rightCollapsed }">
-      <button class="context-collapse" type="button" :aria-label="rightCollapsed ? '展开右侧面板' : '收起右侧面板'" @click="rightCollapsed = !rightCollapsed">
+      <button
+        class="context-collapse"
+        type="button"
+        :aria-label="rightCollapsed ? '展开右侧面板' : '收起右侧面板'"
+        :title="rightCollapsed ? '展开会话栏' : '收起会话栏'"
+        @click="rightCollapsed = !rightCollapsed"
+      >
         {{ rightCollapsed ? '‹' : '›' }}
       </button>
       <template v-if="!rightCollapsed">
@@ -1650,10 +1653,20 @@ button {
   display: grid;
   place-items: center;
   border: 0;
-  border-radius: 8px;
-  background: rgba(23, 32, 51, 0.06);
+  border: 0;
+  border-radius: 10px;
+  background: rgba(53, 84, 133, 0.07);
   color: #34445f;
   cursor: pointer;
+  transition: border-color 160ms ease, background 160ms ease, color 160ms ease, transform 160ms ease, box-shadow 160ms ease;
+}
+
+.icon-button:hover,
+.tool-trigger:hover {
+  color: #1d6fdc;
+  background: rgba(47, 117, 230, 0.1);
+  box-shadow: none;
+  transform: translateY(-1px);
 }
 
 .new-chat {
@@ -1816,17 +1829,6 @@ button {
 }
 
 .stage-subtitle { color: #8793a6; font-size: 12px; }
-
-.header-action {
-  border: 1px solid rgba(86, 112, 151, 0.2);
-  border-radius: 7px;
-  padding: 7px 10px;
-  background: #fff;
-  color: #52627b;
-  cursor: pointer;
-}
-
-.header-action:hover { color: #1d6fdc; border-color: rgba(29, 111, 220, 0.4); }
 
 .agent-mark,
 .avatar {
@@ -2446,25 +2448,33 @@ button {
   color: #172033;
 }
 
-.context-rail.collapsed { width: 34px; }
+.agent-workbench.right-collapsed,
+.agent-workbench.right-collapsed.left-collapsed { grid-template-columns: minmax(0, 1fr) 48px; }
+.context-rail.collapsed { width: auto; }
 .context-collapse {
   position: absolute;
-  top: 14px;
-  left: -13px;
+  top: 17px;
+  left: 14px;
   z-index: 5;
-  width: 26px;
-  height: 26px;
-  border: 1px solid #e5e7eb;
-  border-radius: 50%;
-  background: #fff;
+  width: 30px;
+  height: 30px;
+  border: 0;
+  border-radius: 9px;
+  background: rgba(61, 91, 137, 0.08);
   color: #667085;
+  font-size: 22px;
+  line-height: 1;
   cursor: pointer;
+  transition: color 160ms ease, background 160ms ease, transform 160ms ease;
 }
-.context-head { display: flex; justify-content: space-between; gap: 8px; padding: 22px 18px 14px; border-bottom: 1px solid #eef0f3; }
+.context-collapse:hover { color: #1d6fdc; background: rgba(47, 117, 230, 0.1); transform: translateX(1px); }
+.context-rail.collapsed .context-collapse { left: 9px; }
+.context-head { display: flex; justify-content: space-between; gap: 8px; padding: 22px 18px 14px 58px; border-bottom: 1px solid #eef0f3; }
 .context-head strong, .context-head small { display: block; }
 .context-head strong { font-size: 16px; }
 .context-head small { margin-top: 4px; color: #98a2b3; font-size: 11px; }
-.context-new { border: 0; border-radius: 6px; padding: 6px 8px; background: #e7f4fd; color: #1688c8; cursor: pointer; white-space: nowrap; }
+.context-new { border: 0; border-radius: 999px; padding: 7px 12px; background: rgba(47, 159, 232, 0.1); color: #167db8; cursor: pointer; white-space: nowrap; font-weight: 600; box-shadow: none; transition: color 160ms ease, background 160ms ease, transform 160ms ease; }
+.context-new:hover { color: #0d6fa8; background: rgba(47, 159, 232, 0.16); transform: translateY(-1px); }
 .context-tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 10px 14px 0; }
 .context-tabs button { border: 0; border-bottom: 2px solid transparent; padding: 8px 2px; background: transparent; color: #98a2b3; cursor: pointer; }
 .context-tabs button.active { border-bottom-color: #2f9fe8; color: #172033; font-weight: 700; }
@@ -2572,15 +2582,33 @@ button {
   min-width: 72px;
   height: 38px;
   border: 0;
-  border-radius: 12px;
-  background: #172033;
+  border-radius: 11px;
+  background: linear-gradient(135deg, #347eea, #1f62d4);
   color: #fff;
+  font-weight: 700;
   cursor: pointer;
+  box-shadow: 0 7px 18px rgba(39, 101, 210, 0.22);
+  transition: border-color 160ms ease, transform 160ms ease, box-shadow 160ms ease, filter 160ms ease;
+}
+
+.send-button:not(:disabled):hover {
+  filter: brightness(1.05);
+  box-shadow: 0 10px 22px rgba(39, 101, 210, 0.3);
+  transform: translateY(-1px);
 }
 
 .send-button:disabled {
   opacity: 0.58;
   cursor: not-allowed;
+  box-shadow: none;
+}
+
+.context-new:focus-visible,
+.context-collapse:focus-visible,
+.tool-trigger:focus-visible,
+.send-button:focus-visible {
+  outline: 3px solid rgba(47, 117, 230, 0.2);
+  outline-offset: 2px;
 }
 
 .slash-menu {
@@ -2737,6 +2765,11 @@ button {
     grid-template-columns: 1fr;
     height: auto;
     min-height: calc(100vh - 96px);
+  }
+
+  .agent-workbench.right-collapsed,
+  .agent-workbench.right-collapsed.left-collapsed {
+    grid-template-columns: 1fr;
   }
 
   .session-rail {
