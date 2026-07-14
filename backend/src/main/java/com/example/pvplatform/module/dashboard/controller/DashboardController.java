@@ -17,4 +17,9 @@ public class DashboardController {
     public Result<?> overview(@RequestParam(required = false) Long stationId) {
         return Result.success(dashboardService.overview(stationId));
     }
+
+    @GetMapping("/stations/{stationId}")
+    public Result<?> stationDashboard(@PathVariable Long stationId) {
+        return Result.success(dashboardService.stationDashboard(stationId));
+    }
 }
