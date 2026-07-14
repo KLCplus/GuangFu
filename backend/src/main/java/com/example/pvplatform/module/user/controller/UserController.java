@@ -3,6 +3,8 @@ package com.example.pvplatform.module.user.controller;
 import com.example.pvplatform.common.Result;
 import com.example.pvplatform.module.user.dto.CancelAccountRequest;
 import com.example.pvplatform.module.user.dto.ChangePasswordRequest;
+import com.example.pvplatform.module.user.dto.ConfirmEmailChangeRequest;
+import com.example.pvplatform.module.user.dto.SendEmailChangeCodeRequest;
 import com.example.pvplatform.module.user.dto.UpdateProfileRequest;
 import com.example.pvplatform.module.auth.dto.OAuthCallbackRequest;
 import com.example.pvplatform.module.auth.service.FaceAuthService;
@@ -38,6 +40,17 @@ public class UserController {
     @PutMapping("/api/user/profile")
     public Result<?> updateProfile(@Valid @RequestBody UpdateProfileRequest request) {
         return Result.success(userService.updateProfile(request));
+    }
+
+    @PostMapping("/api/user/security/email/code")
+    public Result<?> sendEmailChangeCode(@Valid @RequestBody SendEmailChangeCodeRequest request) {
+        userService.sendEmailChangeCode(request);
+        return Result.success();
+    }
+
+    @PutMapping("/api/user/security/email")
+    public Result<?> confirmEmailChange(@Valid @RequestBody ConfirmEmailChangeRequest request) {
+        return Result.success(userService.confirmEmailChange(request));
     }
 
     @PutMapping("/api/user/password")

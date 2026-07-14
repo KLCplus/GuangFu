@@ -4,6 +4,7 @@ CREATE TABLE IF NOT EXISTS sys_user (
     password_hash VARCHAR(255) NOT NULL,
     nickname VARCHAR(64),
     email VARCHAR(128),
+    email_verified BOOLEAN DEFAULT FALSE NOT NULL,
     phone VARCHAR(32),
     avatar_url VARCHAR(512),
     avatar_file_id BIGINT,

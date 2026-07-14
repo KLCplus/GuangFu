@@ -47,6 +47,7 @@ class AuthServiceTest {
 
         SysUserDO user = userMapper.selectById((Long) result.get("userId"));
         assertTrue(passwordEncoder.matches("Test@1234", user.getPasswordHash()));
+        assertFalse(Boolean.TRUE.equals(user.getEmailVerified()));
     }
 
     @Test

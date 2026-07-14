@@ -114,7 +114,9 @@ JWT 过滤器每次请求都会重新检查：
 
 | 方法 | 路径 | 说明 |
 |---|---|---|
-| GET/PUT | `/api/user/profile` | 查询/修改资料 |
+| GET/PUT | `/api/user/profile` | 查询/修改普通资料和未验证联系手机号（不能修改邮箱） |
+| POST | `/api/user/security/email/code` | 校验当前密码并向新邮箱发送换绑验证码 |
+| PUT | `/api/user/security/email` | 校验当前密码和验证码后更新邮箱 |
 | POST | `/api/user/avatar` | 上传头像 |
 | PUT | `/api/user/password` | 修改密码 |
 | POST | `/api/user/account/cancel` | 注销账号 |
@@ -176,7 +178,8 @@ OAUTH_GITHUB_CLIENT_SECRET=<只放环境变量>
 ## 8. 数据与安全约束
 
 - 密码只保存 BCrypt 哈希。
-- 邮箱、手机号、用户名由数据库唯一索引兜底。
+- 邮箱、手机号、用户名由数据库唯一索引兜底；邮箱安全状态读取 `email_verified`，不能按非空推断。
+- 联系手机号以 E.164 格式保存且当前始终未验证，不用于找回密码、验证码登录或身份认证。
 - 删除用户使用逻辑删除。
 - 用户列表不返回密码哈希。
 - 手机号在资料和列表响应中脱敏。

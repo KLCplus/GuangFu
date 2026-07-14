@@ -473,10 +473,6 @@ export async function updateUserPassword(data: ChangePasswordPayload): Promise<D
   return remoteResult(undefined)
 }
 
-export async function bindUserEmail(email: string): Promise<DataResult<UserProfile>> {
-  return saveUserProfile({ email })
-}
-
 export async function loadProfileOverview(): Promise<DataResult<ProfileOverview>> {
   const [profile, oauthAccounts, faceStatus, apiKeys, openOverview] = await Promise.all([
     getProfile(),

@@ -3,6 +3,8 @@ const { isLoggedIn } = require('../../utils/request')
 const { errorMessage, resourceUrl } = require('../../utils/format')
 
 const GENDERS = ['未设置', '男', '女']
+const CALLING_CODES = ['+86', '+1', '+44', '+81', '+82']
+const CALLING_CODE_LABELS = ['中国大陆 +86', '美国/加拿大 +1', '英国 +44', '日本 +81', '韩国 +82']
 
 Page({
   data: {
@@ -13,7 +15,9 @@ Page({
     profile: null,
     avatarFailed: false,
     genderOptions: GENDERS,
-    form: { nickname: '', email: '', phone: '', gender: 0 }
+    callingCodeLabels: CALLING_CODE_LABELS,
+    callingCodeIndex: 0,
+    form: { nickname: '', phone: '', gender: 0 }
   },
 
   onLoad() {
@@ -42,37 +46,41 @@ Page({
     const displayName = profile.nickname || profile.username || '平台用户'
     const mapped = { ...profile, displayName, avatarText: displayName.slice(0, 1).toUpperCase(), avatarUrl: resourceUrl(profile.avatarUrl) }
     wx.setStorageSync('userInfo', profile)
+    const matchedIndex = CALLING_CODES.findIndex(code => (profile.phone || '').startsWith(code))
+    const callingCodeIndex = matchedIndex >= 0 ? matchedIndex : 0
     this.setData({
       profile: mapped,
       avatarFailed: false,
       form: {
         nickname: profile.nickname || '',
-        email: profile.email || '',
-        phone: profile.phone || '',
+        phone: matchedIndex >= 0 ? profile.phone.slice(CALLING_CODES[matchedIndex].length) : (profile.phone || ''),
         gender: Number(profile.gender || 0)
-      }
+      },
+      callingCodeIndex
     })
   },
 
   onNickname(event) { this.setData({ 'form.nickname': event.detail.value }) },
-  onEmail(event) { this.setData({ 'form.email': event.detail.value }) },
   onPhone(event) { this.setData({ 'form.phone': event.detail.value }) },
+  onCallingCode(event) { this.setData({ callingCodeIndex: Number(event.detail.value) }) },
   onGender(event) { this.setData({ 'form.gender': Number(event.detail.value) }) },
   onAvatarError() { this.setData({ avatarFailed: true }) },
 
   async save() {
     const nickname = this.data.form.nickname.trim()
-    const email = this.data.form.email.trim()
-    const phone = this.data.form.phone.trim()
+    const phone = this.data.form.phone.trim().replace(/[\s()-]/g, '')
+    const callingCode = CALLING_CODES[this.data.callingCodeIndex]
     if (!nickname) return wx.showToast({ title: '请输入昵称', icon: 'none' })
     if (nickname.length > 32) return wx.showToast({ title: '昵称不能超过 32 个字符', icon: 'none' })
-    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return wx.showToast({ title: '邮箱格式不正确', icon: 'none' })
-    if (phone.length > 20) return wx.showToast({ title: '手机号不能超过 20 个字符', icon: 'none' })
+    if (phone && callingCode === '+86' && !/^1[3-9]\d{9}$/.test(phone)) return wx.showToast({ title: '大陆手机号格式不正确', icon: 'none' })
+    if (phone && callingCode !== '+86' && !/^\d+$/.test(phone)) return wx.showToast({ title: '国际号码只能包含数字', icon: 'none' })
+    const internationalLength = `${callingCode}${phone}`.replace('+', '').length
+    if (phone && callingCode !== '+86' && (internationalLength < 8 || internationalLength > 15)) return wx.showToast({ title: '国际号码格式不正确', icon: 'none' })
 
     this.setData({ saving: true })
     try {
-      const profile = await userApi.updateProfile({ nickname, email, phone, gender: this.data.form.gender })
-      this.applyProfile(profile)
+      await userApi.updateProfile({ nickname, phone: phone ? `${callingCode}${phone}` : '', gender: this.data.form.gender })
+      await this.loadProfile()
       wx.setStorageSync('accountProfileDirty', true)
       wx.showToast({ title: '资料已保存', icon: 'success' })
     } catch (error) {

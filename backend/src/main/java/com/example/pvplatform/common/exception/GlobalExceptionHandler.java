@@ -2,6 +2,8 @@ package com.example.pvplatform.common.exception;
 
 import com.example.pvplatform.common.Result;
 import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -20,9 +22,26 @@ public class GlobalExceptionHandler {
             .body(Result.fail(exception.getCode(), exception.getMessage()));
     }
 
-    @ExceptionHandler({MethodArgumentNotValidException.class, HttpMessageNotReadableException.class})
-    public ResponseEntity<Result<Void>> handleBadRequest(Exception exception) {
-        return ResponseEntity.badRequest().body(Result.fail(400, "请求参数不合法"));
+    @ExceptionHandler(MethodArgumentNotValidException.class)
+    public ResponseEntity<Result<Void>> handleValidation(MethodArgumentNotValidException exception) {
+        String message = exception.getBindingResult().getFieldErrors().stream()
+            .findFirst().map(error -> error.getDefaultMessage()).orElse("请求参数不合法");
+        return ResponseEntity.badRequest().body(Result.fail(400, message));
+    }
+
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ResponseEntity<Result<Void>> handleUnreadableBody(HttpMessageNotReadableException exception) {
+        return ResponseEntity.badRequest().body(Result.fail(400, "请求体格式不正确"));
+    }
+
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+    public ResponseEntity<Result<Void>> handleTypeMismatch(MethodArgumentTypeMismatchException exception) {
+        return ResponseEntity.badRequest().body(Result.fail(400, "请求参数类型不正确: " + exception.getName()));
+    }
+
+    @ExceptionHandler(NoResourceFoundException.class)
+    public ResponseEntity<Result<Void>> handleNoResource(NoResourceFoundException exception) {
+        return ResponseEntity.status(404).body(Result.fail(404, "接口不存在"));
     }
 
     @ExceptionHandler(Exception.class)

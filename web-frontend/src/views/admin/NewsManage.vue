@@ -429,7 +429,6 @@ onMounted(() => {
           <el-col :span="12">
             <el-form-item label="资讯分类">
               <el-select v-model="form.category" style="width:100%">
-                <el-option label="气象预警" value="WEATHER_ALERT" />
                 <el-option label="灾害动态" value="DISASTER" />
                 <el-option label="政策标准" value="POLICY" />
                 <el-option label="行业动态" value="INDUSTRY" />

@@ -7,7 +7,9 @@ export interface UserProfile {
   username: string
   nickname: string
   email: string
+  emailVerified: boolean
   phone?: string
+  phoneVerified: boolean
   avatarUrl?: string
   gender?: number
   status: number
@@ -17,10 +19,18 @@ export interface UserProfile {
 
 export interface UpdateProfilePayload {
   nickname?: string
-  email?: string
   phone?: string
   avatarUrl?: string
   gender?: number
+}
+
+export interface SendEmailChangeCodePayload {
+  newEmail: string
+  currentPassword: string
+}
+
+export interface ConfirmEmailChangePayload extends SendEmailChangeCodePayload {
+  code: string
 }
 
 export interface ChangePasswordPayload {
@@ -54,6 +64,10 @@ export interface BindOAuthAccountPayload {
 
 export const getProfile = () => request.get<UserProfile>('/user/profile')
 export const updateProfile = (data: UpdateProfilePayload) => request.put<UserProfile>('/user/profile', data)
+export const sendEmailChangeCode = (data: SendEmailChangeCodePayload) =>
+  request.post<void>('/user/security/email/code', data)
+export const confirmEmailChange = (data: ConfirmEmailChangePayload) =>
+  request.put<UserProfile>('/user/security/email', data)
 export const changePassword = (data: ChangePasswordPayload) => request.put<void>('/user/password', data)
 export const cancelAccount = (data: CancelAccountPayload) => request.post<void>('/user/account/cancel', data)
 export const uploadAvatar = (file: File) => {

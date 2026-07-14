@@ -90,6 +90,7 @@ public class AuthService {
         user.setNickname(req.username());
         if (req.email() != null && !req.email().isBlank()) {
             user.setEmail(req.email());
+            user.setEmailVerified(false);
         }
         user.setStatus(1);
         user.setTokenVersion(0);
@@ -214,6 +215,10 @@ public class AuthService {
         SysUserDO user = userMapper.selectOne(Wrappers.<SysUserDO>lambdaQuery()
             .eq(SysUserDO::getEmail, email).eq(SysUserDO::getStatus, 1).last("LIMIT 1"));
         if (user == null) throw new BusinessException(401, "该邮箱未注册");
+        if (!Boolean.TRUE.equals(user.getEmailVerified())) {
+            user.setEmailVerified(true);
+            userMapper.updateById(user);
+        }
         return issueTokens(user, "EMAIL_CODE_LOGIN");
     }
 
@@ -234,6 +239,7 @@ public class AuthService {
         user.setPasswordHash(passwordEncoder.encode(UUID.randomUUID().toString()));
         user.setNickname(username);
         user.setEmail(email);
+        user.setEmailVerified(true);
         user.setStatus(1);
         user.setTokenVersion(0);
         userMapper.insert(user);
@@ -266,6 +272,7 @@ public class AuthService {
     public void forgotPassword(String email) {
         SysUserDO user = userMapper.selectOne(Wrappers.<SysUserDO>lambdaQuery()
             .eq(SysUserDO::getEmail, email)
+            .eq(SysUserDO::getEmailVerified, true)
             .eq(SysUserDO::getStatus, 1)
             .last("LIMIT 1"));
 
@@ -286,6 +293,7 @@ public class AuthService {
 
         SysUserDO user = userMapper.selectOne(Wrappers.<SysUserDO>lambdaQuery()
             .eq(SysUserDO::getEmail, email)
+            .eq(SysUserDO::getEmailVerified, true)
             .eq(SysUserDO::getStatus, 1)
             .last("LIMIT 1"));
         if (user == null) {

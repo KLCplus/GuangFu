@@ -75,13 +75,21 @@ public class VerificationCodeService {
             stateService.delete(codeKey, attemptsKey);
             throw new BusinessException(400, "验证码尝试次数过多");
         }
-        if (!hash(inputCode).equals(storedHash)) {
+        String normalizedCode = inputCode == null ? "" : inputCode.trim();
+        if (!hash(normalizedCode).equals(storedHash)) {
             if (attempts >= maxAttempts) {
                 stateService.delete(codeKey, attemptsKey);
             }
             throw new BusinessException(400, "验证码错误");
         }
         stateService.delete(codeKey, attemptsKey);
+    }
+
+    /**
+     * Diagnostic-only presence check. It never exposes the stored verification-code hash.
+     */
+    public boolean hasPendingCode(String key) {
+        return stateService.exists(stateKey("code", lower(key)));
     }
 
     public String peek(String key) {

@@ -20,14 +20,13 @@ class UserProfileUpdateTool extends AbstractAgentTool {
     public String displayName() { return "修改个人资料"; }
     public ToolCategory category() { return ToolCategory.USER; }
     public ToolPermissionLevel permissionLevel() { return ToolPermissionLevel.WRITE; }
-    public String description() { return "修改当前用户昵称、邮箱、手机号、头像或性别，需要确认。"; }
-    public Map<String, Object> inputSchema() { return schema("type", "object", "properties", Map.of("nickname", Map.of("type", "string"), "email", Map.of("type", "string"), "phone", Map.of("type", "string"), "avatarUrl", Map.of("type", "string"), "gender", Map.of("type", "number"))); }
+    public String description() { return "修改当前用户昵称、联系手机号、头像或性别，需要确认；邮箱必须通过安全设置验证码流程修改。"; }
+    public Map<String, Object> inputSchema() { return schema("type", "object", "properties", Map.of("nickname", Map.of("type", "string"), "phone", Map.of("type", "string", "description", "含国家/地区区号的 E.164 联系手机号"), "avatarUrl", Map.of("type", "string"), "gender", Map.of("type", "number"))); }
     public ToolExecutionResult execute(ToolExecutionContext context, Map<String, Object> arguments) {
         return guard(() -> {
             Long gender = longArg(arguments, "gender", false);
             var result = userService.updateProfile(new UpdateProfileRequest(
                 stringArg(arguments, "nickname", null),
-                stringArg(arguments, "email", null),
                 stringArg(arguments, "phone", null),
                 stringArg(arguments, "avatarUrl", null),
                 gender == null ? null : gender.intValue()

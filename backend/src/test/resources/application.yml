@@ -97,3 +97,8 @@ oauth:
 
 pvoutput:
   enabled: false
+
+database:
+  migration:
+    user-security:
+      enabled: false

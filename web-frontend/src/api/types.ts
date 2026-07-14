@@ -167,8 +167,12 @@ export interface UserProfileResponse {
   nickname: string
   /** 邮箱 */
   email: string
+  /** 邮箱是否已通过验证码验证 */
+  emailVerified: boolean
   /** 手机号 */
   phone?: string
+  /** 联系手机号是否已验证；当前固定为 false */
+  phoneVerified: boolean
   /** 头像访问地址 */
   avatarUrl?: string
   /** 性别：0 未知，1 男，2 女 */

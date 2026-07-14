@@ -256,5 +256,8 @@ database:
     open-wallet:
       # Creates missing wallet account, recharge order and wallet record tables.
       enabled: ${OPEN_WALLET_SCHEMA_MIGRATION_ENABLED:true}
+    user-security:
+      # Adds the explicit email verification flag to existing user tables.
+      enabled: ${USER_SECURITY_SCHEMA_MIGRATION_ENABLED:true}
     oss-news:
       enabled: ${OSS_NEWS_SCHEMA_MIGRATION_ENABLED:true}

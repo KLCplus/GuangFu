@@ -4,9 +4,24 @@
   <view wx:if="{{loading}}" class="card status-card"><view class="skeleton status-skeleton"></view></view>
   <view wx:elif="{{error}}" class="card state-card"><view class="state-mark">!</view><view class="state-title">安全信息加载失败</view><view class="state-copy">{{error}}</view><button class="button-quiet" bindtap="loadProfile">重新加载</button></view>
   <view wx:elif="{{profile}}" class="card status-card">
-    <view class="binding-row"><view><text>邮箱状态</text><text>{{profile.email || '未填写邮箱'}}</text></view><text class="binding-tag {{profile.email ? 'bound' : ''}}">{{profile.email ? '已绑定' : '未绑定'}}</text></view>
-    <view class="binding-row"><view><text>手机状态</text><text>{{profile.phone || '未填写手机号'}}</text></view><text class="binding-tag {{profile.phone ? 'bound' : ''}}">{{profile.phone ? '已绑定' : '未绑定'}}</text></view>
-    <view class="binding-note">当前后端未提供独立验证码绑定流程，此处仅展示资料中的联系方式状态。</view>
+    <view class="binding-row"><view><text>邮箱状态</text><text>{{profile.email || '未绑定邮箱'}}</text></view><text class="binding-tag {{profile.emailVerified ? 'bound' : ''}}">{{profile.email ? (profile.emailVerified ? '已验证' : '未验证') : '未绑定'}}</text></view>
+    <view class="binding-row"><view><text>联系手机号</text><text>{{profile.phone || '未填写'}}</text></view><text class="binding-tag">{{profile.phone ? '已填写，未验证' : '未填写'}}</text></view>
+    <view class="binding-note">未验证手机号不用于密码找回、验证码登录或身份认证。</view>
+  </view>
+
+  <view class="section-head"><text class="section-title">{{profile && profile.email ? '更换邮箱' : '绑定邮箱'}}</text></view>
+  <view class="card password-card">
+    <text class="field-hint">验证码通过前原邮箱保持不变，发送验证码不代表修改成功。</text>
+    <text class="field-label">新邮箱</text>
+    <input class="field-input" value="{{emailForm.newEmail}}" disabled="{{emailCodeSent}}" maxlength="128" placeholder="name@example.com" bindinput="onNewEmail" />
+    <text class="field-label">当前密码</text>
+    <input class="field-input" password value="{{emailForm.currentPassword}}" placeholder="请输入当前密码" bindinput="onEmailPassword" />
+    <view class="email-code-row">
+      <input class="field-input" value="{{emailForm.code}}" maxlength="8" placeholder="邮箱验证码" bindinput="onEmailCode" />
+      <button class="button-quiet" loading="{{emailSending}}" disabled="{{emailSending || emailCountdown > 0}}" bindtap="sendEmailCode">{{emailCountdown > 0 ? emailCountdown + 's' : (emailCodeSent ? '重发' : '发送验证码')}}</button>
+    </view>
+    <text wx:if="{{emailCodeSent}}" class="field-hint">验证码已发送，此时邮箱尚未改变。</text>
+    <button class="button-primary password-button" loading="{{emailConfirming}}" disabled="{{emailConfirming || !emailCodeSent}}" bindtap="confirmEmailChange">验证并更新邮箱</button>
   </view>
 
   <view class="section-head"><text class="section-title">修改密码</text></view>

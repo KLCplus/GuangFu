@@ -1,6 +1,7 @@
 package com.example.pvplatform.common;
 
 import com.example.pvplatform.config.MailProperties;
+import com.example.pvplatform.common.exception.BusinessException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
@@ -22,12 +23,13 @@ public class EmailService {
     }
 
     /**
-     * Send an email. Falls back to logging if SMTP is not configured or fails.
+     * Send an email and fail explicitly when delivery cannot be handed to SMTP.
+     * Callers must not report a verification code as sent on configuration or delivery failure.
      */
     public void send(String to, String subject, String body) {
         if (mailSender == null) {
             log.warn("SMTP未配置(spring.mail.host为空), 不发邮件: to={}", to);
-            return;
+            throw new BusinessException(503, "邮件服务暂不可用，请稍后重试");
         }
 
         try {
@@ -37,7 +39,7 @@ public class EmailService {
                 ? mailProps.from() : mailProps.username();
             if (from == null || from.isBlank()) {
                 log.warn("邮件发送失败: 未配置发件人(MAIL_FROM或MAIL_USERNAME)");
-                return;
+                throw new BusinessException(503, "邮件服务暂不可用，请稍后重试");
             }
             message.setFrom(from);
             message.setTo(to);
@@ -48,6 +50,8 @@ public class EmailService {
         } catch (Exception e) {
             // 只打异常消息，不打印堆栈和邮件正文（防止泄露密钥和验证码）
             log.warn("邮件发送失败: to={}, error={}", to, e.getMessage());
+            if (e instanceof BusinessException businessException) throw businessException;
+            throw new BusinessException(503, "邮件发送失败，请稍后重试");
         }
     }
 }

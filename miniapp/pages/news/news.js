@@ -3,7 +3,7 @@ const { isLoggedIn } = require('../../utils/request')
 const { relativeDate, errorMessage } = require('../../utils/format')
 
 const TYPES = [
-  { label: '全部', value: 'ALL' }, { label: '气象预警', value: 'WEATHER_ALERT' },
+  { label: '全部', value: 'ALL' },
   { label: '灾害动态', value: 'DISASTER' }, { label: '政策标准', value: 'POLICY' },
   { label: '行业动态', value: 'INDUSTRY' }, { label: '企业资讯', value: 'ENTERPRISE' },
   { label: '运维指南', value: 'PLATFORM' }

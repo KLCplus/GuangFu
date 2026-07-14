@@ -48,7 +48,6 @@ let categoryCountsLoaded = false
 
 const categories: Array<{ label: string; value: NewsTypeFilter; icon: typeof Document }> = [
   { label: '全部', value: 'ALL', icon: Document },
-  { label: '气象预警', value: 'WEATHER_ALERT', icon: Warning },
   { label: '灾害动态', value: 'DISASTER', icon: Warning },
   { label: '政策标准', value: 'POLICY', icon: Document },
   { label: '行业动态', value: 'INDUSTRY', icon: Document },
@@ -445,7 +444,7 @@ function dayLabel(value?: string) {
           <template v-else-if="newsLoading">
             <div v-for="index in 5" :key="index" class="skeleton-row"><el-skeleton animated><template #template><el-skeleton-item variant="circle" /><div><el-skeleton-item variant="h3" style="width: 46%" /><el-skeleton-item variant="text" style="width: 78%; margin-top: 10px" /></div></template></el-skeleton></div>
           </template>
-          <div v-else-if="newsItems.length === 0" class="state-box"><strong>{{ newsType === 'WEATHER_ALERT' ? '当前暂无可展示的气象预警' : '暂无资讯内容' }}</strong><span>{{ newsType === 'WEATHER_ALERT' ? '预警数据服务暂未开通，其他天气数据不受影响。' : '当前筛选条件下没有可展示的资讯。' }}</span><el-button text type="primary" @click="clearNewsFilters">清除筛选</el-button></div>
+          <div v-else-if="newsItems.length === 0" class="state-box"><strong>暂无资讯内容</strong><span>当前筛选条件下没有可展示的资讯。</span><el-button text type="primary" @click="clearNewsFilters">清除筛选</el-button></div>
           <template v-else>
             <section v-for="group in newsGroups" :key="group.label" class="date-group">
               <h2>{{ group.label }}</h2>

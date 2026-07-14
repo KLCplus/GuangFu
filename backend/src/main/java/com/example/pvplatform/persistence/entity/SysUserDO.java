@@ -17,6 +17,7 @@ public class SysUserDO {
     private String passwordHash;
     private String nickname;
     private String email;
+    private Boolean emailVerified;
     private String phone;
     private String avatarUrl;
     private Long avatarFileId;

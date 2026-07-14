@@ -34,8 +34,8 @@ public class UserProfileTool extends AbstractAgentTool {
             List<String> highlights = new ArrayList<>();
             highlights.add("用户名：" + value(profile.username()));
             if (profile.nickname() != null && !profile.nickname().isBlank()) highlights.add("昵称：" + profile.nickname());
-            if (profile.email() != null && !profile.email().isBlank()) highlights.add("邮箱：" + profile.email());
-            if (profile.phone() != null && !profile.phone().isBlank()) highlights.add("手机号：" + profile.phone());
+            if (profile.email() != null && !profile.email().isBlank()) highlights.add("邮箱：" + profile.email() + (profile.emailVerified() ? "（已验证）" : "（未验证）"));
+            if (profile.phone() != null && !profile.phone().isBlank()) highlights.add("联系手机号：" + profile.phone() + "（未验证）");
             if (profile.roles() != null && !profile.roles().isEmpty()) highlights.add("角色：" + String.join("、", profile.roles()));
             return ToolExecutionResult.success(displayName(), profile, "已获取当前用户个人信息", highlights);
         });

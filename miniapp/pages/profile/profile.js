@@ -84,7 +84,7 @@ Page({
       secondaryText: user.email || `@${user.username}`,
       statusText: Number(user.status) === 1 ? '账户正常' : '账户受限',
       statusNormal: Number(user.status) === 1,
-      emailStatus: user.email ? '邮箱已绑定' : '邮箱未绑定'
+      emailStatus: user.email ? (user.emailVerified ? '邮箱已验证' : '邮箱未验证') : '邮箱未绑定'
     }
   },
 

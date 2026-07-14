@@ -314,6 +314,7 @@ public class OAuthService {
         user.setNickname(userInfo.nickname() != null ? userInfo.nickname() : username);
         user.setAvatarUrl(userInfo.avatarUrl());
         user.setEmail(userInfo.email());
+        user.setEmailVerified(false);
         user.setStatus(1);
         user.setTokenVersion(0);
         userMapper.insert(user);
