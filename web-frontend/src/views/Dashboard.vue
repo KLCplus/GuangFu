@@ -105,9 +105,9 @@ async function loadStations() {
   }
 }
 
-async function loadDashboard(showLoading = true) {
+async function loadDashboard(showLoading = true, force = false) {
   const stationId = selectedStationId.value
-  if (!stationId || refreshing.value) return
+  if (!stationId || (refreshing.value && !force)) return
   const seq = ++requestSeq
   refreshing.value = showLoading
   errorMessage.value = ''
@@ -126,7 +126,7 @@ async function loadDashboard(showLoading = true) {
     dashboard.value = null
     chartRows.value = []
     historyMode.value = 'empty'
-    renderChart()
+    resetChart()
     errorMessage.value = error instanceof Error ? error.message : '看板数据加载失败'
     if (showLoading) ElMessage.error(errorMessage.value)
   } finally {
@@ -139,8 +139,9 @@ async function handleStationChange() {
   dashboard.value = null
   chartRows.value = []
   historyMode.value = 'empty'
-  renderChart()
-  await loadDashboard(true)
+  resetChart()
+  await nextTick()
+  await loadDashboard(true, true)
 }
 
 async function manualRefresh() {
@@ -158,7 +159,7 @@ function clearDashboard() {
   dashboard.value = null
   chartRows.value = []
   historyMode.value = 'empty'
-  renderChart()
+  resetChart()
 }
 
 function upsertStation(station: Station) {
@@ -282,8 +283,18 @@ function round(value: number, digits: number) {
   return Math.round(value * factor) / factor
 }
 
+
+function resetChart() {
+  chart?.dispose()
+  chart = null
+}
+
 function renderChart() {
-  if (!chartRef.value) return
+  if (!chartRef.value) {
+    resetChart()
+    return
+  }
+  if (chart && chart.getDom() !== chartRef.value) resetChart()
   chart = chart ?? echarts.init(chartRef.value)
   chart.setOption({
     color: ['#1d6fdc', '#22a06b', '#f59e0b', '#7c3aed', '#06a6b8'],
