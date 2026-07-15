@@ -98,7 +98,7 @@ public class OpenAccountService {
         Long userId = SecurityUtils.requireCurrentUserId();
         BigDecimal normalized = normalizeAmount(amount);
         OpenWalletAccountDO account = ensureAccount(userId);
-        String safeChannel = channel == null || channel.isBlank() ? "MOCK" : channel.trim().toUpperCase();
+        String safeChannel = "MOCK";
         LocalDateTime now = LocalDateTime.now();
 
         OpenRechargeOrderDO order = new OpenRechargeOrderDO();
@@ -117,7 +117,7 @@ public class OpenAccountService {
         account.setBalance(account.getBalance().add(normalized).setScale(2, RoundingMode.HALF_UP));
         account.setUpdatedAt(now);
         walletAccountMapper.updateById(account);
-        insertRecord(account, order.getOrderNo(), "RECHARGE", normalized, "账户充值", safeChannel + " 模拟支付成功", now);
+        insertRecord(account, order.getOrderNo(), "RECHARGE", normalized, "测试充值", "MOCK 测试入账，不产生真实扣款", now);
 
         return toRechargeOrderVO(order);
     }

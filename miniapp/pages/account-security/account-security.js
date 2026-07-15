@@ -10,6 +10,7 @@ Page({
     emailConfirming: false,
     emailCodeSent: false,
     emailCountdown: 0,
+    activeAction: '',
     error: '',
     profile: null,
     form: { oldPassword: '', newPassword: '', confirmPassword: '' },
@@ -44,6 +45,13 @@ Page({
   onNewEmail(event) { this.setData({ 'emailForm.newEmail': event.detail.value }) },
   onEmailCode(event) { this.setData({ 'emailForm.code': event.detail.value }) },
   onEmailPassword(event) { this.setData({ 'emailForm.currentPassword': event.detail.value }) },
+
+  toggleAction(event) {
+    const action = event.currentTarget.dataset.action
+    this.setData({ activeAction: this.data.activeAction === action ? '' : action })
+  },
+
+  goProfile() { wx.navigateTo({ url: '/pages/account-profile/account-profile' }) },
 
   stopEmailCountdown() {
     if (this.emailTimer) clearInterval(this.emailTimer)
@@ -88,7 +96,7 @@ Page({
       await userApi.confirmEmailChange({ newEmail, code: code.trim(), currentPassword })
       await this.loadProfile()
       this.stopEmailCountdown()
-      this.setData({ emailCodeSent: false, emailForm: { newEmail: '', code: '', currentPassword: '' } })
+      this.setData({ activeAction: '', emailCodeSent: false, emailForm: { newEmail: '', code: '', currentPassword: '' } })
       wx.showToast({ title: '邮箱已验证并更新', icon: 'success' })
     } catch (error) {
       await this.loadProfile()

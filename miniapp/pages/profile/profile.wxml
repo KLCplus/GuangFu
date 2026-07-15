@@ -37,10 +37,10 @@
 
     <view class="section-head"><text class="section-title">账户功能</text><text wx:if="{{loading}}" class="loading-text">正在同步</text></view>
     <view class="menu-card">
-      <view class="menu-row" bindtap="goProfile"><text class="menu-mark blue">资</text><view><text>个人资料</text><text>头像、昵称与联系方式</text></view><text class="menu-arrow">›</text></view>
-      <view class="menu-row" bindtap="goSecurity"><text class="menu-mark green">安</text><view><text>安全与登录</text><text>修改密码与绑定状态</text></view><text class="menu-arrow">›</text></view>
-      <view class="menu-row" bindtap="goWallet"><text class="menu-mark amber">钱</text><view><text>钱包与消费</text><text>余额与最近资金变动</text></view><text class="menu-arrow">›</text></view>
-      <view class="menu-row" bindtap="goEntitlements"><text class="menu-mark violet">权</text><view><text>API 权益</text><text>Key 状态、额度与有效期</text></view><text class="menu-arrow">›</text></view>
+      <view class="menu-row" bindtap="goProfile"><view class="menu-icon-shell"><image class="menu-icon" src="/assets/account-icons/profile.png" mode="aspectFit" /></view><view><text>个人资料</text><text>头像、昵称与联系方式</text></view><text class="menu-arrow">›</text></view>
+      <view class="menu-row" bindtap="goSecurity"><view class="menu-icon-shell"><image class="menu-icon" src="/assets/account-icons/security.png" mode="aspectFit" /></view><view><text>安全与登录</text><text>修改密码与绑定状态</text></view><text class="menu-arrow">›</text></view>
+      <view class="menu-row" bindtap="goWallet"><view class="menu-icon-shell"><image class="menu-icon" src="/assets/account-icons/wallet.png" mode="aspectFit" /></view><view><text>钱包与消费</text><text>余额、测试充值与资金变动</text></view><text class="menu-arrow">›</text></view>
+      <view class="menu-row" bindtap="goEntitlements"><view class="menu-icon-shell"><image class="menu-icon" src="/assets/account-icons/api.png" mode="aspectFit" /></view><view><text>API 权益</text><text>Key 状态、额度与有效期</text></view><text class="menu-arrow">›</text></view>
     </view>
 
     <button class="logout-button" bindtap="logout">退出登录</button>

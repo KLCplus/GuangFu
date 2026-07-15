@@ -9,5 +9,5 @@ import java.math.BigDecimal;
 
 public record WalletRechargeRequest(
     @NotNull @DecimalMin("1.00") @DecimalMax("100000.00") BigDecimal amount,
-    @Pattern(regexp = "MOCK|ALIPAY|WECHAT|BANK", message = "充值渠道不合法") String channel
+    @Pattern(regexp = "MOCK", message = "当前仅支持 MOCK 测试充值") String channel
 ) {}

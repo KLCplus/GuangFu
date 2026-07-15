@@ -24,6 +24,7 @@ const openApi = {
   deleteKey: (id) => remove(`/api/open/keys/${id}`),
   entitlements: () => get('/api/open/entitlements'),
   wallet: () => get('/api/open/wallet'),
+  recharge: (data) => post('/api/open/wallet/recharge', data),
   usageSummary: (params) => get('/api/open/usage/summary', params),
   usageTrend: (params) => get('/api/open/usage/trend', params),
   callLogs: (params) => get('/api/open/call-logs', params)

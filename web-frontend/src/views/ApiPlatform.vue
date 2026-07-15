@@ -98,7 +98,7 @@ const resultDialogVisible = ref(false)
 const createdKey = ref<ApiKey | null>(null)
 const editKeyDialogVisible = ref(false)
 const editKeyForm = reactive({ keyName: '', apiKeyId: 0 })
-const rechargeForm = reactive({ amount: 100, channel: 'MOCK' as 'MOCK' | 'ALIPAY' | 'WECHAT' | 'BANK' })
+const rechargeForm = reactive({ amount: 100 })
 const lastRechargeOrder = ref<RechargeOrder | null>(null)
 
 const createForm = reactive<ApiKeyForm>({
@@ -339,12 +339,12 @@ async function submitRecharge() {
   }
   rechargeLoading.value = true
   try {
-    lastRechargeOrder.value = await rechargeWallet({ amount, channel: rechargeForm.channel })
-    ElMessage.success('充值成功，余额已入账')
+    lastRechargeOrder.value = await rechargeWallet({ amount, channel: 'MOCK' })
+    ElMessage.success('测试充值成功，余额已入账')
     rechargeDialogVisible.value = false
     await loadWallet()
   } catch (error) {
-    ElMessage.error(errorMessage(error, '充值失败'))
+    ElMessage.error(errorMessage(error, '测试充值失败'))
   } finally {
     rechargeLoading.value = false
   }
@@ -966,7 +966,7 @@ async function copyText(value: string) {
         <div>
           <h1>余额与流水</h1>
         </div>
-        <el-button type="primary" @click="rechargeDialogVisible = true">去充值</el-button>
+        <el-button type="primary" @click="rechargeDialogVisible = true">测试充值</el-button>
       </div>
       <el-alert v-if="walletError" :title="walletError" type="error" show-icon :closable="false">
         <template #default>
@@ -1009,7 +1009,7 @@ async function copyText(value: string) {
           <el-table-column prop="orderNo" label="订单号" min-width="180" show-overflow-tooltip />
         </el-table>
       </div>
-      <p class="wallet-disclaimer">充值为本地联调模拟支付。</p>
+      <p class="wallet-disclaimer">当前为测试充值，不产生真实扣款，仅用于项目演示或联调。</p>
     </section>
 
     <section v-if="activePage === 'usage' || activePage === 'billing'" class="usage-section">
@@ -1168,7 +1168,7 @@ async function copyText(value: string) {
       </section>
     </section>
 
-    <el-dialog v-model="rechargeDialogVisible" title="钱包充值" width="440px">
+    <el-dialog v-model="rechargeDialogVisible" title="测试充值" width="440px">
       <el-form label-position="top" @submit.prevent>
         <el-form-item label="充值金额" required>
           <el-input-number
@@ -1180,19 +1180,11 @@ async function copyText(value: string) {
             style="width: 220px"
           />
         </el-form-item>
-        <el-form-item label="支付渠道">
-          <el-select v-model="rechargeForm.channel" style="width: 220px">
-            <el-option label="模拟支付" value="MOCK" />
-            <el-option label="支付宝" value="ALIPAY" />
-            <el-option label="微信支付" value="WECHAT" />
-            <el-option label="银行转账" value="BANK" />
-          </el-select>
-          <p class="form-tip">当前环境会模拟支付成功并立即入账。</p>
-        </el-form-item>
+        <el-alert title="仅使用 MOCK 测试通道，确认后将直接增加余额并写入资金流水，不会发起微信、支付宝或银行卡扣款。" type="info" show-icon :closable="false" />
       </el-form>
       <template #footer>
         <el-button @click="rechargeDialogVisible = false">取消</el-button>
-        <el-button type="primary" :loading="rechargeLoading" @click="submitRecharge">确认充值</el-button>
+        <el-button type="primary" :loading="rechargeLoading" @click="submitRecharge">确认测试充值</el-button>
       </template>
     </el-dialog>
 

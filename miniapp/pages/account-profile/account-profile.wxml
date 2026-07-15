@@ -10,8 +10,6 @@
       <view class="avatar-copy"><text>{{profile.displayName}}</text><text>JPG、PNG 或 WebP，最大 2MB</text></view>
       <button class="button-quiet avatar-button" loading="{{avatarSaving}}" disabled="{{avatarSaving}}" bindtap="chooseAvatar">更换</button>
     </view>
-    <view wx:if="{{profile.avatarUrl}}" class="avatar-delete" bindtap="deleteAvatar">删除当前头像</view>
-
     <view class="section-head"><text class="section-title">基本信息</text></view>
     <view class="card form-card">
       <view class="readonly-row"><text>用户名</text><text>{{profile.username}}</text></view>

@@ -12,6 +12,6 @@
 
 /* Light canvas: blue is reserved for data emphasis and actions. */
 .overview-hero{margin:0 0 32rpx;padding:30rpx;border:1rpx solid #dfe7f0;border-radius:24rpx;background:#fff;color:#172033}
-.hero-title,.hero-copy{display:block}.hero-title{margin:0;font-size:40rpx}.hero-copy{margin-top:9rpx;color:#718096;font-size:22rpx}.hero-range{flex:none;border:0;background:#eef4fb;color:#41678f}
+.hero-section-label,.hero-title,.hero-copy{display:block}.hero-section-label{color:#52708f;font-size:20rpx;font-weight:700}.hero-title{margin:10rpx 0 0;font-size:40rpx}.hero-copy{margin-top:9rpx;color:#718096;font-size:22rpx}.hero-range{flex:none;border:0;background:#eef4fb;color:#41678f}
 .hero-metrics{margin-top:28rpx;padding-top:24rpx;border-top:1rpx solid #e8edf3}.hero-metrics>view{background:#f7f9fc}.hero-value{color:#173a60}.hero-label{color:#77869a;opacity:1}
 .wallet-main{background:#f4f7fb;color:#172033}.wallet-label,.wallet-frozen{color:#748399;opacity:1}.wallet-amount{color:#0d5fbe}

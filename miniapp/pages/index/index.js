@@ -196,6 +196,6 @@ Page({
   },
 
   showRechargeStatus() {
-    wx.showModal({ title: '充值说明', content: '后端当前仅开放本地联调 MOCK 支付渠道。小程序暂不发起充值，避免形成真实支付已完成的误解。', showCancel: false })
+    wx.navigateTo({ url: '/pages/account-wallet/account-wallet' })
   }
 })

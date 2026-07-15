@@ -121,29 +121,5 @@ Page({
     } finally {
       this.setData({ avatarSaving: false })
     }
-  },
-
-  deleteAvatar() {
-    if (!this.data.profile || !this.data.profile.avatarUrl || this.data.avatarSaving) return
-    wx.showModal({
-      title: '删除头像',
-      content: '删除后将使用昵称首字母作为头像。',
-      confirmText: '删除',
-      confirmColor: '#df4b5f',
-      success: async ({ confirm }) => {
-        if (!confirm) return
-        this.setData({ avatarSaving: true })
-        try {
-          await userApi.deleteAvatar()
-          await this.loadProfile()
-          wx.setStorageSync('accountProfileDirty', true)
-          wx.showToast({ title: '头像已删除', icon: 'success' })
-        } catch (error) {
-          wx.showToast({ title: errorMessage(error, '删除失败'), icon: 'none' })
-        } finally {
-          this.setData({ avatarSaving: false })
-        }
-      }
-    })
   }
 })

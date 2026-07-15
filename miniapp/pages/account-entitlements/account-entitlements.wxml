@@ -1,5 +1,5 @@
 <view class="page entitlement-page">
-  <view class="entitlement-intro"><text>API 访问概览</text><text>只展示脱敏 Key、模型权益和真实额度。</text></view>
+  <view class="entitlement-intro"><text>API 权益</text><text>查看真实 Key 状态、模型权益、额度与有效期</text></view>
 
   <view class="stats-card">
     <view><text>{{stats.keyCount}}</text><text>API Key</text></view>

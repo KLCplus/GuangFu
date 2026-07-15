@@ -1,15 +1,22 @@
 <view class="page wallet-page">
   <view wx:if="{{loading && !wallet}}" class="card state-card"><view class="skeleton wallet-skeleton"></view></view>
-  <view wx:elif="{{error}}" class="card state-card"><view class="state-mark">!</view><view class="state-title">钱包加载失败</view><view class="state-copy">{{error}}</view><button class="button-quiet" bindtap="loadWallet">重新加载</button></view>
+  <view wx:elif="{{error && !wallet}}" class="card state-card"><view class="state-mark">!</view><view class="state-title">钱包加载失败</view><view class="state-copy">{{error}}</view><button class="button-quiet" bindtap="loadWallet">重新加载</button></view>
   <block wx:elif="{{wallet}}">
     <view class="balance-card">
-      <text class="balance-label">可用余额</text>
-      <text class="balance-value">{{wallet.balanceText}}</text>
+      <view><text class="balance-label">可用余额</text><text class="balance-value">{{wallet.balanceText}}</text></view>
       <view class="balance-grid"><view><text>冻结余额</text><text>{{wallet.frozenText}}</text></view><view><text>本月消费</text><text>{{wallet.monthlyCostText}}</text></view></view>
-      <view class="power-line"><text></text><text></text><text></text><text></text><text></text></view>
     </view>
 
-    <view class="recharge-note" bindtap="showRechargeStatus"><view><text>充值功能暂未开放</text><text>当前仅支持查看真实余额与流水</text></view><text>说明</text></view>
+    <view class="section-head"><text class="section-title">测试充值</text><text class="section-caption">MOCK 通道</text></view>
+    <view class="card recharge-card">
+      <view class="test-notice"><text>演示能力</text><view><text>不会产生真实扣款</text><text>确认后由后端增加余额并写入资金流水，仅用于项目演示或联调。</text></view></view>
+      <text class="amount-label">选择充值金额</text>
+      <view class="amount-grid">
+        <view class="amount-chip {{selectedAmount === item && !customAmount ? 'selected' : ''}}" wx:for="{{presetAmounts}}" wx:key="*this" data-amount="{{item}}" bindtap="chooseAmount">¥{{item}}</view>
+      </view>
+      <view class="custom-amount"><text>¥</text><input type="digit" value="{{customAmount}}" placeholder="自定义金额（1–100000）" bindinput="onCustomAmount" /></view>
+      <button class="button-primary recharge-button" loading="{{recharging}}" disabled="{{recharging}}" bindtap="confirmRecharge">{{recharging ? '正在测试入账' : '确认测试充值'}}</button>
+    </view>
 
     <view class="section-head"><text class="section-title">最近资金变动</text><text class="section-caption">{{records.length}} 条</text></view>
     <view wx:if="{{records.length}}" class="record-list">
@@ -19,6 +26,6 @@
         <text class="record-amount {{item.income ? 'income' : ''}}">{{item.amountText}}</text>
       </view>
     </view>
-    <view wx:else class="card empty-card"><text>暂无资金变动</text><text>产生真实充值、消费或退款流水后会显示在这里。</text></view>
+    <view wx:else class="card empty-card"><text>暂无资金变动</text><text>测试充值、API 消费或退款后会显示在这里。</text></view>
   </block>
 </view>

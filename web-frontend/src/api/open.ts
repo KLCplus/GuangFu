@@ -189,7 +189,7 @@ export interface Wallet {
 
 export interface WalletRechargePayload {
   amount: number
-  channel?: 'MOCK' | 'ALIPAY' | 'WECHAT' | 'BANK'
+  channel?: 'MOCK'
 }
 
 export interface RechargeOrder {
