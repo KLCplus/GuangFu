@@ -27,7 +27,8 @@ model-service/venv/
 
 .cache/
 start-personal.sh
-
+.env
+.env.*
 
 
 # Logs
