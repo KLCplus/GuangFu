@@ -1,8 +1,6 @@
 <view class="page">
   <view class="overview-hero">
-    <view class="hero-top"><text class="hero-kicker">OPEN PLATFORM</text><text class="hero-range">近 30 天</text></view>
-    <view class="hero-title">每一次调用，都看得见</view>
-    <view class="pulse-line"><view class="pulse-dot"></view><view class="pulse-track"></view></view>
+    <view class="hero-top"><view><text class="hero-title">开放平台概览</text><text class="hero-copy">掌握调用状态、账户资源与近期记录</text></view><text class="hero-range">近 30 天</text></view>
     <view class="hero-metrics" wx:if="{{loggedIn}}">
       <view><text class="hero-value">{{summary.totalCallsText}}</text><text class="hero-label">总调用</text></view>
       <view><text class="hero-value">{{summary.successRateText}}</text><text class="hero-label">成功率</text></view>

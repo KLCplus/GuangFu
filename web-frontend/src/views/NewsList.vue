@@ -395,7 +395,7 @@ function dayLabel(value?: string) {
     </header>
 
     <div class="inbox-layout">
-      <aside class="filter-sidebar" aria-label="新闻通知筛选">
+      <aside class="filter-sidebar" aria-label="资讯与消息筛选">
         <div v-if="activeTab === 'notifications'" class="sidebar-section">
           <p class="sidebar-title">消息中心</p>
           <button class="filter-item" :class="{ active: activeTab === 'notifications' && notificationFilter === 'ALL' }" @click="chooseNotificationFilter('ALL')">

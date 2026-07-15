@@ -1,5 +1,6 @@
 const { modelApi, miniappModelApi } = require('../../utils/api')
 const { errorMessage } = require('../../utils/format')
+const { getModelIcon } = require('../../utils/model-icons')
 
 Page({
   data: { loading: true, error: '', model: null },
@@ -21,7 +22,7 @@ Page({
         ['输出步数', item.outputSteps, '步'], ['输出步长', item.outputStepMinutes, '分钟']
       ].filter((row) => row[1] !== undefined && row[1] !== null).map((row) => ({ label: row[0], value: `${row[1]} ${row[2]}` }))
       this.setData({
-        model: { ...item, loggedIn, descriptionText: item.description || item.shortDescription || '暂无详细说明', tags: item.tags || [], lists, configs, statusLabel: this.statusLabel(item.status), online: String(item.status).toUpperCase() === 'ONLINE' },
+        model: { ...item, loggedIn, iconUrl: getModelIcon(item.modelCode), descriptionText: item.description || item.shortDescription || '暂无详细说明', tags: item.tags || [], lists, configs, statusLabel: this.statusLabel(item.status), online: String(item.status).toUpperCase() === 'ONLINE' },
         loading: false
       })
       wx.setNavigationBarTitle({ title: item.modelName || '模型详情' })

@@ -5,6 +5,7 @@ import java.util.List;
 /** Public, display-only model information exposed to the local miniapp demo. */
 public record MiniappModelVO(
     Long modelId,
+    String modelCode,
     String modelName,
     String modelType,
     String modelVersion,

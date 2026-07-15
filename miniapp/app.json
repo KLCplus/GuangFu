@@ -15,8 +15,8 @@
   ],
   "window": {
     "navigationBarTitleText": "光伏发电平台",
-    "navigationBarBackgroundColor": "#1677ff",
-    "navigationBarTextStyle": "white"
+    "navigationBarBackgroundColor": "#f6f8fb",
+    "navigationBarTextStyle": "black"
   },
   "tabBar": {
     "color": "#7d8da3",
@@ -24,10 +24,10 @@
     "backgroundColor": "#ffffff",
     "borderStyle": "white",
     "list": [
-      { "pagePath": "pages/index/index", "text": "概览" },
-      { "pagePath": "pages/prediction/prediction", "text": "模型" },
-      { "pagePath": "pages/news/news", "text": "资讯" },
-      { "pagePath": "pages/profile/profile", "text": "我的" }
+      { "pagePath": "pages/index/index", "text": "概览", "iconPath": "assets/tabbar/overview-normal.png", "selectedIconPath": "assets/tabbar/overview-selected.png" },
+      { "pagePath": "pages/prediction/prediction", "text": "模型", "iconPath": "assets/tabbar/model-normal.png", "selectedIconPath": "assets/tabbar/model-selected.png" },
+      { "pagePath": "pages/news/news", "text": "资讯", "iconPath": "assets/tabbar/news-normal.png", "selectedIconPath": "assets/tabbar/news-selected.png" },
+      { "pagePath": "pages/profile/profile", "text": "我的", "iconPath": "assets/tabbar/profile-normal.png", "selectedIconPath": "assets/tabbar/profile-selected.png" }
     ]
   },
   "style": "v2",

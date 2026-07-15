@@ -5,6 +5,7 @@ import * as echarts from 'echarts'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { getModels } from '../api/model'
 import type { ModelListItem } from '../api/model'
+import { getModelIcon } from '../assets/model-icons/svg'
 import {
   applyApiKey,
   deleteApiKey,
@@ -134,9 +135,10 @@ const timeOptions = [
 const modelNameMap = computed(() => new Map(models.value.map((model) => [model.modelId, model.modelName])))
 const keyNameMap = computed(() => new Map(apiKeys.value.map((key) => [key.apiKeyId, key.keyName])))
 const modelSearch = ref('')
+const onlineModels = computed(() => models.value.filter((model) => model.status === 'ONLINE'))
 const filteredModels = computed(() => {
   const query = modelSearch.value.trim().toLowerCase()
-  return models.value.filter((model) => !query || `${model.modelName} ${model.modelCode}`.toLowerCase().includes(query)).slice(0, 6)
+  return onlineModels.value.filter((model) => !query || `${model.modelName} ${model.modelCode}`.toLowerCase().includes(query)).slice(0, 6)
 })
 
 const modelOptions = computed(() => {
@@ -259,7 +261,7 @@ const walletMonthlyCost = computed(() => wallet.value?.monthlyCost ?? null)
 const walletRecords = computed(() => wallet.value?.records ?? [])
 const overviewSummary = computed(() => [
   { label: 'API Key 数量', value: formatNumber(apiKeys.value.length), note: '当前账户凭证' },
-  { label: '可调用模型', value: formatNumber(models.value.filter((model) => model.status === 'ONLINE').length), note: '在线模型' },
+  { label: '可调用模型', value: formatNumber(onlineModels.value.length), note: '在线模型' },
   { label: '可用余额', value: formatMoney(walletAmount.value), note: '钱包账户余额' },
   { label: '本月调用次数', value: formatNumber(summaryData.value?.totalCalls ?? 0), note: '后端聚合统计' }
 ])
@@ -869,16 +871,16 @@ async function copyText(value: string) {
           <div><h2>可调用模型</h2></div>
           <div class="model-tools"><el-input v-model="modelSearch" clearable placeholder="搜索名称或模型 ID" /><el-button text type="primary" @click="$router.push(props.marketplacePath)">查看全部模型</el-button></div>
         </div>
-        <el-alert v-if="models.length === 0" title="暂无可调用模型或模型目录加载失败" type="info" :closable="false" />
+        <el-alert v-if="onlineModels.length === 0" title="暂无可调用模型或模型目录加载失败" type="info" :closable="false" />
         <div v-else class="model-grid">
           <article v-for="model in filteredModels" :key="model.modelId" class="model-card">
-            <div class="model-card-head"><span class="model-glyph">◌</span><div><h3>{{ model.modelName }}</h3><p>{{ model.provider || model.modelFamily || '平台模型' }}</p></div><el-tag size="small" :type="model.status === 'ONLINE' ? 'success' : 'info'" effect="light">{{ model.status === 'ONLINE' ? '可用' : model.status }}</el-tag></div>
+            <div class="model-card-head"><img class="model-glyph" :src="getModelIcon(model.modelCode, model.modelType)" alt="" /><div><h3>{{ model.modelName }}</h3><p>{{ model.provider || model.modelFamily || '平台模型' }}</p></div><el-tag size="small" type="success" effect="light">可用</el-tag></div>
             <p class="model-description">{{ model.shortDescription || model.description || '暂无模型简介' }}</p>
             <div class="model-meta"><code>{{ model.modelCode }}</code><span>{{ model.modelType }}</span></div>
             <div v-if="model.tags?.length" class="model-tags"><el-tag v-for="tag in model.tags.slice(0, 3)" :key="tag" size="small" effect="plain">{{ tag }}</el-tag></div>
           </article>
         </div>
-        <el-empty v-if="models.length > 0 && filteredModels.length === 0" description="没有匹配的模型" :image-size="64" />
+        <el-empty v-if="onlineModels.length > 0 && filteredModels.length === 0" description="没有匹配的模型" :image-size="64" />
       </section>
       <section class="service-note"><div><h2>API 服务</h2></div><div class="service-links"><el-button text @click="$router.push(`${props.routeBase}/keys`)">管理 API Keys</el-button><el-button text @click="$router.push(`${props.routeBase}/usage`)">查看使用统计</el-button><el-button text @click="$router.push(`${props.routeBase}/billing`)">查看流水消费</el-button></div></section>
     </section>
@@ -1715,7 +1717,7 @@ async function copyText(value: string) {
 .model-card { min-width: 0; padding: 16px; border: 1px solid #e5e7eb; border-radius: 8px; }
 .model-card-head { display: flex; align-items: flex-start; gap: 10px; }
 .model-card-head > div { min-width: 0; flex: 1; }
-.model-glyph { display: grid; width: 32px; height: 32px; place-items: center; border-radius: 8px; color: #2563a6; background: #edf4fb; font-size: 20px; }
+.model-glyph { width: 36px; height: 36px; flex: none; border-radius: 9px; object-fit: cover; }
 .model-card h3 { margin: 0; overflow: hidden; color: #172033; font-size: 15px; text-overflow: ellipsis; white-space: nowrap; }
 .model-card-head p { margin: 3px 0 0; color: #7b8492; font-size: 12px; }
 .model-description { display: -webkit-box; min-height: 36px; margin: 14px 0 12px; overflow: hidden; color: #4b5563; font-size: 13px; line-height: 1.45; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }

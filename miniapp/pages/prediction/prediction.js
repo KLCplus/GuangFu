@@ -1,5 +1,6 @@
 const { modelApi, miniappModelApi } = require('../../utils/api')
 const { errorMessage } = require('../../utils/format')
+const { getModelIcon } = require('../../utils/model-icons')
 
 Page({
   data: {
@@ -55,7 +56,7 @@ Page({
       online: String(item.status).toUpperCase() === 'ONLINE',
       descriptionText: item.shortDescription || item.description || '该模型暂未补充简介',
       searchText: [item.modelName, item.modelCode, item.description, item.shortDescription, item.modelFamily, item.provider, ...tags].filter(Boolean).join(' ').toLowerCase(),
-      monogram: String(item.modelName || 'M').slice(0, 1).toUpperCase()
+      iconUrl: getModelIcon(item.modelCode)
     }
   },
 

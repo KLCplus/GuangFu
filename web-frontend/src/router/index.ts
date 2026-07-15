@@ -103,13 +103,13 @@ const routes: RouteRecordRaw[] = [
         path: 'news',
         name: 'VisualizationNews',
         component: () => import('../views/VisualizationNews.vue'),
-        meta: { title: '新闻通知情报台' }
+        meta: { title: '资讯与消息' }
       },
       {
         path: 'news/:newsId',
         name: 'VisualizationNewsDetail',
         component: () => import('../views/VisualizationNewsDetail.vue'),
-        meta: { title: '新闻情报详情' }
+        meta: { title: '资讯详情' }
       },
       {
         path: 'profile',

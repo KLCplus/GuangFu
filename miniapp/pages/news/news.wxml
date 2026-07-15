@@ -1,5 +1,5 @@
 <view class="page news-page">
-  <view class="news-head"><view><text class="news-kicker">INFORMATION &amp; MESSAGE</text><text class="news-title">资讯与消息</text></view><view class="unread-badge" wx:if="{{unreadCount}}">{{unreadCount > 99 ? '99+' : unreadCount}}</view></view>
+  <view class="news-head"><view><text class="news-title">资讯与消息</text><text class="news-copy">汇总行业资讯、政策动态与平台消息</text></view><view class="unread-badge" wx:if="{{unreadCount}}">{{unreadCount > 99 ? '99+' : unreadCount}}</view></view>
   <view class="tab-switch"><view class="{{activeTab === 'news' ? 'active' : ''}}" data-tab="news" bindtap="switchTab">资讯中心</view><view class="{{activeTab === 'notice' ? 'active' : ''}}" data-tab="notice" bindtap="switchTab">消息中心<text wx:if="{{unreadCount}}">{{unreadCount}}</text></view></view>
 
   <block wx:if="{{activeTab === 'news'}}">

@@ -3,6 +3,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { loadNewsDetail, loadNewsPage } from '../api/userPages'
 import type { News } from '../api/news'
+import { renderNewsContent, visibleNewsSummary } from '../utils/newsContent'
 
 const props = withDefaults(defineProps<{
   basePath?: string
@@ -21,7 +22,8 @@ const relatedNews = ref<News[]>([])
 
 const newsId = computed(() => Number(route.params.newsId))
 
-const safeContent = computed(() => renderStoredContent(news.value?.content ?? ''))
+const safeContent = computed(() => renderNewsContent(news.value?.content))
+const effectiveSummary = computed(() => visibleNewsSummary(news.value?.summary, safeContent.value))
 const sourceUrl = computed(() => safeHttpUrl(news.value?.sourceUrl))
 const attachmentUrl = computed(() => safeHttpUrl(news.value?.attachmentUrl))
 
@@ -86,16 +88,6 @@ function safeHttpUrl(value?: string) {
   }
 }
 
-function renderStoredContent(content: string) {
-  if (!content) return ''
-  if (/<(?:p|br|h[1-4]|ul|ol|li|blockquote|table|strong|em|a)\b/i.test(content)) return content
-  return content.split(/\n{2,}/).map((paragraph) => `<p>${escapeHtml(paragraph).replace(/\n/g, '<br>')}</p>`).join('')
-}
-
-function escapeHtml(value: string) {
-  return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;')
-}
-
 function newsTypeLabel(type?: string) {
   const labels: Record<string, string> = {
     WEATHER_ALERT: '气象预警',
@@ -142,7 +134,7 @@ function publishTime(item?: News | null) {
         <header class="article-head">
           <el-tag :type="newsTypeTag(news.newsType)" effect="light">{{ newsTypeLabel(news.category || news.newsType) }}</el-tag>
           <h1>{{ news.title }}</h1>
-          <p>{{ news.summary }}</p>
+          <p v-if="effectiveSummary">{{ effectiveSummary }}</p>
           <div class="article-meta">
             <span>发布时间：{{ publishTime(news) }}</span>
             <span v-if="news.sourceName">来源：{{ news.sourceName }}</span>

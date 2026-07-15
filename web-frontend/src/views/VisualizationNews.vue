@@ -10,8 +10,8 @@ import NewsList from './NewsList.vue'
         <i></i>
       </div>
       <div class="intelligence-title">
-        <h1>新闻通知情报台</h1>
-        <p>汇聚行业资讯、气象预警与站内运行消息，保持能源决策链路实时同步。</p>
+        <h1>资讯与消息</h1>
+        <p>汇总行业资讯、政策动态与平台消息。</p>
       </div>
       <div class="intelligence-axis" aria-hidden="true"><i></i><b></b></div>
     </header>

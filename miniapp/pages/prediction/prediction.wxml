@@ -1,5 +1,5 @@
 <view class="page model-page">
-  <view class="model-intro"><text class="intro-kicker">MODEL CATALOG</text><text class="intro-title">找到适合光伏场景的模型</text><text class="intro-copy">{{loggedIn ? '已连接平台账号，可查看完整模型目录' : '当前展示已上线模型，连接账号后查看完整目录与配置'}}</text></view>
+  <view class="model-intro"><text class="intro-title">模型广场</text><text class="intro-copy">{{loggedIn ? '浏览平台模型与可用状态' : '当前展示已上线模型，连接账号后查看完整目录与配置'}}</text></view>
   <view class="search-row">
     <view class="search-box"><text>⌕</text><input value="{{keyword}}" placeholder="搜索模型、标签或机构" bindinput="onSearch" /></view>
     <view wx:if="{{loggedIn}}" class="filter-button {{status !== 'ALL' ? 'active' : ''}}" bindtap="toggleFilter">筛选<text wx:if="{{status !== 'ALL'}}">1</text></view>
@@ -15,7 +15,7 @@
   <view wx:elif="{{!visibleModels.length}}" class="card state-card"><view class="state-mark">⌕</view><view class="state-title">没有匹配的模型</view><view class="state-copy">接口已正常返回，但当前搜索或筛选条件没有结果。</view><button class="button-quiet" bindtap="clearFilters">清空条件</button></view>
   <view wx:else class="model-list">
     <view class="card model-card" wx:for="{{visibleModels}}" wx:key="modelId" data-id="{{item.modelId}}" bindtap="openDetail">
-      <view class="model-icon"><text>{{item.monogram}}</text><view class="icon-orbit"></view></view>
+      <image class="model-icon" src="{{item.iconUrl}}" mode="aspectFill" />
       <view class="model-body"><view class="model-title-row"><text class="model-name">{{item.modelName}}</text><text class="status {{item.online ? 'online' : ''}}">{{item.statusLabel}}</text></view><text class="model-description">{{item.descriptionText}}</text><view class="model-tags"><text class="tag type-tag">{{item.typeLabel}}</text><text class="tag" wx:for="{{item.tags}}" wx:key="*this">{{item}}</text></view></view>
       <text class="arrow">›</text>
     </view>

@@ -252,7 +252,7 @@ public class ModelService {
     }
 
     private MiniappModelVO toMiniappModelVO(ModelInfoDO m) {
-        return new MiniappModelVO(m.getModelId(), m.getModelName(), m.getModelType(),
+        return new MiniappModelVO(m.getModelId(), m.getModelCode(), m.getModelName(), m.getModelType(),
             m.getModelVersion(), m.getStatus(), firstText(m.getShortDescription(), m.getDescription()),
             parseStringList(m.getTags()), m.getModelFamily(), m.getProvider(), m.getReleaseYear(),
             parseStringList(m.getCapabilities()), parseStringList(m.getApplicableScenarios()),

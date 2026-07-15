@@ -52,11 +52,14 @@ public class ExternalNewsSyncService {
     private final NewsMapper mapper;
     private final NewsSyncProperties properties;
     private final NewsTlsSupport tlsSupport;
+    private final NewsContentNormalizer contentNormalizer;
 
-    public ExternalNewsSyncService(NewsMapper mapper, NewsSyncProperties properties, NewsTlsSupport tlsSupport) {
+    public ExternalNewsSyncService(NewsMapper mapper, NewsSyncProperties properties, NewsTlsSupport tlsSupport,
+                                   NewsContentNormalizer contentNormalizer) {
         this.mapper = mapper;
         this.properties = properties;
         this.tlsSupport = tlsSupport;
+        this.contentNormalizer = contentNormalizer;
     }
 
     public Map<String, SyncStats> syncConfiguredSources() {
@@ -146,8 +149,8 @@ public class ExternalNewsSyncService {
         NewsDO existing = mapper.selectOne(Wrappers.<NewsDO>lambdaQuery()
             .eq(NewsDO::getSourceType, sourceType).eq(NewsDO::getExternalId, externalId).last("LIMIT 1"));
         LocalDateTime published = candidate.publishedAt() == null ? LocalDateTime.now() : candidate.publishedAt();
-        String content = extracted.body();
-        String summary = abbreviate(Jsoup.parseBodyFragment(content).text(), 260);
+        String content = contentNormalizer.cleanContent(extracted.body(), candidate.title(), true);
+        String summary = contentNormalizer.visibleSummary(abbreviate(Jsoup.parseBodyFragment(content).text(), 260), content);
         Attachment attachment = extracted.attachment();
         if (existing != null) {
             boolean samePublishedAt = candidate.publishedAt() == null || published.equals(existing.getSourcePublishedAt());

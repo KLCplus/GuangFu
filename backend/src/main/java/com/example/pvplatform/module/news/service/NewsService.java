@@ -56,17 +56,20 @@ public class NewsService {
     private final OssStorageService oss;
     private final OssObjectKeyGenerator keys;
     private final OssProperties ossProperties;
+    private final NewsContentNormalizer contentNormalizer;
 
     public NewsService(NewsMapper newsMapper, NotificationService notificationService,
                        SysUserMapper userMapper, SysRoleMapper roleMapper,
                        SysUserRoleMapper userRoleMapper, FileResourceMapper fileMapper,
-                       OssStorageService oss, OssObjectKeyGenerator keys, OssProperties ossProperties) {
+                       OssStorageService oss, OssObjectKeyGenerator keys, OssProperties ossProperties,
+                       NewsContentNormalizer contentNormalizer) {
         this.newsMapper = newsMapper;
         this.notificationService = notificationService;
         this.userMapper = userMapper;
         this.roleMapper = roleMapper;
         this.userRoleMapper = userRoleMapper;
         this.fileMapper = fileMapper; this.oss = oss; this.keys = keys; this.ossProperties = ossProperties;
+        this.contentNormalizer = contentNormalizer;
     }
 
     @Cacheable(cacheNames = "news:public-list",
@@ -324,7 +327,10 @@ public class NewsService {
     }
 
     private NewsVO toVO(NewsDO news) {
-        return new NewsVO(news.getNewsId(), news.getTitle(), news.getSummary(), news.getContent(),
+        boolean external = Integer.valueOf(1).equals(news.getExternalContent());
+        String content = contentNormalizer.cleanContent(news.getContent(), news.getTitle(), external);
+        String summary = contentNormalizer.visibleSummary(news.getSummary(), content);
+        return new NewsVO(news.getNewsId(), news.getTitle(), summary, content,
             news.getCoverUrl(), news.getNewsType(), normalizeCategory(news.getCategory(), news.getNewsType()),
             news.getContentType(), news.getSourceType(), news.getSourceName(), news.getSourceUrl(),
             news.getAttachmentName(), news.getAttachmentType(), news.getAttachmentUrl(),

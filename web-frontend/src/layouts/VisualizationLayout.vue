@@ -47,7 +47,7 @@ const navGroups = [
     code: 'DATA CENTER',
     items: [
       { path: '/visualization-ui/reports', label: 'Agent 分析', code: 'AGT', icon: '/images/agent.png' },
-      { path: '/visualization-ui/news', label: '新闻通知', code: 'NEWS', icon: '/images/news.png' },
+      { path: '/visualization-ui/news', label: '资讯与消息', code: 'NEWS', icon: '/images/news.png' },
       { path: '/visualization-ui/profile', label: '个人中心', code: 'ID', icon: '/images/my.png' }
     ]
   }
