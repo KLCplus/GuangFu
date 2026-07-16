@@ -15,6 +15,8 @@ public record CloudPredictResponse(
 
     public record Prediction(
         Integer frameIndex,
-        String image
+        String image,
+        Double cloudCoverage,
+        Double confidence
     ) {}
 }

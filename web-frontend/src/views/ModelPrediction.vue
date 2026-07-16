@@ -7,7 +7,7 @@ import { createPrediction, getPredictionResults } from '../api/prediction'
 import { getStations } from '../api/station'
 import { getApiKeys } from '../api/open'
 import type { Model } from '../api/model'
-import type { PredictionResult } from '../api/prediction'
+import type { PredictionResult, PredictionImageFrame } from '../api/prediction'
 import type { ApiKey } from '../api/open'
 import { mockStations } from '../data/mock'
 
@@ -29,6 +29,7 @@ interface ResultRow {
   index: number
   predictTime: string
   predictPower: number
+  actualPower: number | null
 }
 
 interface StationOption {
@@ -45,13 +46,30 @@ const categories: ModelCategoryOption[] = [
 const route = useRoute()
 const isVisualizationTheme = computed(() => route.path.startsWith('/visualization-ui/'))
 
+// 19 个模型，分类依据 更改.txt
 const fallbackModels: UsableModel[] = [
-  { modelId: 1001, modelName: 'PatchTST 功率预测', modelCode: 'patchtst_power', category: 'power-sequence' },
-  { modelId: 1002, modelName: 'iTransformer 功率预测', modelCode: 'itransformer_power', category: 'power-sequence' },
-  { modelId: 2001, modelName: 'PredRNN 云图预测', modelCode: 'predrnn_cloud', category: 'cloud-sequence' },
-  { modelId: 2002, modelName: 'SimVP 云图预测', modelCode: 'simvp_cloud', category: 'cloud-sequence' },
-  { modelId: 3001, modelName: 'ConvLSTM-LSTM 融合预测', modelCode: 'convlstm_lstm', category: 'multimodal' },
-  { modelId: 3002, modelName: '3DCNN-LSTM 融合预测', modelCode: '3dcnn_lstm', category: 'multimodal' }
+  // 功率时序模型
+  { modelId: 1001, modelName: 'PatchTST', modelCode: 'PatchTST', category: 'power-sequence' },
+  { modelId: 1002, modelName: 'DLinear', modelCode: 'DLinear', category: 'power-sequence' },
+  { modelId: 1003, modelName: 'iTransformer', modelCode: 'iTransformer', category: 'power-sequence' },
+  { modelId: 1004, modelName: 'TimeXer', modelCode: 'TimeXer', category: 'power-sequence' },
+  { modelId: 1005, modelName: 'TimeMixer', modelCode: 'TimeMixer', category: 'power-sequence' },
+  { modelId: 1006, modelName: 'TSMixer', modelCode: 'TSMixer', category: 'power-sequence' },
+  { modelId: 1007, modelName: 'Transformer', modelCode: 'Transformer', category: 'power-sequence' },
+  // 云图时空模型
+  { modelId: 2001, modelName: 'SimVP+GSTA', modelCode: 'SimVP_gSTA', category: 'cloud-sequence' },
+  { modelId: 2002, modelName: 'TAU', modelCode: 'TAU', category: 'cloud-sequence' },
+  { modelId: 2003, modelName: 'PredRNN', modelCode: 'PredRNN', category: 'cloud-sequence' },
+  { modelId: 2004, modelName: 'PredRNN++', modelCode: 'PredRNN++', category: 'cloud-sequence' },
+  { modelId: 2005, modelName: 'ConvLSTM', modelCode: 'ConvLSTM', category: 'cloud-sequence' },
+  { modelId: 2006, modelName: 'E3D-LSTM', modelCode: 'E3D_LSTM', category: 'cloud-sequence' },
+  { modelId: 2007, modelName: 'SwinLSTM', modelCode: 'swinLSTM', category: 'cloud-sequence' },
+  { modelId: 2008, modelName: 'SUNSET', modelCode: 'SUNSET', category: 'cloud-sequence' },
+  // 多模态融合模型
+  { modelId: 3001, modelName: 'CNN+LSTM', modelCode: 'CNN_LSTM', category: 'multimodal' },
+  { modelId: 3002, modelName: '3D-CNN+LSTM', modelCode: '3DCNN_LSTM', category: 'multimodal' },
+  { modelId: 3003, modelName: 'CNN+MLP', modelCode: 'CNN_MLP', category: 'multimodal' },
+  { modelId: 3004, modelName: 'ConvLSTM+LSTM', modelCode: 'ConvLSTM_LSTM', category: 'multimodal' },
 ]
 
 const loading = ref(false)
@@ -65,7 +83,10 @@ const apiKeys = ref<ApiKey[]>([])
 const dataFile = ref<File>()
 const cloudFiles = ref<File[]>([])
 const folderInput = ref<HTMLInputElement>()
-const resultRows = ref<ResultRow[]>(generateResultRows('power-sequence'))
+const historicalValues = ref<number[]>([])
+const predictedValues = ref<number[]>([])
+const actualValues = ref<number[]>([])
+const resultRows = ref<ResultRow[]>([])
 
 const filteredModels = computed(() => models.value.filter((item) => item.category === selectedCategory.value))
 const selectedModel = computed(() => filteredModels.value.find((item) => item.modelId === selectedModelId.value))
@@ -74,33 +95,65 @@ const cloudFolderName = computed(() => {
   const firstPath = cloudFiles.value[0]?.webkitRelativePath
   return firstPath ? firstPath.split('/')[0] : ''
 })
-const resultStats = computed(() => {
-  const values = resultRows.value.map((item) => item.predictPower)
-  const total = values.reduce((sum, value) => sum + value, 0)
-  return {
-    avg: values.length ? total / values.length : 0,
-    max: values.length ? Math.max(...values) : 0
-  }
-})
-const chartPoints = computed(() => {
-  const values = resultRows.value.map((item) => item.predictPower)
-  if (!values.length) return ''
+const needsCloudFolder = computed(() => selectedCategory.value !== 'power-sequence')
 
-  const width = 680
-  const height = 220
-  const paddingX = 34
-  const paddingY = 24
-  const min = Math.min(...values)
-  const max = Math.max(...values)
-  const range = Math.max(max - min, 1)
+// 图表计算：三色折线，X轴5分钟刻度共1小时，Y轴动态范围
+const chartData = computed(() => {
+  const hist = historicalValues.value
+  const pred = predictedValues.value
+  const real = actualValues.value
+  if (!hist.length && !pred.length) return null
 
-  return values
-    .map((value, index) => {
-      const x = paddingX + (index / Math.max(values.length - 1, 1)) * (width - paddingX * 2)
-      const y = height - paddingY - ((value - min) / range) * (height - paddingY * 2)
-      return `${x.toFixed(1)},${y.toFixed(1)}`
-    })
+  const allValues = [...hist, ...pred, ...real].filter((v) => isFinite(v))
+  if (!allValues.length) return null
+
+  const dataMin = Math.min(...allValues)
+  const dataMax = Math.max(...allValues)
+  const range = dataMax - dataMin || 1
+  const yMin = dataMin - range / 10
+  const yMax = dataMax + range / 10
+
+  const W = 680
+  const H = 260
+  const padL = 56
+  const padR = 20
+  const padT = 36
+  const padB = 34
+  const plotW = W - padL - padR
+  const plotH = H - padT - padB
+
+  const xScale = (min: number) => padL + (min / 60) * plotW
+  const yScale = (val: number) => padT + plotH - ((val - yMin) / (yMax - yMin)) * plotH
+
+  // 历史功率：30个点，x = 0..29 分钟
+  const histPoints = hist
+    .map((v, i) => `${xScale(i).toFixed(1)},${yScale(v).toFixed(1)}`)
     .join(' ')
+
+  // 预测功率：6个点，x = 30,35,40,45,50,55 分钟
+  const predPoints = pred
+    .map((v, i) => `${xScale(30 + i * 5).toFixed(1)},${yScale(v).toFixed(1)}`)
+    .join(' ')
+
+  // 真实功率：与预测同 x 坐标
+  const realPoints = real
+    .map((v, i) => `${xScale(30 + i * 5).toFixed(1)},${yScale(v).toFixed(1)}`)
+    .join(' ')
+
+  // X轴刻度：0, 5, 10, ..., 60
+  const xTicks = Array.from({ length: 13 }, (_, i) => ({
+    x: xScale(i * 5),
+    label: String(i * 5),
+  }))
+
+  // Y轴刻度：5等分
+  const yTickCount = 5
+  const yTicks = Array.from({ length: yTickCount + 1 }, (_, i) => {
+    const val = yMin + (i / yTickCount) * (yMax - yMin)
+    return { y: yScale(val), label: val.toFixed(1) }
+  })
+
+  return { histPoints, predPoints, realPoints, xTicks, yTicks, W, H }
 })
 
 onMounted(async () => {
@@ -116,12 +169,10 @@ async function loadModels() {
     const records = await getModels()
     const apiModels = records.map(mapApiModel)
     const merged = [...apiModels]
-
     fallbackModels.forEach((model) => {
-      const hasCategoryModel = merged.some((item) => item.category === model.category)
-      if (!hasCategoryModel) merged.push(model)
+      const hasCode = merged.some((item) => item.modelCode === model.modelCode)
+      if (!hasCode) merged.push(model)
     })
-
     models.value = merged.length ? merged : fallbackModels
   } catch {
     models.value = fallbackModels
@@ -134,19 +185,19 @@ async function loadStations() {
     const records = result.records?.length ? result.records : mockStations
     stations.value = records.map((item) => ({
       stationId: item.stationId,
-      stationName: item.stationName
+      stationName: item.stationName,
     }))
   } catch {
     stations.value = mockStations.map((item) => ({
       stationId: item.stationId,
-      stationName: item.stationName
+      stationName: item.stationName,
     }))
   }
 }
 
 async function loadApiKeys() {
   try {
-    apiKeys.value = (await getApiKeys()).filter((key) => key.status === "ACTIVE")
+    apiKeys.value = (await getApiKeys()).filter((key) => key.status === 'ACTIVE')
   } catch {
     apiKeys.value = []
   }
@@ -157,36 +208,33 @@ function mapApiModel(model: Model): UsableModel {
     modelId: model.modelId,
     modelName: model.modelName,
     modelCode: model.modelCode || `model_${model.modelId}`,
-    category: getModelCategory(model)
+    category: getModelCategory(model),
   }
 }
 
 function getModelCategory(model: Pick<Model, 'modelName' | 'modelCode' | 'modelType'>): ModelCategory {
-  const text = [model.modelName, model.modelCode, model.modelType].filter(Boolean).join(' ').toLowerCase()
-  if (text.includes('3dcnn') || text.includes('convlstm_lstm') || text.includes('multi') || text.includes('融合')) {
-    return 'multimodal'
-  }
-  if (
-    text.includes('predrnn') ||
-    text.includes('simvp') ||
-    text.includes('convlstm') ||
-    text.includes('cloud') ||
-    text.includes('image') ||
-    text.includes('云图')
-  ) {
-    return 'cloud-sequence'
-  }
+  const type = (model.modelType || '').toUpperCase()
+  if (type === 'FUSION') return 'multimodal'
+  if (type === 'MULTIMODAL' || type === 'IMAGE') return 'cloud-sequence'
+  // 按 modelCode 匹配
+  const code = (model.modelCode || '').toLowerCase()
+  const cloudCodes = ['simvp_gsta', 'tau', 'predrnn', 'predrnn++', 'convlstm', 'e3d_lstm', 'swinlstm', 'sunset']
+  const fusionCodes = ['cnn_lstm', '3dcnn_lstm', 'cnn_mlp', 'convlstm_lstm']
+  if (fusionCodes.some((c) => code.includes(c))) return 'multimodal'
+  if (cloudCodes.some((c) => code.includes(c))) return 'cloud-sequence'
   return 'power-sequence'
 }
 
 function handleCategoryChange() {
   selectedModelId.value = filteredModels.value[0]?.modelId
-  resultRows.value = generateResultRows(selectedCategory.value)
+  historicalValues.value = []
+  predictedValues.value = []
+  actualValues.value = []
+  resultRows.value = []
 }
 
 function handleDataFileChange(file?: File) {
   if (!file) return
-
   const valid = /\.(xlsx|xls|csv)$/i.test(file.name)
   if (!valid) {
     ElMessage.warning('只能上传 Excel 或 CSV 文件')
@@ -205,88 +253,145 @@ function handleCloudFolderChange(event: Event) {
   cloudFiles.value = Array.from(input.files ?? [])
 }
 
+// 解析功率文件（CSV 或 Excel），返回数值数组
+async function parsePowerFile(file: File): Promise<number[]> {
+  const isExcel = /\.xlsx?$/i.test(file.name)
+
+  if (isExcel) {
+    const XLSX = await import('xlsx')
+    const data = await file.arrayBuffer()
+    const workbook = XLSX.read(data, { type: 'array' })
+    const sheet = workbook.Sheets[workbook.SheetNames[0]]
+    const rows = XLSX.utils.sheet_to_json(sheet, { header: 1 }) as unknown[][]
+    const values: number[] = []
+    for (const row of rows) {
+      if (!Array.isArray(row)) continue
+      for (const cell of row) {
+        const num = Number(cell)
+        if (!isNaN(num) && isFinite(num)) {
+          values.push(num)
+          break
+        }
+      }
+    }
+    return values
+  }
+
+  // CSV 解析
+  const text = await file.text()
+  const lines = text.trim().split(/\r?\n/).filter((l) => l.trim())
+  const values: number[] = []
+  for (const line of lines) {
+    const parts = line.split(/[,;\t]/)
+    for (const part of parts) {
+      const num = Number(part.trim())
+      if (!isNaN(num) && isFinite(num)) {
+        values.push(num)
+        break
+      }
+    }
+  }
+  return values
+}
+
+function readImageAsBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(reader.result as string)
+    reader.onerror = reject
+    reader.readAsDataURL(file)
+  })
+}
+
+function buildPredictionValues(histValues: number[]) {
+  const start = Date.now() - 29 * 60 * 1000
+  return histValues.map((value, index) => ({
+    time: formatDateTime(new Date(start + index * 60 * 1000)),
+    value,
+  }))
+}
+
+async function buildPredictionImages(): Promise<PredictionImageFrame[]> {
+  const files = cloudFiles.value.slice(0, 6)
+  const start = Date.now() - 5 * 5 * 60 * 1000
+  return Promise.all(
+    files.map(async (file, index) => ({
+      time: formatDateTime(new Date(start + index * 5 * 60 * 1000)),
+      image: await readImageAsBase64(file),
+    }))
+  )
+}
+
+function normalizePredictionRows(predictions: PredictionResult[], realValues: number[]): ResultRow[] {
+  return predictions.map((item, index) => ({
+    index: index + 1,
+    predictTime: item.predictTime?.slice(11, 16) || formatFutureTime(item.timeOffset),
+    predictPower: Number(item.predictPower ?? 0),
+    actualPower: realValues[index] != null ? realValues[index] : null,
+  }))
+}
+
 async function runPrediction() {
   if (!selectedModel.value) {
     ElMessage.warning('请选择模型')
     return
   }
-  if (!selectedApiKeyId.value) {
-    ElMessage.warning('当前账户没有可用的 API Key，请先前往 API 平台创建')
-    return
-  }
+
+  const cat = selectedModel.value.category
+
+  // 输入校验
   if (!dataFile.value) {
-    ElMessage.warning('请上传 Excel 或 CSV 数据文件')
+    ElMessage.warning('请上传功率数据文件')
     return
   }
-  if (!cloudFiles.value.length) {
+  if (cat !== 'power-sequence' && !cloudFiles.value.length) {
     ElMessage.warning('请选择云图文件夹')
+    return
+  }
+  if (cat !== 'power-sequence' && cloudFiles.value.length !== 6) {
+    ElMessage.warning(`云图文件夹需要包含6张图片，当前${cloudFiles.value.length}张`)
     return
   }
 
   running.value = true
   try {
-    const task = await createPrediction({
+    // 解析功率文件，需要恰好36行
+    const allValues = await parsePowerFile(dataFile.value!)
+    if (allValues.length !== 36) {
+      ElMessage.error(`功率数据需要恰好36行（前30步×1分钟历史 + 后6步×5分钟真实），当前${allValues.length}行`)
+      return
+    }
+
+    const histValues = allValues.slice(0, 30)
+    const realValues = allValues.slice(30)
+
+    // 构建请求
+    const payload = {
       stationId: selectedStationId.value,
       modelId: selectedModel.value.modelId,
       apiKeyId: selectedApiKeyId.value,
       inputMode: 'MANUAL_MULTIMODAL',
-      numericValues: buildPredictionValues(),
-      inputImages: buildPredictionImages()
-    })
-    const predictions = await getPredictionResults(task.taskId).catch(() => [] as PredictionResult[])
-    resultRows.value = predictions.length ? normalizePredictionRows(predictions) : generateResultRows(selectedCategory.value)
-    ElMessage.success(predictions.length ? '预测完成' : '预测任务已提交，暂显示演示结果')
-  } catch {
-    resultRows.value = generateResultRows(selectedCategory.value)
-    ElMessage.warning('预测服务暂不可用，已显示演示结果')
+      numericValues: buildPredictionValues(histValues),
+      inputImages: cat !== 'power-sequence' ? await buildPredictionImages() : undefined,
+    }
+
+    const task = await createPrediction(payload)
+    const predictions = await getPredictionResults(task.taskId)
+
+    if (predictions.length) {
+      historicalValues.value = histValues
+      predictedValues.value = predictions.map((p) => p.predictPower)
+      actualValues.value = realValues
+      resultRows.value = normalizePredictionRows(predictions, realValues)
+      ElMessage.success('预测完成')
+    } else {
+      ElMessage.warning('预测任务已提交，暂无结果')
+    }
+  } catch (e) {
+    ElMessage.error('预测失败: ' + (e instanceof Error ? e.message : '未知错误'))
   } finally {
     running.value = false
   }
-}
-
-function buildPredictionValues() {
-  const start = Date.now() - 29 * 60 * 1000
-  return Array.from({ length: 30 }, (_, index) => ({
-    time: formatDateTime(new Date(start + index * 60 * 1000)),
-    value: 480 + index * 3.5
-  }))
-}
-
-function buildPredictionImages() {
-  const start = Date.now() - Math.max(cloudFiles.value.length, 1) * 60 * 1000
-  const files = cloudFiles.value.slice(0, 30)
-  return (files.length ? files : [undefined]).map((_, index) => ({
-    time: formatDateTime(new Date(start + index * 60 * 1000)),
-    image: 'data:image/png;base64,aGVsbG8='
-  }))
-}
-
-function normalizePredictionRows(values: PredictionResult[]): ResultRow[] {
-  return values.map((item, index) => ({
-    index: index + 1,
-    predictTime: item.predictTime?.slice(11, 16) || formatFutureTime(item.timeOffset),
-    predictPower: Number(item.predictPower ?? 0)
-  }))
-}
-
-function generateResultRows(category: ModelCategory): ResultRow[] {
-  const baseMap: Record<ModelCategory, number> = {
-    'power-sequence': 520,
-    'cloud-sequence': 545,
-    multimodal: 570
-  }
-  const base = baseMap[category]
-
-  return Array.from({ length: 8 }, (_, index) => {
-    const offset = (index + 1) * 15
-    const curve = Math.sin((index + 1) / 2.2) * 22
-    const trend = index * 9.5
-    return {
-      index: index + 1,
-      predictTime: formatFutureTime(offset),
-      predictPower: Number((base + trend + curve).toFixed(1))
-    }
-  })
 }
 
 function formatFutureTime(offsetMinutes: number) {
@@ -330,43 +435,41 @@ function formatDateTime(date: Date) {
                 />
               </el-select>
             </el-form-item>
-
-
           </div>
         </div>
 
         <div class="control-group">
           <div class="input-row">
             <div class="file-field">
-              <span class="file-label">Excel / CSV</span>
+              <span class="file-label">功率数据文件 (36行)</span>
               <label class="file-control">
                 <input
                   type="file"
                   accept=".xlsx,.xls,.csv"
                   @change="handleDataFileChange(($event.target as HTMLInputElement).files?.[0])"
                 />
-                <strong>{{ dataFile?.name || '选择功率数据文件' }}</strong>
+                <strong>{{ dataFile?.name || '选择 Excel / CSV 文件' }}</strong>
               </label>
             </div>
 
-            <div class="file-field">
-              <span class="file-label">云图文件夹</span>
+            <div class="file-field" v-if="needsCloudFolder">
+              <span class="file-label">云图文件夹 (6张)</span>
               <button class="file-control" type="button" @click="chooseCloudFolder">
                 <strong>{{ cloudFolderName || '选择云图文件夹' }}</strong>
                 <small v-if="cloudFiles.length">{{ cloudFiles.length }} 个文件</small>
               </button>
             </div>
-
-            <input
-              ref="folderInput"
-              class="hidden-input"
-              type="file"
-              webkitdirectory
-              directory
-              multiple
-              @change="handleCloudFolderChange"
-            />
           </div>
+
+          <input
+            ref="folderInput"
+            class="hidden-input"
+            type="file"
+            webkitdirectory
+            directory
+            multiple
+            @change="handleCloudFolderChange"
+          />
         </div>
       </div>
     </section>
@@ -381,33 +484,60 @@ function formatDateTime(date: Date) {
         </div>
       </div>
 
-      <div class="result-layout">
-        <div class="result-chart">
-          <svg viewBox="0 0 680 220" role="img" aria-label="功率预测曲线">
-            <line x1="34" y1="196" x2="646" y2="196" class="chart-axis" />
-            <polyline :points="chartPoints" class="chart-line" />
-            <circle
-              v-for="point in chartPoints.split(' ').filter(Boolean)"
-              :key="point"
-              :cx="Number(point.split(',')[0])"
-              :cy="Number(point.split(',')[1])"
-              r="4"
-              class="chart-point"
-            />
-          </svg>
-        </div>
+      <div class="result-chart">
+        <svg v-if="chartData" :viewBox="`0 0 ${chartData.W} ${chartData.H}`" role="img" aria-label="功率预测曲线">
+          <!-- 坐标轴 -->
+          <line :x1="56" :y1="chartData.H - 34" :x2="chartData.W - 20" :y2="chartData.H - 34" class="chart-axis" />
+          <line :x1="56" :y1="36" :x2="56" :y2="chartData.H - 34" class="chart-axis" />
 
-        <div class="result-summary">
-          <span>平均功率 <b>{{ resultStats.avg.toFixed(1) }} kW</b></span>
-          <span>峰值功率 <b>{{ resultStats.max.toFixed(1) }} kW</b></span>
+          <!-- X轴刻度和标签 -->
+          <g v-for="tick in chartData.xTicks" :key="`x-${tick.label}`">
+            <line :x1="tick.x" :y1="chartData.H - 34" :x2="tick.x" :y2="chartData.H - 29" class="chart-tick" />
+            <text :x="tick.x" :y="chartData.H - 18" class="chart-label" text-anchor="middle">{{ tick.label }}</text>
+          </g>
+
+          <!-- Y轴刻度和标签 -->
+          <g v-for="(tick, i) in chartData.yTicks" :key="`y-${i}`">
+            <line :x1="51" :y1="tick.y" :x2="56" :y2="tick.y" class="chart-tick" />
+            <text :x="48" :y="tick.y + 4" class="chart-label" text-anchor="end">{{ tick.label }}</text>
+          </g>
+
+          <!-- 轴标签 -->
+          <text :x="chartData.W / 2" :y="chartData.H - 2" class="chart-axis-label" text-anchor="middle">时间 (分钟)</text>
+          <text :x="14" :y="chartData.H / 2" class="chart-axis-label" text-anchor="middle" transform="rotate(-90 14 130)">功率 (kW)</text>
+
+          <!-- 历史功率线 (蓝色) -->
+          <polyline :points="chartData.histPoints" class="chart-hist-line" />
+
+          <!-- 预测功率线 (橙色) -->
+          <polyline :points="chartData.predPoints" class="chart-pred-line" />
+
+          <!-- 真实功率线 (绿色) -->
+          <polyline :points="chartData.realPoints" class="chart-real-line" />
+
+          <!-- 图例 -->
+          <g transform="translate(380, 12)">
+            <line x1="0" y1="6" x2="20" y2="6" class="chart-hist-line" />
+            <text x="25" y="10" class="chart-legend">历史功率</text>
+            <line x1="100" y1="6" x2="120" y2="6" class="chart-pred-line" />
+            <text x="125" y="10" class="chart-legend">预测功率</text>
+            <line x1="200" y1="6" x2="220" y2="6" class="chart-real-line" />
+            <text x="225" y="10" class="chart-legend">真实功率</text>
+          </g>
+        </svg>
+        <div v-else class="chart-empty">
+          <span>请上传数据并点击"开始预测"查看结果</span>
         </div>
       </div>
 
-      <el-table :data="resultRows" size="large">
+      <el-table v-if="resultRows.length" :data="resultRows" size="large" style="margin-top: 14px">
         <el-table-column prop="index" label="序号" width="90" />
         <el-table-column prop="predictTime" label="预测时间" min-width="140" />
-        <el-table-column prop="predictPower" label="预测功率(kW)" min-width="160">
-          <template #default="{ row }">{{ row.predictPower.toFixed(1) }}</template>
+        <el-table-column label="预测功率 (kW)" min-width="160">
+          <template #default="{ row }">{{ row.predictPower.toFixed(3) }}</template>
+        </el-table-column>
+        <el-table-column label="真实功率 (kW)" min-width="160">
+          <template #default="{ row }">{{ row.actualPower != null ? row.actualPower.toFixed(3) : '—' }}</template>
         </el-table-column>
       </el-table>
     </section>
@@ -484,13 +614,6 @@ function formatDateTime(date: Date) {
   margin: 4px 0 0;
 }
 
-.key-billing-hint {
-  margin: 6px 0 0;
-  color: var(--color-muted);
-  font-size: 12px;
-  line-height: 1.5;
-}
-
 .full-control {
   width: 100%;
 }
@@ -518,7 +641,7 @@ function formatDateTime(date: Date) {
 .file-control {
   min-width: 0;
   display: grid;
-  align-content: center;
+  grid-content: center;
   gap: 2px;
   min-height: 56px;
   width: 100%;
@@ -564,37 +687,8 @@ function formatDateTime(date: Date) {
   gap: 10px;
 }
 
-.result-layout {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 240px;
-  gap: 14px;
-  align-items: stretch;
-  margin-bottom: 14px;
-}
-
-.result-summary {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 12px;
-}
-
-.result-summary span {
-  min-height: 124px;
-  padding: 16px;
-  border-radius: 8px;
-  background: #f6f9fd;
-  color: var(--color-muted);
-}
-
-.result-summary b {
-  display: block;
-  margin-top: 8px;
-  color: #10274c;
-  font-size: 20px;
-}
-
 .result-chart {
-  min-height: 260px;
+  min-height: 300px;
   border: 1px solid #dfeaf7;
   border-radius: 8px;
   background: linear-gradient(180deg, #f8fbff 0%, #ffffff 100%);
@@ -603,7 +697,15 @@ function formatDateTime(date: Date) {
 .result-chart svg {
   display: block;
   width: 100%;
-  height: 260px;
+  height: 300px;
+}
+
+.chart-empty {
+  display: grid;
+  place-items: center;
+  min-height: 300px;
+  color: var(--color-muted);
+  font-size: 14px;
 }
 
 .chart-axis {
@@ -611,32 +713,60 @@ function formatDateTime(date: Date) {
   stroke-width: 1;
 }
 
-.chart-line {
-  fill: none;
-  stroke: var(--color-primary);
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  stroke-width: 3;
+.chart-tick {
+  stroke: #cfdae8;
+  stroke-width: 1;
 }
 
-.chart-point {
-  fill: #ffffff;
-  stroke: var(--color-primary);
+.chart-label {
+  fill: #606266;
+  font-size: 11px;
+}
+
+.chart-axis-label {
+  fill: #909399;
+  font-size: 12px;
+}
+
+.chart-hist-line {
+  fill: none;
+  stroke: #409eff;
+  stroke-linecap: round;
+  stroke-linejoin: round;
   stroke-width: 2;
+}
+
+.chart-pred-line {
+  fill: none;
+  stroke: #e6a23c;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2.5;
+}
+
+.chart-real-line {
+  fill: none;
+  stroke: #67c23a;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2.5;
+}
+
+.chart-legend {
+  fill: #606266;
+  font-size: 12px;
 }
 
 @media (max-width: 1180px) {
   .control-panel,
-  .control-grid,
-  .result-layout {
+  .control-grid {
     grid-template-columns: 1fr;
   }
 }
 
 @media (max-width: 760px) {
   .model-picker,
-  .input-row,
-  .result-summary {
+  .input-row {
     grid-template-columns: 1fr;
   }
 
@@ -856,15 +986,9 @@ function formatDateTime(date: Date) {
   transform: translateY(-1px);
 }
 
-.model-workbench .result-layout {
-  grid-template-columns: minmax(0, 1fr) 210px;
-  gap: 16px;
-  margin-bottom: 20px;
-}
-
 .model-workbench .result-chart {
   position: relative;
-  min-height: 300px;
+  min-height: 340px;
   overflow: hidden;
   border-color: rgba(110, 231, 245, 0.18);
   border-radius: 10px;
@@ -881,43 +1005,19 @@ function formatDateTime(date: Date) {
   color: rgba(150, 194, 220, 0.5);
   font: 700 10px/1 "Arial Narrow", sans-serif;
   letter-spacing: 0.14em;
+  z-index: 1;
 }
 
-.model-workbench .result-chart svg { height: 300px; }
+.model-workbench .result-chart svg { height: 340px; position: relative; z-index: 0; }
 .model-workbench .chart-axis { stroke: rgba(178, 213, 232, 0.34); }
-.model-workbench .chart-line { stroke: var(--mp-cyan); stroke-width: 3.5; filter: drop-shadow(0 0 7px rgba(110, 231, 245, 0.34)); }
-.model-workbench .chart-point { fill: var(--mp-ink); stroke: var(--mp-cyan); stroke-width: 2.5; }
-
-.model-workbench .result-summary { gap: 16px; }
-
-.model-workbench .result-summary span {
-  position: relative;
-  min-height: 142px;
-  padding: 22px;
-  overflow: hidden;
-  border: 1px solid rgba(110, 231, 245, 0.18);
-  border-radius: 10px;
-  background: linear-gradient(145deg, rgba(17, 55, 88, 0.82), rgba(7, 28, 54, 0.88));
-  color: rgba(179, 207, 227, 0.65);
-  font-size: 13px;
-}
-
-.model-workbench .result-summary span::after {
-  content: "";
-  position: absolute;
-  right: -25px;
-  bottom: -25px;
-  width: 80px;
-  height: 80px;
-  border: 1px solid rgba(110, 231, 245, 0.12);
-  border-radius: 50%;
-}
-
-.model-workbench .result-summary b {
-  margin-top: 20px;
-  color: #f3fbff;
-  font: 650 26px/1.1 "Arial Narrow", "Microsoft YaHei", sans-serif;
-}
+.model-workbench .chart-tick { stroke: rgba(178, 213, 232, 0.34); }
+.model-workbench .chart-label { fill: rgba(178, 205, 229, 0.7); }
+.model-workbench .chart-axis-label { fill: rgba(178, 205, 229, 0.55); }
+.model-workbench .chart-hist-line { stroke: #6ee7f5; stroke-width: 2; filter: drop-shadow(0 0 4px rgba(110, 231, 245, 0.3)); }
+.model-workbench .chart-pred-line { stroke: #ffca66; stroke-width: 2.5; filter: drop-shadow(0 0 4px rgba(255, 202, 102, 0.3)); }
+.model-workbench .chart-real-line { stroke: #95e1a3; stroke-width: 2.5; filter: drop-shadow(0 0 4px rgba(149, 225, 163, 0.3)); }
+.model-workbench .chart-legend { fill: rgba(178, 205, 229, 0.7); }
+.model-workbench .chart-empty { color: rgba(178, 205, 229, 0.5); }
 
 .model-workbench :deep(.el-table) {
   --el-table-bg-color: transparent;
@@ -935,8 +1035,6 @@ function formatDateTime(date: Date) {
 @media (max-width: 1180px) {
   .model-workbench .control-grid { grid-template-columns: 1fr; }
   .model-workbench .control-group + .control-group { border-left: 0; border-top: 1px solid var(--mp-line); }
-  .model-workbench .result-layout { grid-template-columns: 1fr; }
-  .model-workbench .result-summary { grid-template-columns: repeat(2, 1fr); }
 }
 
 @media (max-width: 760px) {
@@ -945,8 +1043,6 @@ function formatDateTime(date: Date) {
   .model-workbench .control-group { padding: 50px 18px 22px; }
   .model-workbench .control-group::before { left: 18px; }
   .model-workbench .result-section { padding: 20px 16px; }
-  .model-workbench .result-summary { grid-template-columns: 1fr; }
-  .model-workbench .result-summary span { min-height: 110px; }
 }
 
 @media (prefers-reduced-motion: reduce) {

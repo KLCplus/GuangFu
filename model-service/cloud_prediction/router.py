@@ -30,8 +30,13 @@ def cloud_predict(request: CloudPredictRequest) -> CloudPredictResponse:
         cost = int((perf_counter() - t0) * 1000)
 
         predictions = [
-            {"frameIndex": i, "image": img}
-            for i, img in enumerate(results)
+            {
+                "frameIndex": i,
+                "image": item["image"],
+                "cloudCoverage": item.get("cloudCoverage", 0.0),
+                "confidence": item.get("confidence", 0.0),
+            }
+            for i, item in enumerate(results)
         ]
         data = CloudPredictData(
             modelName=request.modelName,

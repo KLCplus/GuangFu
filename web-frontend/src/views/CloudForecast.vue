@@ -163,16 +163,14 @@ async function runPrediction() {
       url: frame.image,
       source: 'remote',
       timeOffset: frame.timeOffset ?? (index + 1) * 5,
-      confidence: frame.confidence ?? Math.max(84, 96 - index * 1.2),
-      cloudCoverage: frame.cloudCoverage ?? estimateCloudCoverage(index)
+      confidence: frame.confidence ?? 0,
+      cloudCoverage: frame.cloudCoverage ?? 0
     }))
     ElMessage.success('已调用云图预测接口生成结果')
   } catch (error) {
-    progress.value = 78
-    progressLabel.value = '接口不可用，使用本地兜底结果'
-    await wait(260)
-    predictionFrames.value = buildMockPredictionFrames()
-    ElMessage.warning(error instanceof Error ? `${error.message}，已展示本地兜底结果` : '云图预测接口不可用，已展示本地兜底结果')
+    progress.value = 0
+    progressLabel.value = '预测失败'
+    ElMessage.error(error instanceof Error ? `云图预测失败：${error.message}` : '云图预测接口不可用，请检查服务状态')
   } finally {
     predicting.value = false
   }
@@ -198,10 +196,6 @@ function downloadAll() {
   ElMessage.success('已开始批量下载预测云图')
 }
 
-function wait(ms: number) {
-  return new Promise((resolve) => window.setTimeout(resolve, ms))
-}
-
 async function frameToInputImage(frame: CloudFrame) {
   if (frame.url.startsWith('data:image')) return frame.url
   const response = await fetch(frame.url)
@@ -212,23 +206,6 @@ async function frameToInputImage(frame: CloudFrame) {
     reader.onerror = () => reject(new Error('云图读取失败'))
     reader.readAsDataURL(blob)
   })
-}
-
-function buildMockPredictionFrames(): PredictionFrame[] {
-  return Array.from({ length: requiredFrameCount }, (_, index) => ({
-    id: `forecast-${index + 1}`,
-    name: `forecast-cloud-${String(index + 1).padStart(2, '0')}.png`,
-    url: createCloudSvg(index, 'forecast'),
-    source: 'mock',
-    timeOffset: (index + 1) * 5,
-    confidence: Math.max(84, 96 - index * 1.2),
-    cloudCoverage: estimateCloudCoverage(index)
-  }))
-}
-
-function estimateCloudCoverage(index: number) {
-  const cloudCoverage = 38 + Math.round(Math.sin(index / 1.8) * 12 + index * 1.8)
-  return Math.max(18, Math.min(82, cloudCoverage))
 }
 
 function revokeUploadedObjectUrls() {

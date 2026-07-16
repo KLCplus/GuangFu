@@ -14,6 +14,8 @@ class CloudPredictRequest(BaseModel):
 class CloudPredictionFrame(BaseModel):
     frameIndex: int
     image: str
+    cloudCoverage: float = 0.0
+    confidence: float = 0.0
 
 
 class CloudPredictData(BaseModel):

@@ -161,7 +161,66 @@ def _encode_image(tensor: torch.Tensor) -> str:
 # ---------------------------------------------------------------------------
 # 预测接口
 # ---------------------------------------------------------------------------
-def predict_cloud_images(input_images: List[str]) -> List[str]:
+def _compute_cloud_coverage(img_array: np.ndarray) -> float:
+    """从预测云图计算云量百分比。
+
+    云在图像中表现为高亮度区域，使用 Otsu 自适应阈值分离云/非云。
+    云量 = 亮度高于阈值的像素占比 × 100。
+    """
+    # img_array: [H, W] uint8, 灰度图
+    hist, _ = np.histogram(img_array.ravel(), bins=256, range=(0, 256))
+    total = img_array.size
+    # Otsu 算法找最佳阈值
+    best_var = 0.0
+    best_thresh = 128
+    sum_total = np.dot(np.arange(256), hist)
+    sum_bg = 0
+    weight_bg = 0
+    for t in range(256):
+        weight_bg += hist[t]
+        if weight_bg == 0:
+            continue
+        weight_fg = total - weight_bg
+        if weight_fg == 0:
+            break
+        sum_bg += t * hist[t]
+        mean_bg = sum_bg / weight_bg
+        mean_fg = (sum_total - sum_bg) / weight_fg
+        var_between = weight_bg * weight_fg * (mean_bg - mean_fg) ** 2
+        if var_between > best_var:
+            best_var = var_between
+            best_thresh = t
+    # 云量 = 亮度高于阈值的像素占比
+    cloud_pixels = np.count_nonzero(img_array > best_thresh)
+    coverage = (cloud_pixels / total) * 100.0
+    return round(float(np.clip(coverage, 0.0, 100.0)), 1)
+
+
+def _compute_confidence(frames: List[np.ndarray], frame_index: int) -> float:
+    """从预测帧序列计算置信度。
+
+    置信度基于两个因素：
+    1. 帧间一致性：当前帧与前一帧的差异越小，置信度越高
+    2. 预测距离：越靠后的预测帧，置信度越低（时间衰减）
+    """
+    total_frames = len(frames)
+    # 时间衰减：第一帧 100%，最后一帧约 70%
+    time_decay = 1.0 - (frame_index / max(total_frames - 1, 1)) * 0.3
+
+    if frame_index == 0:
+        # 第一帧与输入最后一帧比较（如果有输入信息可用则用，否则用自身方差）
+        consistency = 1.0
+    else:
+        # 帧间差异（MAE）
+        diff = np.mean(np.abs(frames[frame_index].astype(np.float32) - frames[frame_index - 1].astype(np.float32)))
+        # 差异越大，一致性越低；255 为最大差异
+        consistency = max(0.5, 1.0 - diff / 80.0)
+
+    confidence = time_decay * consistency * 100.0
+    return round(float(np.clip(confidence, 0.0, 100.0)), 1)
+
+
+def predict_cloud_images(input_images: List[str]) -> List[dict]:
     """
     输入 10 张云图（base64 或文件路径），输出 10 张预测云图（base64 PNG）。
 
@@ -169,7 +228,7 @@ def predict_cloud_images(input_images: List[str]) -> List[str]:
         input_images: 10 个图片源（base64 字符串或文件路径）
 
     Returns:
-        10 个 base64 编码的 PNG 图片字符串
+        10 个 dict，每个包含 image(base64)、cloudCoverage、confidence
     """
     if len(input_images) != PRE_SEQ_LENGTH:
         raise ValueError(f"需要恰好 {PRE_SEQ_LENGTH} 张输入云图，收到 {len(input_images)}")
@@ -194,12 +253,20 @@ def predict_cloud_images(input_images: List[str]) -> List[str]:
     # 推理
     pred_raw = cloud_model_manager.predict(input_tensor)  # [1, 10, 1, 128, 128]
 
-    # 后处理：每帧编码为 base64
+    # 后处理：每帧编码为 base64，同时计算云量和置信度
+    frame_arrays = []
     results = []
     for t in range(pred_raw.shape[1]):
-        frame = pred_raw[0, t, 0]  # [H, W]
+        frame = pred_raw[0, t, 0]  # [H, W] float [0,1]
+        img_array = (frame.numpy() * 255).clip(0, 255).astype(np.uint8)
+        frame_arrays.append(img_array)
         b64 = _encode_image(frame)
-        results.append(b64)
+        results.append({"image": b64})  # 先存图像，后面统一计算指标
+
+    # 计算每帧的云量和置信度
+    for i, img_array in enumerate(frame_arrays):
+        results[i]["cloudCoverage"] = _compute_cloud_coverage(img_array)
+        results[i]["confidence"] = _compute_confidence(frame_arrays, i)
 
     return results
 

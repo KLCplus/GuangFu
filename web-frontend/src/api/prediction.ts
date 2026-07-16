@@ -21,8 +21,8 @@ export interface PredictionPayload {
   inputMode: PredictionInputMode
   inputStartTime?: DateTimeString
   inputEndTime?: DateTimeString
-  numericValues: PredictionNumericValue[]
-  inputImages: PredictionImageFrame[]
+  numericValues?: PredictionNumericValue[]
+  inputImages?: PredictionImageFrame[]
 }
 
 export interface PredictionCreateResult {

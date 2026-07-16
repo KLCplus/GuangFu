@@ -99,9 +99,10 @@ public class PredictionService {
             throw new BusinessException(400, "当前仅支持 MANUAL_MULTIMODAL 输入模式");
         }
 
-        // 4. 获取并校验输入
-        List<ModelInputFrame> frames = convertNumericValues(request.numericValues());
-        List<ModelPredictRequest.ImageFrame> imageFrames = validateImages(request.inputImages(), frames);
+        // 4. 获取并校验输入（按模型类型决定需要哪些输入）
+        String modelType = model.getModelType() != null ? model.getModelType().toUpperCase() : "";
+        List<ModelInputFrame> frames = convertNumericValues(request.numericValues(), modelType);
+        List<ModelPredictRequest.ImageFrame> imageFrames = validateImages(request.inputImages(), frames, modelType);
 
         // 5. 创建 PENDING 任务 + 保存快照（短事务）
         String inputStartTime = request.inputStartTime() != null
@@ -214,7 +215,16 @@ public class PredictionService {
     // ── 内部工具 ──────────────────────────────────────────────
 
 
-    private List<ModelInputFrame> convertNumericValues(List<PredictionRequest.NumericValue> values) {
+    private List<ModelInputFrame> convertNumericValues(List<PredictionRequest.NumericValue> values, String modelType) {
+        // 云图时序模型(MULTIMODAL)不需要功率数据
+        boolean needNumeric = !"MULTIMODAL".equals(modelType);
+        if (!needNumeric) {
+            // 云图模型：用占位数据填充30个时间步
+            LocalDateTime now = LocalDateTime.now().withSecond(0).withNano(0);
+            return java.util.stream.IntStream.range(0, 30)
+                    .mapToObj(i -> new ModelInputFrame(now.minusMinutes(29 - i), 0, 0, 0))
+                    .toList();
+        }
         if (values == null || values.size() != 30) {
             throw new BusinessException(400, "数值输入必须包含 30 个点");
         }
@@ -239,29 +249,33 @@ public class PredictionService {
     }
 
     private List<ModelPredictRequest.ImageFrame> validateImages(List<ModelPredictRequest.ImageFrame> images,
-                                                                 List<ModelInputFrame> frames) {
-        if (images == null || images.size() != 30) {
-            throw new BusinessException(400, "图片输入必须包含 30 张");
+                                                                 List<ModelInputFrame> frames, String modelType) {
+        // 功率时序模型不需要云图
+        if ("NUMERIC".equals(modelType)) {
+            return frames.stream()
+                    .map(f -> new ModelPredictRequest.ImageFrame(
+                            f.time().format(FORMATTER),
+                            "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg=="))
+                    .toList();
         }
-        for (int i = 0; i < images.size(); i++) {
-            ModelPredictRequest.ImageFrame image = images.get(i);
+        // 云图模型和多模态模型都需要6张云图
+        if (images == null || images.size() != 6) {
+            throw new BusinessException(400, "图片输入必须包含 6 张");
+        }
+        for (ModelPredictRequest.ImageFrame image : images) {
             if (image.image() == null || image.image().isBlank()) {
                 throw new BusinessException(400, "图片输入不能为空");
             }
-            LocalDateTime imageTime;
-            try {
-                imageTime = LocalDateTime.parse(image.time(), FORMATTER);
-            } catch (DateTimeParseException | NullPointerException e) {
-                throw new BusinessException(400, "图片输入时间格式不合法");
-            }
-            if (!imageTime.equals(frames.get(i).time())) {
-                throw new BusinessException(400, "图片时间必须与数值时间一一对应");
-            }
-            if (i > 0 && Duration.between(LocalDateTime.parse(images.get(i - 1).time(), FORMATTER), imageTime).toSeconds() != 60) {
-                throw new BusinessException(400, "图片时间序列必须按 1 分钟间隔连续");
-            }
         }
-        return images;
+        // 将6张图片填充为30张（每张重复5次），时间与30帧对齐
+        return java.util.stream.IntStream.range(0, 30)
+                .mapToObj(i -> {
+                    int imgIndex = i / 5;
+                    return new ModelPredictRequest.ImageFrame(
+                            frames.get(i).time().format(FORMATTER),
+                            images.get(imgIndex).image());
+                })
+                .toList();
     }
 
     private void validateOneMinuteInterval(List<ModelInputFrame> frames) {

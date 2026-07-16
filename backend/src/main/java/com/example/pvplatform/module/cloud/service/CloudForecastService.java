@@ -57,8 +57,8 @@ public class CloudForecastService {
                 item.frameIndex(),
                 (item.frameIndex() + 1) * 5,
                 normalizeImage(item.image()),
-                Math.max(84D, 96D - item.frameIndex() * 1.2D),
-                null
+                item.confidence(),
+                item.cloudCoverage()
             ))
             .toList();
         return new CloudForecastVO(response.data().modelName(), frames, response.data().costTime());

@@ -34,11 +34,12 @@ from types import SimpleNamespace
 from app.schemas import PredictData, PredictRequest, Prediction
 
 # ---------------------------------------------------------------------------
-# Paths
+# Paths (所有路径限定在 /root/shixun 范围内)
 # ---------------------------------------------------------------------------
 _BASE = Path(__file__).resolve().parents[2]
 TSL_PATH = str(_BASE / "Time-Series-Library")
 OpenSTL_PATH = str(_BASE / "OpenSTL")
+TSL_CKPT_BASE = str(_BASE / "TSL")  # 训练好的权重目录: TSL/{model}/checkpoints/best_epoch.pth
 CKPT_DIR = str(_BASE / "checkpoints")
 for _p in (TSL_PATH, OpenSTL_PATH):
     if _p not in sys.path:
@@ -47,9 +48,10 @@ for _p in (TSL_PATH, OpenSTL_PATH):
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
-SEQ_LEN = 6          # input lookback frames
-LABEL_LEN = 3        # decoder label length
-PRED_LEN = 6         # prediction horizon
+NORM_FACTOR = 30.1   # 归一化因子：输入÷30.1，输出×30.1
+SEQ_LEN = 30         # 输入时间步数（30步×1分钟）
+PRED_LEN = 6         # 预测步数（6步×5分钟）
+LABEL_LEN = 15       # Transformer/TimeMixer decoder label length
 TIME_FEAT_DIM = 5    # freq='t' → [Minute, Hour, DayOfWeek, DayOfMonth, DayOfYear]
 IMG_SIZE = 64
 TIME_OFFSETS = list(range(5, 31, 5))  # [5, 10, 15, 20, 25, 30]
@@ -272,16 +274,51 @@ def _build_multimodal_images(request: PredictRequest, name):
     return _resize_images(stacked.unsqueeze(0).unsqueeze(1))
 
 
-def _build_sunset_inputs(request: PredictRequest):
-    _, powers = _build_aggregated_series(request.input, target_steps=SEQ_LEN)
-    rgb_steps = _build_real_image_sequence(request, target_steps=8, mode="RGB")
-    images = _resize_images(torch.cat(rgb_steps, dim=0).unsqueeze(0))
+def _decode_base64_image(image_data: str):
+    """解码 base64 图片数据，返回 PIL Image。"""
+    if not image_data:
+        return None
+    try:
+        raw = image_data.split(",", 1)[-1]
+        return Image.open(io.BytesIO(base64.b64decode(raw)))
+    except Exception:
+        return None
 
-    pv_terms = powers.tolist()
-    while len(pv_terms) < 8:
-        pv_terms.insert(0, pv_terms[0] if pv_terms else 0.0)
-    pv_log = torch.log1p(torch.tensor(pv_terms[-8:], dtype=torch.float32)).view(1, 8)
-    return images, pv_log
+
+def _build_sunset_inputs(request: PredictRequest):
+    """构建 SUNSET 模型输入。
+
+    训练时的输入格式：
+      - images: [B, 90, 64, 64]  (30张RGB云图，通道堆叠: 3*30=90)
+      - power: [B, 30]           (30步功率序列，已÷30.1归一化)
+
+    前端传入30个时间步，每个步有1张云图和1个功率值。
+    功率需要除以30.1归一化，与训练数据一致。
+    """
+    NORM_FACTOR = 30.1
+
+    # 功率：归一化（÷30.1），与训练数据一致
+    powers = [frame.power / NORM_FACTOR for frame in request.input]
+    power_tensor = torch.tensor(powers, dtype=torch.float32).view(1, 30)
+
+    # 云图：从30个时间步的图片构建RGB序列
+    # 每张图转为RGB 3通道，resize到64x64，归一化到[0,1]，然后通道堆叠 → [1, 90, 64, 64]
+    rgb_channels = []
+    for img_frame in request.inputImages[:30]:
+        img = _decode_base64_image(img_frame.image)
+        if img is None:
+            # 无图片时用灰色填充
+            img = Image.new('RGB', (IMG_SIZE, IMG_SIZE), color=(128, 128, 128))
+        img = img.convert('RGB').resize((IMG_SIZE, IMG_SIZE), Image.BILINEAR)
+        arr = np.array(img, dtype=np.float32) / 255.0  # [H, W, 3]
+        # 分离RGB通道，每通道 [H, W]
+        for c in range(3):
+            rgb_channels.append(torch.from_numpy(arr[:, :, c]))
+
+    # 堆叠: [90, H, W] → [1, 90, H, W]
+    images = torch.stack(rgb_channels).unsqueeze(0)  # [1, 90, 64, 64]
+
+    return images, power_tensor
 
 
 def _build_timestamps(input_frames):
@@ -300,62 +337,155 @@ def _build_timestamps(input_frames):
 
 
 # ===========================================================================
-# 1. TIME-SERIES MODELS (7)
+# 1. TIME-SERIES MODELS (7) — 使用 TSL/{model}/checkpoints/best_epoch.pth
 # ===========================================================================
+# 模型名 → 权重子目录名映射
+_TSL_CKPT_DIRS = {
+    'DLinear':      'dlinear',
+    'PatchTST':     'patchtst',
+    'iTransformer': 'iTransformer',
+    'TimeXer':      'TimeXer',
+    'TimeMixer':    'TimeMixer',
+    'TSMixer':      'TSMixer',
+    'Transformer':   'transformer',
+}
+
+
 def _make_tsl_configs(**overrides):
+    """创建 TSL 模型配置，与 train.py 中的配置完全一致。"""
     cfg = SimpleNamespace(
-        task_name='long_term_forecast', features='S',
-        seq_len=SEQ_LEN, label_len=LABEL_LEN, pred_len=PRED_LEN,
-        d_model=64, n_heads=4, e_layers=2, d_layers=1, d_ff=128,
+        task_name='long_term_forecast',
+        seq_len=SEQ_LEN,       # 30
+        pred_len=PRED_LEN,     # 6
+        label_len=LABEL_LEN,   # 15
+        d_model=128, n_heads=4, e_layers=2, d_layers=1, d_ff=256,
         enc_in=1, dec_in=1, c_out=1,
-        expand=2, d_conv=4, channel_independence=1,
-        embed='timeF', freq='t', dropout=0.1, moving_avg=25,
-        factor=3, activation='gelu', distil=True, use_norm=1,
-        decomp_method='moving_avg', down_sampling_layers=0,
-        down_sampling_window=1, down_sampling_method='avg',
-        patch_len=3, num_class=-1, inverse=False, mask_rate=0.25,
-        anomaly_ratio=0.25, top_k=5, num_kernels=6, seg_len=96,
-        seasonal_patterns='Monthly', individual=False,
+        dropout=0.1, factor=1, activation='gelu',
+        embed='timeF', freq='t',
+        output_attention=False, use_norm=1,
+        # DLinear
+        moving_avg=5, individual=False,
+        # TimeMixer
+        down_sampling_layers=3, down_sampling_window=2, down_sampling_method='avg',
+        channel_independence=True, decomp_method='moving_avg', top_k=5,
+        # TimeXer
+        features='S', patch_len=5,
     )
     for k, v in overrides.items():
         setattr(cfg, k, v)
     return cfg
 
 
+# 每个模型的专属配置和前向类型
 _TSL_SPECS = {
-    'DLinear':    {'configs': _make_tsl_configs(d_model=512, d_ff=2048), 'kwargs': {}},
-    'PatchTST':   {'configs': _make_tsl_configs(),                       'kwargs': {'patch_len': 3, 'stride': 1}},
-    'iTransformer': {'configs': _make_tsl_configs(),                     'kwargs': {}},
-    'TimeXer':    {'configs': _make_tsl_configs(patch_len=3),            'kwargs': {}},
-    'TimeMixer':  {'configs': _make_tsl_configs(down_sampling_layers=1, down_sampling_window=2), 'kwargs': {}},
-    'TSMixer':    {'configs': _make_tsl_configs(),                      'kwargs': {}},
-    'Transformer': {'configs': _make_tsl_configs(),                      'kwargs': {}},
+    'DLinear': {
+        'configs': _make_tsl_configs(),
+        'kwargs': {},
+        'forward_type': 'simple',
+    },
+    'PatchTST': {
+        'configs': _make_tsl_configs(),
+        'kwargs': {'patch_len': 4, 'stride': 2},
+        'forward_type': 'patchtst',
+    },
+    'iTransformer': {
+        'configs': _make_tsl_configs(),
+        'kwargs': {},
+        'forward_type': 'simple',
+    },
+    'TimeXer': {
+        'configs': _make_tsl_configs(features='M', enc_in=2, patch_len=5),
+        'kwargs': {},
+        'forward_type': 'timexer',
+    },
+    'TimeMixer': {
+        'configs': _make_tsl_configs(
+            down_sampling_layers=3, down_sampling_window=2,
+            down_sampling_method='avg', channel_independence=True,
+            decomp_method='moving_avg', moving_avg=5, top_k=5,
+            use_norm=1, c_out=1,
+        ),
+        'kwargs': {},
+        'forward_type': 'simple',
+    },
+    'TSMixer': {
+        'configs': _make_tsl_configs(),
+        'kwargs': {},
+        'forward_type': 'simple',
+    },
+    'Transformer': {
+        'configs': _make_tsl_configs(d_layers=1, dec_in=1, c_out=1),
+        'kwargs': {},
+        'forward_type': 'transformer',
+    },
 }
 
 
 def _build_tsl_model(name):
+    """加载 TSL 模型权重（CPU 推理，避免影响 GPU 训练）。"""
     spec = _TSL_SPECS[name]
     mod = importlib.import_module(f'models.{name}')
     model = mod.Model(spec['configs'], **spec['kwargs']) if spec['kwargs'] else mod.Model(spec['configs'])
-    sd = torch.load(os.path.join(CKPT_DIR, f'{name}.pth'), map_location='cpu', weights_only=True)
-    model.load_state_dict(sd)
+
+    ckpt_subdir = _TSL_CKPT_DIRS[name]
+    ckpt_path = os.path.join(TSL_CKPT_BASE, ckpt_subdir, 'checkpoints', 'best_epoch.pth')
+    obj = torch.load(ckpt_path, map_location='cpu', weights_only=False)
+    # 训练时保存格式: {'model_state_dict': ..., 'configs': ..., ...}
+    if isinstance(obj, dict) and 'model_state_dict' in obj:
+        model.load_state_dict(obj['model_state_dict'])
+    else:
+        model.load_state_dict(obj)
     model.eval()
     return model
 
 
-def _tsl_forward(model, input_frames):
-    frames, _ = _build_aggregated_series(input_frames, target_steps=SEQ_LEN)
-    times, dec_times = _build_timestamps(frames)
-    powers = [f.power for f in frames]
+def _tsl_forward(model, name, input_frames):
+    """TSL 模型前向推理。
 
-    bx = torch.tensor(powers, dtype=torch.float32).view(1, SEQ_LEN, 1)
-    bx_mark = torch.tensor(_time_features(times), dtype=torch.float32).view(1, SEQ_LEN, TIME_FEAT_DIM)
-    dec_inp = torch.zeros(1, LABEL_LEN + PRED_LEN, 1)
-    by_mark = torch.tensor(_time_features(dec_times), dtype=torch.float32).view(1, LABEL_LEN + PRED_LEN, TIME_FEAT_DIM)
+    输入: 30步功率数据（原始值）
+    处理: ÷30.1 归一化 → 模型推理 → ×30.1 反归一化
+    输出: 6步预测功率值（原始单位）
+    """
+    forward_type = _TSL_SPECS[name]['forward_type']
+
+    # 提取30步功率值并归一化
+    powers = [f.power for f in input_frames]
+    if len(powers) < SEQ_LEN:
+        powers = [powers[0]] * (SEQ_LEN - len(powers)) + powers
+    powers = powers[-SEQ_LEN:]
+    powers_norm = [p / NORM_FACTOR for p in powers]
+
+    bx = torch.tensor(powers_norm, dtype=torch.float32).view(1, SEQ_LEN, 1)  # [1, 30, 1]
 
     with torch.no_grad():
-        out = model(bx, bx_mark, dec_inp, by_mark)
-    out = out[:, -PRED_LEN:, 0]   # (1, 6)
+        if forward_type == 'simple':
+            # DLinear, iTransformer, TimeMixer, TSMixer
+            out = model(bx, None, None, None).squeeze(-1)     # [1, 6]
+
+        elif forward_type == 'patchtst':
+            # PatchTST: 需要 x_dec
+            x_dec = torch.zeros(1, PRED_LEN, 1)
+            out = model(bx, None, x_dec, None).squeeze(-1)    # [1, 6]
+
+        elif forward_type == 'timexer':
+            # TimeXer: 复制单变量为2列，取输出最后一列
+            bx_2var = bx.repeat(1, 1, 2)                       # [1, 30, 2]
+            out = model(bx_2var, None, None, None)             # [1, 6, 2]
+            out = out[:, :, -1]                                 # [1, 6]
+
+        elif forward_type == 'transformer':
+            # Transformer: encoder-decoder
+            start_token = bx[:, -LABEL_LEN:, :]                 # [1, 15, 1]
+            zeros = torch.zeros(1, PRED_LEN, 1)                 # [1, 6, 1]
+            x_dec = torch.cat([start_token, zeros], dim=1)      # [1, 21, 1]
+            out = model(bx, None, x_dec, None)                  # [1, 21, 1]
+            out = out[:, -PRED_LEN:, :].squeeze(-1)             # [1, 6]
+
+        else:
+            raise ValueError(f"Unknown forward_type: {forward_type}")
+
+    # 反归一化: ×30.1
+    out = out * NORM_FACTOR
     return out.squeeze(0).tolist()
 
 
@@ -479,43 +609,71 @@ def _build_swinlstm():
     return _VideoWrapper(backbone, reg_head, 'swinlstm')
 
 
-# --- SUNSET (standalone CNN, no reg_head wrapper) ---
+# --- SUNSET (standalone CNN, matches train.py architecture) ---
 class _SunsetCNN(nn.Module):
-    def __init__(self, num_log_term=8, image_channels=24, image_size=64):
-        super().__init__()
-        self.conv = nn.Sequential(
-            nn.Conv2d(image_channels, 24, 3, padding=1),
-            nn.ReLU(),
-            nn.BatchNorm2d(24),
-            nn.MaxPool2d(2),
-            nn.Conv2d(24, 48, 3, padding=1),
-            nn.ReLU(),
-            nn.BatchNorm2d(48),
-            nn.MaxPool2d(2),
-        )
-        flat_size = (image_size // 4) * (image_size // 4) * 48
-        self.fc = nn.Sequential(
-            nn.Linear(flat_size + num_log_term, 1024),
-            nn.ReLU(),
-            nn.Dropout(0.4),
-            nn.Linear(1024, 1024),
-            nn.ReLU(),
-            nn.Dropout(0.4),
-            nn.Linear(1024, 6),
-        )
+    """SUNSET CNN 模型，与 train.py 中的定义完全一致。
 
-    def forward(self, images, pv_log):
-        x = self.conv(images)
-        x = x.view(x.size(0), -1)
-        x = torch.cat([x, pv_log], dim=1)
-        return self.fc(x)
+    输入：
+      - images: [B, 90, 64, 64]  (30张RGB云图，通道堆叠: 3*30=90)
+      - power: [B, 30]           (30步功率序列)
+    输出：
+      - pred: [B, 6]             (6步功率预测)
+    """
+
+    def __init__(self, num_filters=24, dense_size=1024, drop_rate=0.4,
+                 seq_len=30, pred_len=6):
+        super().__init__()
+        # 卷积块1
+        self.conv1 = nn.Conv2d(3 * seq_len, num_filters, kernel_size=3, padding=1)
+        self.bn1 = nn.BatchNorm2d(num_filters)
+        self.pool1 = nn.MaxPool2d(kernel_size=2, stride=2)
+
+        # 卷积块2
+        self.conv2 = nn.Conv2d(num_filters, num_filters * 2, kernel_size=3, padding=1)
+        self.bn2 = nn.BatchNorm2d(num_filters * 2)
+        self.pool2 = nn.MaxPool2d(kernel_size=2, stride=2)
+
+        # 展平后维度
+        flat_dim = num_filters * 2 * 16 * 16
+
+        # 全连接层
+        self.fc1 = nn.Linear(flat_dim + seq_len, dense_size)
+        self.drop1 = nn.Dropout(drop_rate)
+        self.fc2 = nn.Linear(dense_size, dense_size)
+        self.drop2 = nn.Dropout(drop_rate)
+        self.fc_out = nn.Linear(dense_size, pred_len)
+
+    def forward(self, images, power):
+        # images: [B, 90, 64, 64], power: [B, 30]
+        x = F.relu(self.conv1(images))
+        x = self.bn1(x)
+        x = self.pool1(x)  # [B, 24, 32, 32]
+
+        x = F.relu(self.conv2(x))
+        x = self.bn2(x)
+        x = self.pool2(x)  # [B, 48, 16, 16]
+
+        x = x.flatten(1)  # [B, 48*16*16]
+        x = torch.cat([x, power], dim=1)  # [B, flat_dim+30]
+
+        x = F.relu(self.fc1(x))
+        x = self.drop1(x)
+        x = F.relu(self.fc2(x))
+        x = self.drop2(x)
+        return self.fc_out(x)  # [B, 6]
 
 
 def _build_sunset():
     obj = torch.load(os.path.join(CKPT_DIR, 'SUNSET.pth'), map_location='cpu', weights_only=False)
-    cfg = obj.get('config', {})
-    model = _SunsetCNN(num_log_term=cfg.get('num_log_term', 8),
-                      image_channels=24, image_size=cfg.get('image_size', 64))
+    # checkpoint 存的 key 是 'configs'（复数），兼容 'config'
+    cfg = obj.get('configs', obj.get('config', {}))
+    model = _SunsetCNN(
+        num_filters=cfg.get('num_filters', 24) if isinstance(cfg, dict) else 24,
+        dense_size=cfg.get('dense_size', 1024) if isinstance(cfg, dict) else 1024,
+        drop_rate=cfg.get('drop_rate', 0.4) if isinstance(cfg, dict) else 0.4,
+        seq_len=30,
+        pred_len=6,
+    )
     model.load_state_dict(obj['model_state_dict'])
     model.eval()
     return model
@@ -535,10 +693,11 @@ _VIDEO_BUILDERS = {
 
 def _video_forward(model, name, request: PredictRequest):
     if name == 'SUNSET':
-        # SUNSET uses the same 30->6 aggregation, then pads pv_log to 8 terms.
-        images, pv_log = _build_sunset_inputs(request)
+        images, power = _build_sunset_inputs(request)
         with torch.no_grad():
-            out = model(images, pv_log)       # (1, 6)
+            out = model(images, power)       # (1, 6) 归一化值
+        # 反归一化：×30.1 还原为 kW
+        out = out * 30.1
         return out.squeeze(0).tolist()
     else:
         # Other video models consume 6 aggregated grayscale images from explicit or matched cloud images.
@@ -804,7 +963,7 @@ class RealPredictor:
 
         model = self._get_model(name)
         if category == 'ts':
-            raw = _tsl_forward(model, request.input)
+            raw = _tsl_forward(model, name, request.input)
         elif category == 'multimodal':
             raw = _multimodal_forward(model, name, request)
         else:

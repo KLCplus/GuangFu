@@ -26,7 +26,7 @@ const readBackendEnv = () => {
 }
 
 const backendEnv = readBackendEnv()
-const devHost = process.env.VITE_DEV_HOST || backendEnv.FRONTEND_HOST || '127.0.0.1'
+const devHost = process.env.VITE_DEV_HOST || backendEnv.FRONTEND_HOST || '0.0.0.0'
 const devPort = Number(process.env.VITE_DEV_PORT || backendEnv.FRONTEND_PORT || 5173)
 const backendHost = backendEnv.BACKEND_HOST || '127.0.0.1'
 const backendPort = backendEnv.SERVER_PORT || '8080'
@@ -44,11 +44,27 @@ export default defineConfig({
     host: devHost,
     port: devPort,
     strictPort: true,
-    allowedHosts: ['localhost', '127.0.0.1'],
+    allowedHosts: true,
     fs: {
       strict: true,
       allow: [webRoot, projectRoot]
     },
+    proxy: {
+      '^/api/': {
+        target: backendUrl,
+        changeOrigin: true
+      },
+      '/openapi': {
+        target: backendUrl,
+        changeOrigin: true
+      }
+    }
+  },
+  preview: {
+    host: devHost,
+    port: devPort,
+    strictPort: true,
+    allowedHosts: true,
     proxy: {
       '^/api/': {
         target: backendUrl,

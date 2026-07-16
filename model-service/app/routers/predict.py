@@ -31,9 +31,9 @@ _MODEL_META = {
     "SUNSET":       ("MULTIMODAL", "SUNSET 斯坦福 CNN 太阳能预测模型"),
     # 多模态融合模型
     "CNN_MLP":       ("FUSION", "CNN-MLP 图像+数值融合预测模型"),
-    "CNN_LSTM":      ("FUSION", "CNN-LSTM 图像CNN+数值LSTM融合模型"),
-    "3DCNN_LSTM":    ("FUSION", "3DCNN-LSTM 三维CNN+LSTM时空融合模型"),
-    "ConvLSTM_LSTM": ("FUSION", "ConvLSTM-LSTM 卷积LSTM+数值LSTM融合模型"),
+    "CNN_LSTM":      ("FUSION", "CNN-LSTM 图像+数值融合预测模型"),
+    "3DCNN_LSTM":    ("FUSION", "3DCNN-LSTM 三维卷积+数值融合预测模型"),
+    "ConvLSTM_LSTM": ("FUSION", "ConvLSTM-LSTM 时空+数值融合预测模型"),
     # 云图预测模型
     "SimVP_Cloud":  ("CLOUD_PREDICTION", "SimVP (IncepU) 云图预测模型，输入10张云图预测未来10张云图"),
 }
