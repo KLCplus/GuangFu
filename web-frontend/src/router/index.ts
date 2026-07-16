@@ -151,13 +151,13 @@ const routes: RouteRecordRaw[] = [
         path: 'news',
         name: 'VisualizationAdminNews',
         component: VisualizationAdminPage,
-        meta: { title: '新闻管理', visualAdminModule: 'news' }
+        meta: { title: '资讯管理', visualAdminModule: 'news' }
       },
       {
         path: 'announcements',
         name: 'VisualizationAdminAnnouncements',
         component: VisualizationAdminPage,
-        meta: { title: '公告管理', visualAdminModule: 'announcements' }
+        meta: { title: '消息管理', visualAdminModule: 'announcements' }
       },
       { path: 'api-keys', redirect: '/visualization-admin/users-apis' }
     ]
@@ -223,8 +223,8 @@ const routes: RouteRecordRaw[] = [
       { path: 'models', name: 'AdminModels', component: () => import('../views/admin/ModelManage.vue'), meta: { title: '模型' } },
 
       { path: 'api-keys', redirect: '/admin/users-apis' },
-      { path: 'news', component: () => import('../views/admin/NewsManage.vue'), meta: { title: '新闻管理' } },
-      { path: 'announcements', name: 'AdminAnnouncements', component: () => import('../views/admin/AnnouncementManage.vue'), meta: { title: '公告管理' } }
+      { path: 'news', component: () => import('../views/admin/NewsManage.vue'), meta: { title: '资讯管理' } },
+      { path: 'announcements', name: 'AdminAnnouncements', component: () => import('../views/admin/AnnouncementManage.vue'), meta: { title: '消息管理' } }
     ]
   },
   {

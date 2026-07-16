@@ -42,6 +42,8 @@ const notificationError = ref('')
 const unreadError = ref('')
 const actionLoadingId = ref<number | null>(null)
 const allReadLoading = ref(false)
+const detailVisible = ref(false)
+const selectedNotification = ref<Notification | null>(null)
 const isLoggedIn = computed(() => Boolean(localStorage.getItem('token')))
 let searchTimer: number | undefined
 let categoryCountsLoaded = false
@@ -275,7 +277,24 @@ async function readNotification(item: Notification) {
       actionLoadingId.value = null
     }
   }
-  if (item.relatedType === 'NEWS' && item.relatedId) await router.push(`/news/${item.relatedId}`)
+  selectedNotification.value = item
+  detailVisible.value = true
+}
+
+function notificationRelationLabel(item?: Notification | null) {
+  if (!item?.relatedType || !item.relatedId) return '无关联业务'
+  const labels: Record<string, string> = {
+    NEWS: '关联资讯', MODEL: '关联模型', PREDICTION_TASK: '关联预测任务', PREDICTION: '关联预测任务'
+  }
+  return `${labels[item.relatedType] || item.relatedType} #${item.relatedId}`
+}
+
+async function openRelatedNotification() {
+  const item = selectedNotification.value
+  if (item?.relatedType === 'NEWS' && item.relatedId) {
+    detailVisible.value = false
+    await router.push(`/news/${item.relatedId}`)
+  }
 }
 
 async function readAllNotifications() {
@@ -485,6 +504,30 @@ function dayLabel(value?: string) {
       </main>
     </div>
   </section>
+
+  <el-drawer v-model="detailVisible" size="min(520px, 92vw)" direction="rtl" :with-header="false">
+    <article v-if="selectedNotification" class="notification-detail">
+      <header class="notification-detail-head">
+        <div>
+          <span :class="['type-tag', typeClass(selectedNotification.notificationType)]">{{ notificationTypeLabel(selectedNotification.notificationType) }}</span>
+          <h2>{{ selectedNotification.title }}</h2>
+        </div>
+        <el-button text aria-label="关闭消息详情" @click="detailVisible = false">关闭</el-button>
+      </header>
+      <div class="notification-detail-meta">
+        <span>发送时间</span><strong>{{ formatTime(selectedNotification.createdAt) }}</strong>
+        <span>阅读状态</span><strong>{{ selectedNotification.readStatus === 1 ? '已读' : '未读' }}</strong>
+        <span>关联信息</span><strong>{{ notificationRelationLabel(selectedNotification) }}</strong>
+      </div>
+      <section class="notification-detail-content">
+        <h3>消息正文</h3>
+        <p>{{ selectedNotification.content || '该消息没有补充正文。' }}</p>
+      </section>
+      <footer v-if="selectedNotification.relatedType === 'NEWS' && selectedNotification.relatedId" class="notification-detail-actions">
+        <el-button type="primary" @click="openRelatedNotification">查看关联资讯</el-button>
+      </footer>
+    </article>
+  </el-drawer>
 </template>
 
 <style scoped>
@@ -539,6 +582,15 @@ function dayLabel(value?: string) {
 .state-box { display: grid; place-items: center; gap: 7px; min-height: 280px; padding: 25px; color: #718096; text-align: center; }.state-box strong { color: #334155; font-size: 15px; }.state-box.error-state strong { color: #a44949; }
 .skeleton-row { padding: 20px 16px; border-bottom: 1px solid #edf0f4; }.skeleton-row :deep(.el-skeleton__item) { margin-right: 12px; }.skeleton-row :deep(.el-skeleton__template) { display: flex; align-items: flex-start; }.skeleton-row :deep(.el-skeleton__template > div) { flex: 1; }
 .pagination-row { display: flex; justify-content: flex-end; padding: 14px 16px; border-top: 1px solid var(--color-border); }.unread-warning { margin: 0; padding: 0 16px 14px; color: #b16a1b; font-size: 12px; }
+.notification-detail { display: grid; gap: 24px; color: #24364d; }
+.notification-detail-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding-bottom: 20px; border-bottom: 1px solid #e4eaf1; }
+.notification-detail-head h2 { margin: 12px 0 0; color: #10274c; font-size: 24px; line-height: 1.45; }
+.notification-detail-meta { display: grid; grid-template-columns: 88px minmax(0, 1fr); gap: 12px 16px; padding: 16px; border: 1px solid #dce7f1; border-radius: 10px; background: #f6f9fc; }
+.notification-detail-meta span { color: #7a899c; font-size: 13px; }
+.notification-detail-meta strong { color: #34465c; font-size: 14px; font-weight: 600; overflow-wrap: anywhere; }
+.notification-detail-content h3 { margin: 0 0 12px; color: #173a60; font-size: 15px; }
+.notification-detail-content p { margin: 0; color: #4b5f76; font-size: 15px; line-height: 1.9; white-space: pre-wrap; overflow-wrap: anywhere; }
+.notification-detail-actions { display: flex; justify-content: flex-end; padding-top: 18px; border-top: 1px solid #e4eaf1; }
 @media (max-width: 1024px) { .notification-center { min-height: auto; margin: -24px -28px -36px; }.inbox-layout { grid-template-columns: 1fr; overflow: visible; }.filter-sidebar { grid-column: 1; grid-row: auto; display: grid; grid-template-columns: auto 1fr; gap: 16px; padding: 10px 12px; border-left: 0; border-bottom: 1px solid var(--color-border); }.sidebar-section { display: flex; align-items: center; gap: 4px; overflow-x: auto; }.sidebar-section + .sidebar-section { margin: 0; padding: 0; border: 0; }.sidebar-title { flex: 0 0 auto; margin: 0 4px 0 0; }.filter-item { width: auto; flex: 0 0 auto; white-space: nowrap; }.filter-item b { margin-left: 2px; } }
 @media (max-width: 700px) { .notification-center { margin: -16px -16px -24px; }.page-header { display: grid; padding: 20px 16px; }.page-header h1 { font-size: 27px; }.header-actions { justify-content: flex-start; }.filter-sidebar { display: block; }.sidebar-section + .sidebar-section { margin-top: 10px; }.message-row { grid-template-columns: 8px 26px minmax(0, 1fr) 16px; gap: 8px; }.message-row time { grid-column: 3; grid-row: 2; padding: 0; text-align: left; }.row-arrow { grid-column: 4; grid-row: 1; }.toolbar { align-items: flex-start; flex-wrap: wrap; }.search-box { flex-basis: 100%; }.group-label { margin-left: 0; }.pagination-row { overflow-x: auto; justify-content: flex-start; } }
 </style>

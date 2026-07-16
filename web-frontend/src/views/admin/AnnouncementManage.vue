@@ -30,7 +30,8 @@ const rows = ref<AnnouncementRow[]>([])
 const filters = reactive({ keyword: '', status: '' as '' | NewsStatus })
 const page = reactive({ pageNum: 1, pageSize: 10 })
 
-const form = reactive({ title: '', summary: '', content: '' })
+const messageTypes = ['NOTICE', 'MODEL_UPDATE', 'ALERT', 'SYSTEM_NOTICE'] as const
+const form = reactive({ title: '', summary: '', content: '', newsType: 'NOTICE' as News['newsType'] })
 
 const filteredRows = computed(() => {
   const keyword = filters.keyword.trim().toLowerCase()
@@ -60,7 +61,7 @@ function payload(): NewsPayload {
     title: form.title.trim(),
     summary: form.summary.trim(),
     content: form.content.trim(),
-    newsType: 'NOTICE',
+    newsType: form.newsType,
     targetRole: 'ALL'
   }
 }
@@ -68,8 +69,10 @@ function payload(): NewsPayload {
 async function fetchList() {
   loading.value = true
   try {
-    const result = await getAdminNewsList({ pageNum: 1, pageSize: 100, type: 'NOTICE' })
-    rows.value = result.records.map((item) => ({
+    const results = await Promise.all(messageTypes.map((type) =>
+      getAdminNewsList({ pageNum: 1, pageSize: 100, type })
+    ))
+    rows.value = results.flatMap((result) => result.records).map((item) => ({
       ...item,
       summary: item.summary || '',
       content: item.content || '',
@@ -77,7 +80,7 @@ async function fetchList() {
     }))
   } catch (error) {
     rows.value = []
-    ElMessage.error(errorMessage(error, '公告列表加载失败'))
+    ElMessage.error(errorMessage(error, '消息列表加载失败'))
   } finally {
     loading.value = false
   }
@@ -87,6 +90,7 @@ function resetForm() {
   form.title = ''
   form.summary = ''
   form.content = ''
+  form.newsType = 'NOTICE'
 }
 
 function openCreate() {
@@ -102,26 +106,27 @@ function openEdit(row: AnnouncementRow) {
   form.title = row.title
   form.summary = row.summary
   form.content = row.content
+  form.newsType = row.newsType
   dialogVisible.value = true
 }
 
 async function submitForm() {
-  if (!form.title.trim()) return ElMessage.warning('请输入公告标题')
-  if (!form.content.trim()) return ElMessage.warning('请输入公告正文')
+  if (!form.title.trim()) return ElMessage.warning('请输入消息标题')
+  if (!form.content.trim()) return ElMessage.warning('请输入消息正文')
 
   saving.value = true
   try {
     if (mode.value === 'create') {
       await createNews(payload())
-      ElMessage.success('公告草稿已创建')
+      ElMessage.success('消息草稿已创建')
     } else if (editingId.value) {
       await updateNews(editingId.value, payload())
-      ElMessage.success('公告已保存')
+      ElMessage.success('消息已保存')
     }
     dialogVisible.value = false
     await fetchList()
   } catch (error) {
-    ElMessage.error(errorMessage(error, mode.value === 'create' ? '公告创建失败' : '公告保存失败'))
+    ElMessage.error(errorMessage(error, mode.value === 'create' ? '消息创建失败' : '消息保存失败'))
   } finally {
     saving.value = false
   }
@@ -131,7 +136,7 @@ async function handlePublish(row: AnnouncementRow) {
   try {
     await ElMessageBox.confirm(
       `发布后将向全平台用户展示“${row.title}”，确定发布吗？`,
-      '发布全平台公告',
+      '发布全平台消息',
       { confirmButtonText: '确认发布', cancelButtonText: '取消', type: 'warning' }
     )
   } catch {
@@ -140,26 +145,26 @@ async function handlePublish(row: AnnouncementRow) {
 
   try {
     await publishNews(row.newsId)
-    ElMessage.success('公告已发布，全平台用户可见')
+    ElMessage.success('消息已发布，并发送给目标用户')
     await fetchList()
   } catch (error) {
-    ElMessage.error(errorMessage(error, '公告发布失败'))
+    ElMessage.error(errorMessage(error, '消息发布失败'))
   }
 }
 
 async function handleOffline(row: AnnouncementRow) {
   try {
     await offlineNews(row.newsId)
-    ElMessage.success('公告已下线')
+    ElMessage.success('消息已下线')
     await fetchList()
   } catch (error) {
-    ElMessage.error(errorMessage(error, '公告下线失败'))
+    ElMessage.error(errorMessage(error, '消息下线失败'))
   }
 }
 
 async function handleDelete(row: AnnouncementRow) {
   try {
-    await ElMessageBox.confirm(`确定删除公告“${row.title}”吗？此操作不可恢复。`, '删除公告', {
+    await ElMessageBox.confirm(`确定删除消息“${row.title}”吗？此操作不可恢复。`, '删除消息', {
       confirmButtonText: '删除',
       cancelButtonText: '取消',
       type: 'warning'
@@ -170,10 +175,10 @@ async function handleDelete(row: AnnouncementRow) {
 
   try {
     await deleteNews(row.newsId)
-    ElMessage.success('公告已删除')
+    ElMessage.success('消息已删除')
     await fetchList()
   } catch (error) {
-    ElMessage.error(errorMessage(error, '公告删除失败'))
+    ElMessage.error(errorMessage(error, '消息删除失败'))
   }
 }
 
@@ -183,6 +188,10 @@ function statusLabel(status: NewsStatus) {
 
 function statusTag(status: NewsStatus) {
   return ({ DRAFT: 'warning', PUBLISHED: 'success', OFFLINE: 'info' } as const)[status] || 'info'
+}
+
+function messageTypeLabel(type?: string) {
+  return ({ NOTICE: '公告提醒', MODEL_UPDATE: '模型更新', ALERT: '异常提醒', SYSTEM_NOTICE: '系统通知' } as Record<string, string>)[type || ''] || type || '平台消息'
 }
 
 function formatTime(value?: string) {
@@ -207,13 +216,13 @@ onMounted(fetchList)
   <div class="page-shell announcement-page">
     <div class="page-title">
       <div>
-        <h2>公告管理</h2>
-        <p>发布平台规则、服务维护和重要安排。公告发布后，所有平台用户都能看到。</p>
+        <h2>消息管理</h2>
+        <p>维护平台公告、模型更新、异常提醒和系统通知。发布后会生成对应的用户消息。</p>
       </div>
       <el-tag type="primary" effect="plain">全部用户可见</el-tag>
     </div>
 
-    <div class="stat-row" aria-label="公告概况">
+    <div class="stat-row" aria-label="消息概况">
       <div class="stat-card"><span class="stat-label">全部</span><strong class="stat-value primary">{{ rows.length }}</strong></div>
       <div class="stat-card"><span class="stat-label">已发布</span><strong class="stat-value success">{{ publishedCount }}</strong></div>
       <div class="stat-card"><span class="stat-label">草稿</span><strong class="stat-value warning">{{ draftCount }}</strong></div>
@@ -225,7 +234,7 @@ onMounted(fetchList)
         <el-input
           v-model="filters.keyword"
           clearable
-          placeholder="搜索公告标题或正文"
+          placeholder="搜索消息标题或正文"
           style="width: 260px"
           @input="page.pageNum = 1"
         />
@@ -238,19 +247,22 @@ onMounted(fetchList)
       <div class="toolbar-right">
         <el-button @click="resetFilters">重置</el-button>
         <el-button :loading="loading" @click="fetchList">刷新</el-button>
-        <el-button type="primary" @click="openCreate">新建公告</el-button>
+        <el-button type="primary" @click="openCreate">新建消息</el-button>
       </div>
     </div>
 
     <div class="page-section table-wrap" style="padding: 0">
-      <el-table v-loading="loading" :data="pagedRows" empty-text="暂无公告，点击右上角新建第一条公告" row-key="newsId">
-        <el-table-column label="公告内容" min-width="360">
+      <el-table v-loading="loading" :data="pagedRows" empty-text="暂无平台消息，点击右上角新建第一条消息" row-key="newsId">
+        <el-table-column label="消息内容" min-width="340">
           <template #default="{ row }">
             <div class="announcement-copy">
               <strong>{{ row.title }}</strong>
               <span>{{ row.summary || row.content }}</span>
             </div>
           </template>
+        </el-table-column>
+        <el-table-column label="类型" width="120">
+          <template #default="{ row }">{{ messageTypeLabel(row.newsType) }}</template>
         </el-table-column>
         <el-table-column label="范围" width="120">
           <template #default><span class="scope-chip">全部用户</span></template>
@@ -287,19 +299,27 @@ onMounted(fetchList)
 
     <el-dialog
       v-model="dialogVisible"
-      :title="mode === 'create' ? '新建全平台公告' : '编辑全平台公告'"
+      :title="mode === 'create' ? '新建平台消息' : '编辑平台消息'"
       width="min(680px, calc(100vw - 32px))"
       :close-on-click-modal="false"
     >
       <div class="audience-note">发布范围：全部平台用户</div>
       <el-form :model="form" label-position="top">
-        <el-form-item label="公告标题" required>
+        <el-form-item label="消息类型" required>
+          <el-select v-model="form.newsType" style="width: 100%">
+            <el-option label="公告提醒" value="NOTICE" />
+            <el-option label="模型更新" value="MODEL_UPDATE" />
+            <el-option label="异常提醒" value="ALERT" />
+            <el-option label="系统通知" value="SYSTEM_NOTICE" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="消息标题" required>
           <el-input v-model="form.title" maxlength="128" show-word-limit placeholder="例如：平台将于周日凌晨进行维护" />
         </el-form-item>
         <el-form-item label="摘要">
-          <el-input v-model="form.summary" type="textarea" :rows="2" maxlength="256" show-word-limit placeholder="用一句话说明公告要点" />
+          <el-input v-model="form.summary" type="textarea" :rows="2" maxlength="256" show-word-limit placeholder="用一句话说明消息要点" />
         </el-form-item>
-        <el-form-item label="公告正文" required>
+        <el-form-item label="消息正文" required>
           <el-input v-model="form.content" type="textarea" :rows="9" maxlength="4096" show-word-limit placeholder="说明时间、影响范围，以及用户需要采取的操作" />
         </el-form-item>
       </el-form>

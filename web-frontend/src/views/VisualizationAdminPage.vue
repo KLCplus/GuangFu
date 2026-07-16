@@ -36,12 +36,12 @@ const modules: Record<string, AdminModuleDefinition> = {
     description: '管理预测模型目录、版本、价格与服务状态。', service: '模型目录服务', icon: '/images/models.png'
   },
   news: {
-    component: 'news', code: 'NEWS', overline: 'NEWS OPERATIONS CENTER', title: '新闻管理',
+    component: 'news', code: 'NEWS', overline: 'NEWS OPERATIONS CENTER', title: '资讯管理',
     description: '维护平台新闻内容、发布状态与展示顺序。', service: '内容发布服务', icon: '/images/news.png'
   },
   announcements: {
-    component: 'announcements', code: 'NTF', overline: 'ANNOUNCEMENT CONTROL', title: '公告管理',
-    description: '编辑全站公告并控制通知发布与下线状态。', service: '平台通知服务', icon: '/images/announcement.png'
+    component: 'announcements', code: 'NTF', overline: 'MESSAGE CONTROL', title: '消息管理',
+    description: '编辑平台消息并控制发布与下线状态。', service: '平台消息服务', icon: '/images/announcement.png'
   }
 }
 

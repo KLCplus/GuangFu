@@ -27,8 +27,8 @@ const navGroups = [
     label: '内容运营',
     code: 'CONTENT OPS',
     items: [
-      { path: '/visualization-admin/news', label: '新闻管理', code: 'NEWS', icon: '/images/news.png' },
-      { path: '/visualization-admin/announcements', label: '公告管理', code: 'NTF', icon: '/images/announcement.png' }
+      { path: '/visualization-admin/news', label: '资讯管理', code: 'NEWS', icon: '/images/news.png' },
+      { path: '/visualization-admin/announcements', label: '消息管理', code: 'NTF', icon: '/images/announcement.png' }
     ]
   }
 ]

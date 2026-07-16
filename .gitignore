@@ -41,3 +41,6 @@ logs/
 # Windows local launcher
 /start-local.ps1
 /start-local.cmd
+
+# Personal work summary
+/docs/hanxxi-pc-user-work-summary.md

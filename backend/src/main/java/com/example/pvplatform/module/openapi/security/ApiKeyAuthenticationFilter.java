@@ -55,7 +55,10 @@ public class ApiKeyAuthenticationFilter extends OncePerRequestFilter {
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response,
                                     FilterChain filterChain) throws ServletException, IOException {
-        if (debugOpen) {
+        String rawKey = request.getHeader("X-API-KEY");
+        // Debug mode only supplies a fallback identity when no key is provided. Explicit keys
+        // still exercise real authentication so last-used, quota and billing stay observable.
+        if (debugOpen && (rawKey == null || rawKey.isBlank())) {
             SysUserDO user = userMapper.selectOne(Wrappers.<SysUserDO>lambdaQuery()
                 .eq(SysUserDO::getStatus, 1)
                 .orderByAsc(SysUserDO::getUserId)
@@ -74,7 +77,6 @@ public class ApiKeyAuthenticationFilter extends OncePerRequestFilter {
         LocalDateTime started = LocalDateTime.now();
         ApiKeyDO key = null;
         try {
-            String rawKey = request.getHeader("X-API-KEY");
             if (rawKey == null || rawKey.isBlank()) {
                 throw new BusinessException(401, "缺少 API Key");
             }
