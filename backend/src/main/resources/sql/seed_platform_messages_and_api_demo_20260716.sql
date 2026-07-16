@@ -35,14 +35,22 @@ SET un.related_type = 'NEWS', un.related_id = n.news_id
 WHERE un.notification_type IN ('NOTICE', 'MODEL_UPDATE', 'ALERT', 'SYSTEM', 'SYSTEM_NOTICE')
   AND (un.related_type IS NULL OR un.related_type IN ('NEWS', 'MODEL'));
 
--- 二、重建 60 条分布在近 30 天的 API 调用演示记录。
+-- 二、重建近 30 天的 API 调用演示记录，每天 0-30 次。
 -- 数据关联真实用户、真实 Key 和真实在线模型；Token 不可从当前模型响应可靠取得，因此保持 NULL。
 DROP TEMPORARY TABLE IF EXISTS demo_seq;
 CREATE TEMPORARY TABLE demo_seq (n INT PRIMARY KEY);
 INSERT INTO demo_seq (n) VALUES
-(0),(1),(2),(3),(4),(5),(6),(7),(8),(9),(10),(11),(12),(13),(14),(15),(16),(17),(18),(19),
-(20),(21),(22),(23),(24),(25),(26),(27),(28),(29),(30),(31),(32),(33),(34),(35),(36),(37),(38),(39),
-(40),(41),(42),(43),(44),(45),(46),(47),(48),(49),(50),(51),(52),(53),(54),(55),(56),(57),(58),(59);
+(0),(1),(2),(3),(4),(5),(6),(7),(8),(9),(10),(11),(12),(13),(14),
+(15),(16),(17),(18),(19),(20),(21),(22),(23),(24),(25),(26),(27),(28),(29);
+
+DROP TEMPORARY TABLE IF EXISTS demo_days;
+CREATE TEMPORARY TABLE demo_days AS
+SELECT n AS day_offset,
+       CASE
+           WHEN n IN (4, 17) THEN 0
+           ELSE MOD(CRC32(CONCAT('pv-api-demo-', DATE(DATE_SUB(CURDATE(), INTERVAL n DAY)))), 31)
+       END AS call_count
+FROM demo_seq;
 
 DROP TEMPORARY TABLE IF EXISTS demo_keys;
 CREATE TEMPORARY TABLE demo_keys AS
@@ -69,21 +77,30 @@ INSERT INTO api_call_log (
     request_summary, response_summary, input_tokens, output_tokens, total_tokens
 )
 SELECT k.user_id, k.api_key_id, m.model_id, '/openapi/v1/predict', 'POST',
-       CONCAT('10.20.0.', 21 + MOD(s.n, 18)),
-       DATE_SUB(NOW(), INTERVAL (59 - s.n) * 12 HOUR),
-       TIMESTAMPADD(MICROSECOND, (180 + MOD(s.n * 97, 1320)) * 1000,
-           DATE_SUB(NOW(), INTERVAL (59 - s.n) * 12 HOUR)),
-       180 + MOD(s.n * 97, 1320),
-       CASE WHEN MOD(s.n, 11) = 0 THEN 422 ELSE 200 END,
-       CASE WHEN MOD(s.n, 11) = 0 THEN 'FAILED' ELSE 'SUCCESS' END,
-       CASE WHEN MOD(s.n, 11) = 0 THEN '输入时间序列不完整' ELSE NULL END,
+       CONCAT('10.20.0.', 21 + MOD(d.day_offset * 7 + s.n, 18)),
+       CASE
+           WHEN d.day_offset = 0 THEN DATE_SUB(NOW(), INTERVAL (s.n * 5 + 2) MINUTE)
+           ELSE TIMESTAMP(DATE_SUB(CURDATE(), INTERVAL d.day_offset DAY))
+                + INTERVAL (480 + MOD(CRC32(CONCAT(d.day_offset, '-', s.n, '-time')), 840)) MINUTE
+       END,
+       TIMESTAMPADD(MICROSECOND, (180 + MOD((d.day_offset + 1) * (s.n + 7) * 97, 1320)) * 1000,
+           CASE
+               WHEN d.day_offset = 0 THEN DATE_SUB(NOW(), INTERVAL (s.n * 5 + 2) MINUTE)
+               ELSE TIMESTAMP(DATE_SUB(CURDATE(), INTERVAL d.day_offset DAY))
+                    + INTERVAL (480 + MOD(CRC32(CONCAT(d.day_offset, '-', s.n, '-time')), 840)) MINUTE
+           END),
+       180 + MOD((d.day_offset + 1) * (s.n + 7) * 97, 1320),
+       CASE WHEN MOD(d.day_offset * 31 + s.n, 13) = 0 THEN 422 ELSE 200 END,
+       CASE WHEN MOD(d.day_offset * 31 + s.n, 13) = 0 THEN 'FAILED' ELSE 'SUCCESS' END,
+       CASE WHEN MOD(d.day_offset * 31 + s.n, 13) = 0 THEN '输入时间序列不完整' ELSE NULL END,
        JSON_OBJECT('seedBatch', 'pc_usage_demo_20260716_v2', 'dataSource', 'DEMO_SEED',
                    'scene', '光伏功率预测联调'),
-       JSON_OBJECT('status', CASE WHEN MOD(s.n, 11) = 0 THEN 'FAILED' ELSE 'SUCCESS' END),
+       JSON_OBJECT('status', CASE WHEN MOD(d.day_offset * 31 + s.n, 13) = 0 THEN 'FAILED' ELSE 'SUCCESS' END),
        NULL, NULL, NULL
-FROM demo_seq s
-JOIN demo_keys k ON k.rn = MOD(s.n, k.total) + 1
-JOIN demo_models m ON m.rn = MOD(s.n, m.total) + 1;
+FROM demo_days d
+JOIN demo_seq s ON s.n < d.call_count
+JOIN demo_keys k ON k.rn = MOD(d.day_offset + s.n, k.total) + 1
+JOIN demo_models m ON m.rn = MOD(d.day_offset * 3 + s.n, m.total) + 1;
 
 UPDATE api_key k
 JOIN (
@@ -138,6 +155,7 @@ DROP TEMPORARY TABLE IF EXISTS demo_daily_cost;
 DROP TEMPORARY TABLE IF EXISTS old_demo_cost;
 DROP TEMPORARY TABLE IF EXISTS demo_models;
 DROP TEMPORARY TABLE IF EXISTS demo_keys;
+DROP TEMPORARY TABLE IF EXISTS demo_days;
 DROP TEMPORARY TABLE IF EXISTS demo_seq;
 
 COMMIT;
